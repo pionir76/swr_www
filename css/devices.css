@@ -1,0 +1,103 @@
+/* ------------------------------ */
+/* Devices Page */
+/* (공용 스타일 - input/select, selected-row, form-chip, meta-row, */
+/*  checkbox, page-actions, table-summary - 는 style.css 참고) */
+/* ------------------------------ */
+
+.devices-page th {
+  white-space: nowrap;
+}
+
+.devices-page {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-h) - 60px);
+}
+
+.devices-page #pageContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.device-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(360px, 0.9fr);
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.device-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.device-list-panel .table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.device-form-panel {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.device-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.device-meta-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 14px 16px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+#ndCancelBtn {
+  width: 120px;
+}
+
+#ndSubmitBtn {
+  width: 120px;
+}
+
+
+@media (max-width: 1280px) {
+  .device-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-actions {
+    flex-wrap: wrap;
+  }
+
+  .form-actions {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
+  .form-actions .btn {
+    flex: 1;
+  }
+}

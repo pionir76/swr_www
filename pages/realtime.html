@@ -1,0 +1,458 @@
+<section class="page realtime-page">
+  <div class="page-title-row realtime-title-row">
+    <div>
+      <h1>실시간 모니터링</h1>
+      <p>여러 디바이스에서 수집된 레지스터 값을 통합 레지스터 테이블로 실시간 표시합니다.</p>
+    </div>
+
+    <div class="realtime-refresh-control">
+      <div class="auto-refresh">
+        <span>자동 갱신</span>
+        <label class="switch">
+          <input type="checkbox" id="autoRefreshToggle" checked>
+          <span></span>
+        </label>
+      </div>
+
+      <div class="refresh-period">
+        <span>갱신 주기</span>
+        <select class="select" id="refreshPeriodSelect">
+          <option value="1000">1초</option>
+          <option value="3000" selected>3초</option>
+          <option value="5000">5초</option>
+          <option value="10000">10초</option>
+        </select>
+      </div>
+
+      <button class="btn ghost" id="refreshBtn">↻ 새로고침</button>
+
+      <div class="last-refresh">
+        마지막 갱신 : <b id="lastRefreshTime">—</b>
+        <span class="live-dot"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <section class="realtime-summary-grid">
+    <article class="summary-card">
+      <div class="summary-icon total">▤</div>
+      <div>
+        <span>전체 통합 레지스터</span>
+        <strong id="sumTotal">—</strong>
+      </div>
+    </article>
+
+    <article class="summary-card">
+      <div class="summary-icon normal">✓</div>
+      <div>
+        <span>정상</span>
+        <strong id="sumGood">—</strong>
+        <em id="sumGoodPct"></em>
+      </div>
+    </article>
+
+    <article class="summary-card">
+      <div class="summary-icon error">!</div>
+      <div>
+        <span>통신 오류</span>
+        <strong id="sumBad">—</strong>
+        <em id="sumBadPct"></em>
+      </div>
+    </article>
+
+    <article class="summary-card">
+      <div class="summary-icon warning">△</div>
+      <div>
+        <span>범위 초과</span>
+        <strong id="sumWarn">—</strong>
+        <em id="sumWarnPct"></em>
+      </div>
+    </article>
+
+    <article class="summary-card">
+      <div class="summary-icon stale">◷</div>
+      <div>
+        <span>미갱신</span>
+        <strong id="sumStale">—</strong>
+        <em id="sumStalePct"></em>
+      </div>
+    </article>
+  </section>
+
+  <!-- Filter -->
+  <article class="panel realtime-filter-panel">
+    <div class="filter-grid">
+      <div class="form-field">
+        <label>장비 선택</label>
+        <select class="select" id="filterDevice">
+          <option value="">전체</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>상태</label>
+        <select class="select" id="filterStatus">
+          <option value="">전체</option>
+          <option value="good">정상</option>
+          <option value="bad">통신 오류</option>
+          <option value="warn">범위 초과</option>
+          <option value="stale">미갱신</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>레지스터 타입</label>
+        <select class="select" id="filterType">
+          <option value="">전체</option>
+          <option value="holding_register">Holding Register</option>
+          <option value="input_register">Input Register</option>
+          <option value="coil_status">Coil Status</option>
+          <option value="discrete_input">Discrete Input</option>
+        </select>
+      </div>
+
+      <div class="form-field search-field">
+        <label>검색</label>
+        <div class="search-input-wrap">
+          <input class="input" id="searchInput" placeholder="태그명, 원본주소, 통합주소 검색">
+          <span>⌕</span>
+        </div>
+      </div>
+
+      <button class="btn ghost filter-reset-btn" id="filterResetBtn">필터 초기화</button>
+    </div>
+  </article>
+
+  <!-- Main Layout -->
+  <section class="realtime-main-layout">
+    <!-- Table -->
+    <article class="panel realtime-table-panel">
+      <div class="panel-header">
+        <h2>통합 레지스터 목록 <small id="realtimeTotalCount">—</small></h2>
+      </div>
+
+      <div class="realtime-table-wrap">
+        <table class="realtime-table">
+          <thead>
+            <tr>
+              <th>상태</th>
+              <th>통합 주소</th>
+              <th>태그명</th>
+              <th>표시명</th>
+              <th>현재 값</th>
+              <th>단위</th>
+              <th>소스 장비</th>
+              <th>원본 주소</th>
+              <th>원본 타입</th>
+              <th>읽기/쓰기 모드</th>
+              <th>갱신 시각</th>
+            </tr>
+          </thead>
+
+          <tbody id="realtimeBody">
+            <tr class="selected-row">
+              <td>
+                <span class="status-label good">
+                  <i></i>정상
+                </span>
+              </td>
+              <td class="mono">40001</td>
+              <td class="mono">CH1_PV</td>
+              <td>냉동기1 현재온도</td>
+              <td class="value-cell">6.8</td>
+              <td>°C</td>
+              <td>냉동기1</td>
+              <td class="mono">40001</td>
+              <td>Holding Register</td>
+              <td><span class="mode-badge readonly">READ ONLY</span></td>
+              <td>10:24:31</td>
+            </tr>
+
+            <tr>
+              <td>
+                <span class="status-label good">
+                  <i></i>정상
+                </span>
+              </td>
+              <td class="mono">40002</td>
+              <td class="mono">CH1_SP</td>
+              <td>냉동기1 설정온도</td>
+              <td class="value-cell">8.0</td>
+              <td>°C</td>
+              <td>냉동기1</td>
+              <td class="mono">40002</td>
+              <td>Holding Register</td>
+              <td><span class="mode-badge readwrite">READ WRITE</span></td>
+              <td>10:24:31</td>
+            </tr>
+
+            <tr>
+              <td>
+                <span class="status-label good">
+                  <i></i>정상
+                </span>
+              </td>
+              <td class="mono">30001</td>
+              <td class="mono">CH1_RUN</td>
+              <td>냉동기1 운전상태</td>
+              <td class="value-cell">1</td>
+              <td>-</td>
+              <td>냉동기1</td>
+              <td class="mono">10001</td>
+              <td>Coil Status</td>
+              <td><span class="mode-badge readonly">READ ONLY</span></td>
+              <td>10:24:31</td>
+            </tr>
+
+            <tr>
+              <td>
+                <span class="status-label bad">
+                  <i></i>통신 오류
+                </span>
+              </td>
+              <td class="mono">40003</td>
+              <td class="mono">CH1_ALM</td>
+              <td>냉동기1 알람코드</td>
+              <td class="error-value">--</td>
+              <td>-</td>
+              <td>냉동기1</td>
+              <td class="mono">40010</td>
+              <td>Input Register</td>
+              <td><span class="mode-badge readonly">READ ONLY</span></td>
+              <td>10:23:58</td>
+            </tr>
+
+            <tr>
+              <td>
+                <span class="status-label warn">
+                  <i></i>범위 초과
+                </span>
+              </td>
+              <td class="mono">30002</td>
+              <td class="mono">SPC_SH</td>
+              <td>과열도</td>
+              <td class="warning-value">45.2</td>
+              <td>K</td>
+              <td>스포란제어기</td>
+              <td class="mono">30001</td>
+              <td>Input Register</td>
+              <td><span class="mode-badge readonly">READ ONLY</span></td>
+              <td>10:24:28</td>
+            </tr>
+
+            <tr>
+              <td>
+                <span class="status-label good">
+                  <i></i>정상
+                </span>
+              </td>
+              <td class="mono">40004</td>
+              <td class="mono">PMP_FLOW</td>
+              <td>펌프 유량</td>
+              <td class="value-cell">42.1</td>
+              <td>LPM</td>
+              <td>냉각수펌프</td>
+              <td class="mono">30002</td>
+              <td>Input Register</td>
+              <td><span class="mode-badge readonly">READ ONLY</span></td>
+              <td>10:24:29</td>
+            </tr>
+
+            <tr>
+              <td>
+                <span class="status-label stale">
+                  <i></i>미갱신
+                </span>
+              </td>
+              <td class="mono">40005</td>
+              <td class="mono">PMP_RUN</td>
+              <td>펌프 운전상태</td>
+              <td class="value-cell">0</td>
+              <td>-</td>
+              <td>냉각수펌프</td>
+              <td class="mono">10005</td>
+              <td>Coil Status</td>
+              <td><span class="mode-badge readwrite">READ WRITE</span></td>
+              <td>10:21:10</td>
+            </tr>
+
+            <tr>
+              <td>
+                <span class="status-label good">
+                  <i></i>정상
+                </span>
+              </td>
+              <td class="mono">40006</td>
+              <td class="mono">PMP_ALM</td>
+              <td>펌프 알람</td>
+              <td class="value-cell">0</td>
+              <td>-</td>
+              <td>냉각수펌프</td>
+              <td class="mono">10006</td>
+              <td>Coil Status</td>
+              <td><span class="mode-badge readonly">READ ONLY</span></td>
+              <td>10:24:30</td>
+            </tr>
+
+            <tr>
+              <td>
+                <span class="status-label good">
+                  <i></i>정상
+                </span>
+              </td>
+              <td class="mono">40007</td>
+              <td class="mono">TWR_LVL</td>
+              <td>타워 수위</td>
+              <td class="value-cell">67.3</td>
+              <td>%</td>
+              <td>냉각탑</td>
+              <td class="mono">30005</td>
+              <td>Input Register</td>
+              <td><span class="mode-badge readonly">READ ONLY</span></td>
+              <td>10:24:30</td>
+            </tr>
+
+            <tr>
+              <td>
+                <span class="status-label good">
+                  <i></i>정상
+                </span>
+              </td>
+              <td class="mono">40008</td>
+              <td class="mono">TWR_TMP</td>
+              <td>타워 온도</td>
+              <td class="value-cell">23.6</td>
+              <td>°C</td>
+              <td>냉각탑</td>
+              <td class="mono">30006</td>
+              <td>Input Register</td>
+              <td><span class="mode-badge readonly">READ ONLY</span></td>
+              <td>10:24:29</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <div class="page-size">
+          <span>페이지 크기</span>
+          <select class="select" id="pageSizeSelect">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+
+        <div class="page-info" id="pageInfoEl">—</div>
+
+        <div class="pagination" id="paginationEl"></div>
+      </div>
+
+      <div class="quality-legend">
+        <span class="q-good">● Good</span>
+        <span class="q-normal">● Normal</span>
+        <span class="q-bad">● Bad</span>
+        <span class="q-legend-desc">— 갱신 시각 기준 폴링 품질</span>
+      </div>
+    </article>
+
+    <!-- Detail Panel -->
+    <aside class="panel realtime-detail-panel">
+      <div class="detail-header">
+        <h2>레지스터 상세 정보</h2>
+        <button id="detailCloseBtn">×</button>
+      </div>
+
+      <section class="detail-section">
+        <div class="detail-section-title">기본 정보</div>
+        <div class="detail-list">
+          <div><span>통합 주소</span><b id="dtlUnifiedAddr">—</b></div>
+          <div><span>태그명</span><b id="dtlTagName">—</b></div>
+          <div><span>표시명</span><b id="dtlDisplayName">—</b></div>
+          <div><span>단위</span><b id="dtlUnit">—</b></div>
+          <div><span>스케일</span><b id="dtlScale">—</b></div>
+        </div>
+      </section>
+
+      <section class="detail-section">
+        <div class="detail-section-title">소스 정보</div>
+        <div class="detail-list">
+          <div><span>소스 장비</span><b id="dtlDevice">—</b></div>
+          <div><span>원본 주소</span><b id="dtlSrcAddr">—</b></div>
+          <div><span>원본 타입</span><b id="dtlSrcType">—</b></div>
+        </div>
+      </section>
+
+      <section class="detail-section">
+        <div class="detail-section-title">현재 값 정보</div>
+        <div class="detail-list">
+          <div><span>현재 값</span><b id="dtlValue">—</b></div>
+          <div><span>Raw Value</span><b id="dtlRawWord">—</b></div>
+          <div><span>품질</span><b id="dtlQuality">—</b></div>
+          <div><span>마지막 갱신 시각</span><b id="dtlLastUpdated">—</b></div>
+          <div><span>오류 메시지</span><b id="dtlErrMsg">—</b></div>
+        </div>
+      </section>
+
+      <section class="detail-section" id="dtlBitSection" hidden>
+        <div class="detail-section-title">Bit Status</div>
+        <div class="detail-bit-list" id="dtlBitList"></div>
+      </section>
+
+      <section class="detail-section">
+        <div class="detail-section-title">쓰기 모드 정보</div>
+        <div class="detail-list">
+          <div><span>읽기/쓰기 모드</span><b id="dtlRwMode">—</b></div>
+        </div>
+      </section>
+    </aside>
+  </section>
+
+  <div class="realtime-bottom-notice">
+    <span>i</span>
+    <p>값이 비정상으로 표시된 항목은 통신 상태 또는 범위 설정을 확인해 주세요.</p>
+  </div>
+
+  <!-- Write Modal -->
+  <div id="writeModal" class="modal-backdrop" hidden>
+    <div class="modal-card write-modal-card">
+      <div class="modal-head">
+        <h2>Write Value</h2>
+        <button class="modal-close" id="wmCloseBtn">×</button>
+      </div>
+
+      <div class="write-info-grid">
+        <span>Tag Name</span><b id="wmTagName">—</b>
+        <span>Name</span><b id="wmDisplayName">—</b>
+        <span>Unified Addr</span><b id="wmUnifiedAddr">—</b>
+        <span>Current Value</span><b id="wmCurrentVal">—</b>
+      </div>
+
+      <div class="form-field write-input-field">
+        <label>New Value</label>
+        <div id="wmCoilWrap" hidden>
+          <select class="select" id="wmCoilSelect">
+            <option value="0">OFF (0)</option>
+            <option value="1">ON (1)</option>
+          </select>
+        </div>
+        <div id="wmWordWrap" hidden>
+          <div class="write-value-row">
+            <input class="input" id="wmValueInput" type="number" step="any" />
+            <span id="wmUnitLabel" class="write-unit"></span>
+          </div>
+        </div>
+      </div>
+
+      <p class="write-range-hint" id="wmRangeHint" hidden></p>
+      <p class="write-raw-hint" id="wmRawHint"></p>
+      <p class="form-error" id="wmError" hidden></p>
+
+      <div class="modal-actions">
+        <button class="btn" id="wmCancelBtn">Cancel</button>
+        <button class="btn primary" id="wmSubmitBtn">Write</button>
+      </div>
+    </div>
+  </div>
+</section>

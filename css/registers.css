@@ -1,0 +1,329 @@
+/* ------------------------------ */
+/* Registers Page */
+/* (page-actions, input/select, filter-group, selected-row, form-chip, */
+/*  meta-row, checkbox 등 공용 스타일은 style.css 참고) */
+/* ------------------------------ */
+
+.register-toolbar {
+  display: grid;
+  grid-template-columns: 320px minmax(280px, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.device-select-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.device-select-group label {
+  white-space: nowrap;
+  color: #9fb0c5;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+/* ── 높이 체인: registers-page → #pageContent → register-layout → register-list-panel ── */
+
+.registers-page {
+  display: flex;
+  flex-direction: column;
+  /* page-root padding: top 24px + bottom 36px = 60px */
+  min-height: calc(100vh - var(--topbar-h) - 60px);
+}
+
+/* #pageContent는 전역 공유 요소이므로 페이지 범위로 스코프 지정 */
+.registers-page #pageContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.register-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.48fr) minmax(430px, 0.92fr);
+  gap: 16px;
+  flex: 1;          /* #pageContent flex 컨테이너 안에서 남은 공간 차지 */
+  min-height: 0;
+  align-items: stretch;
+}
+
+.register-list-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.register-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.register-table {
+  min-width: 980px;
+}
+
+.register-table th,
+.register-table td {
+  height: 52px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.register-table tbody tr:hover {
+  cursor: pointer;
+}
+
+.register-table th:nth-child(n+5),
+.register-table td:nth-child(n+5) {
+  text-align: right;
+}
+
+.register-table th {
+  font-size: 13px;
+}
+
+.register-table td {
+  font-size: 14px;
+}
+
+.register-table td:nth-child(2) {
+  color: #ffd84a;
+  font-weight: 900;
+}
+
+.register-table td:nth-child(4) {
+  color: #7bb8ff;
+}
+
+.register-table td:nth-child(10) {
+  color: #ffb020;
+  font-weight: 850;
+}
+
+.check-cell {
+  width: 44px;
+}
+
+.mono {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  letter-spacing: -0.02em;
+}
+
+.value-blue {
+  color: #4da0ff;
+  font-weight: 850;
+}
+
+.link-button {
+  border: 0;
+  background: transparent;
+  color: #4da0ff;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: #7bb8ff;
+  text-decoration: underline;
+}
+
+.badge.readonly {
+  color: #7bb8ff;
+  background: rgba(47, 128, 255, 0.18);
+}
+
+.badge.writable {
+  color: #65e684;
+  background: rgba(76, 217, 107, 0.17);
+}
+
+.table-footer {
+  flex-shrink: 0;
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 18px;
+  color: #b3c0d2;
+  font-size: 14px;
+  padding-top: 14px;
+}
+
+.pagination {
+  display: flex;
+  gap: 8px;
+}
+
+.pagination button {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.035);
+  color: #dce7f6;
+  font-weight: 800;
+}
+
+.pagination button.active {
+  background: linear-gradient(135deg, #1b69dd, #2f80ff);
+  border-color: rgba(47, 128, 255, 0.6);
+  color: #ffffff;
+}
+
+.pagination button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.page-ellipsis {
+  display: flex;
+  align-items: center;
+  color: #4a5a6e;
+  font-size: 13px;
+  padding: 0 2px;
+}
+
+.page-size-select {
+  min-width: 130px;
+}
+
+.register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.register-value-card {
+  border: 1px solid rgba(47, 128, 255, 0.42);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(47, 128, 255, 0.08),
+      rgba(255, 255, 255, 0.02)
+    );
+  padding: 14px 16px;
+}
+
+.register-value-card .meta-row {
+  min-height: 34px;
+}
+
+
+.register-detail-panel .input:disabled,
+.register-detail-panel .select:disabled {
+  opacity: 0.45;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* ── Unified Register ID ─────────────────────────────────────────────────── */
+.unified-id-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.uid-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.uid-assign-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #8ea3bf;
+  white-space: nowrap;
+}
+
+.uid-assign-select {
+  width: 110px;
+  flex: none;
+}
+
+.uid-id-input {
+  flex: 1;
+  min-width: 80px;
+}
+
+.uid-verify-btn {
+  width: 80px;
+  height: 36px;
+  font-size: 13px;
+  flex: none;
+}
+
+.uid-status {
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 16px;
+}
+
+.uid-status.uid-ok       { color: #4ade80; }
+.uid-status.uid-err      { color: #ff7d82; }
+.uid-status.uid-warn     { color: #fbbf24; }
+.uid-status.uid-checking { color: #8ea3bf; }
+
+.register-detail-panel .form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+#saveRegister,
+#resetRegister,
+#deleteRegister {
+  width: 138px;
+}
+
+#arSubmitBtn,
+#arCancelBtn {
+  width: 130px;
+}
+
+@media (max-width: 1440px) {
+  .register-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .register-detail-panel {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 1100px) {
+  .register-toolbar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .device-select-group {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .filter-group {
+    width: 100%;
+  }
+
+  .filter-group .select {
+    flex: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .registers-page .page-actions {
+    flex-wrap: wrap;
+  }
+
+  .table-footer {
+    grid-template-columns: 1fr;
+  }
+}

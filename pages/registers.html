@@ -1,0 +1,404 @@
+<section class="page registers-page">
+  <div class="page-title-row">
+    <div>
+      <h1>레지스터 관리</h1>
+      <p>장비별 레지스터 항목과 실시간 값을 관리합니다.</p>
+    </div>
+
+    <div class="page-actions">
+      <button class="btn primary" id="addRegisterBtn">+ 레지스터 추가</button>
+      <button class="btn danger" id="bulkDeleteRegisterBtn">− 선택 삭제</button>
+    </div>
+  </div>
+
+  <div id="pageContent" hidden>
+  <article class="panel toolbar-panel">
+    <div class="register-toolbar">
+      <div class="device-select-group">
+        <label>장비 선택</label>
+        <select class="select" id="deviceSelect">
+          <option>불러오는 중…</option>
+        </select>
+      </div>
+
+      <div class="search-group">
+        <input
+          type="text"
+          class="input"
+          placeholder="태그명, 표시명, 주소 검색"
+        />
+      </div>
+
+      <div class="filter-group">
+        <select class="select">
+          <option>전체 타입</option>
+          <option>Holding Register</option>
+          <option>Input Register</option>
+          <option>Coil</option>
+          <option>Discrete Input</option>
+        </select>
+
+        <select class="select">
+          <option>전체 상태</option>
+          <option>정상</option>
+          <option>오류</option>
+          <option>범위초과</option>
+        </select>
+      </div>
+    </div>
+  </article>
+
+  <section class="register-layout">
+    <article class="panel register-list-panel">
+      <div class="panel-header">
+        <h2><span class="header-icon">▧</span>레지스터 목록</h2>
+        <span class="table-summary" id="registerSummary">불러오는 중…</span>
+      </div>
+
+      <div class="table-wrap register-table-wrap">
+        <table class="register-table">
+          <thead>
+            <tr>
+              <th class="check-cell"><input type="checkbox" /></th>
+              <th>태그명</th>
+              <th>표시명</th>
+              <th>주소</th>
+              <th>타입</th>
+              <th>길이</th>
+              <th>단위</th>
+              <th>스케일</th>
+              <th>속성</th>
+              <th>통합주소</th>
+            </tr>
+          </thead>
+
+          <tbody id="registerTableBody">
+            <tr><td colspan="10" class="muted" style="text-align:center; height:64px;">장비를 선택하세요.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <span id="regPageInfo">—</span>
+
+        <div class="pagination" id="regPaginationEl"></div>
+
+        <select class="select page-size-select" id="regPageSizeSelect">
+          <option value="10">10 / 페이지</option>
+          <option value="20" selected>20 / 페이지</option>
+          <option value="50">50 / 페이지</option>
+        </select>
+      </div>
+    </article>
+
+    <aside class="panel register-detail-panel">
+      <div class="panel-header">
+        <h2><span class="header-icon">▧</span>레지스터 상세 정보</h2>
+        <span class="form-chip">선택 항목</span>
+      </div>
+
+      <div class="register-form">
+        <div class="form-grid">
+          <div class="form-field">
+            <label>태그명</label>
+            <input class="input" id="rfTagName" />
+          </div>
+
+          <div class="form-field">
+            <label>표시명</label>
+            <input class="input" id="rfDisplay" />
+          </div>
+
+          <div class="form-field">
+            <label>주소</label>
+            <input class="input" id="rfAddress" />
+          </div>
+
+          <div class="form-field">
+            <label>타입</label>
+            <select class="select" id="rfType">
+              <option value="holding_register" selected>Holding Register</option>
+              <option value="input_register">Input Register</option>
+              <option value="coil">Coil</option>
+              <option value="discrete_input">Discrete Input</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>길이</label>
+            <select class="select" id="rfLength">
+              <option value="1" selected>1 Word (16bit)</option>
+              <option value="2">2 Word (32bit)</option>
+              <option value="3">3 Word (48bit)</option>
+              <option value="4">4 Word (64bit)</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>단위</label>
+            <select class="select" id="rfUnit">
+              <option value="" selected>없음</option>
+              <option value="°F">°F (화씨)</option>
+              <option value="°C">°C (섭씨)</option>
+              <option value="%">%</option>
+              <option value="Pa">Pa</option>
+              <option value="kPa">kPa</option>
+              <option value="%RH">%RH</option>
+              <option value="mV">mV</option>
+              <option value="V">V</option>
+              <option value="Ω">Ω</option>
+              <option value="mmHg">mmHg</option>
+              <option value="kgf">kgf</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>스케일</label>
+            <select class="select" id="rfScale">
+              <option value="100">100</option>
+              <option value="10">10</option>
+              <option value="1" selected>1</option>
+              <option value="0.1">0.1</option>
+              <option value="0.01">0.01</option>
+              <option value="0.001">0.001</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>바이트 오더</label>
+            <select class="select" id="rfByteOrder">
+              <option value="default" selected>Follow Device Setting</option>
+              <option value="big">Big Endian</option>
+              <option value="little">Little Endian</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>읽기/쓰기 속성</label>
+            <select class="select" id="rfReadOnly">
+              <option value="true" selected>READ ONLY</option>
+              <option value="false">READ/WRITE</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>부호</label>
+            <select class="select" id="rfSigned">
+              <option value="false" selected>없음</option>
+              <option value="true">있음</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>최소값</label>
+            <input class="input" id="rfMin" placeholder="제한 없음" />
+          </div>
+
+          <div class="form-field">
+            <label>최대값</label>
+            <input class="input" id="rfMax" placeholder="제한 없음" />
+          </div>
+
+          <div class="form-field full">
+            <label>비트 라벨 (JSON)</label>
+            <textarea
+              class="input"
+              id="rfBitLabels"
+              rows="3"
+              placeholder='{"0":"경보1","1":"경보2"} — 비워두면 미사용'
+              style="height: auto; padding: 10px 14px; resize: vertical;"
+            ></textarea>
+          </div>
+
+          <div class="form-field full">
+            <label>통합 레지스터 ID</label>
+            <div class="unified-id-wrap">
+              <div class="uid-row">
+                <select class="select uid-assign-select" id="rfUidSelect">
+                  <option value="auto">AUTO</option>
+                  <option value="manual">MANUAL</option>
+                </select>
+                <input class="input uid-id-input" id="rfUnifiedId" type="number" min="5000" max="5999" placeholder="5000 ~ 5999" disabled />
+                <button class="btn ghost uid-verify-btn" type="button" id="rfUidVerifyBtn" disabled>Verify</button>
+              </div>
+              <span class="uid-status" id="rfUidStatus"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="register-value-card">
+          <div class="meta-row">
+            <span>실시간 값</span>
+            <b class="value-blue">6.8 °C</b>
+          </div>
+
+          <div class="meta-row">
+            <span>유효 상태</span>
+            <b class="green-text">정상</b>
+          </div>
+
+          <div class="meta-row">
+            <span>범위 상태</span>
+            <b class="green-text">정상</b>
+          </div>
+
+          <div class="meta-row">
+            <span>최근 수집 시각</span>
+            <b>2025-05-20 10:24:31</b>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn primary" id="saveRegister">저장</button>
+          <button class="btn danger" id="deleteRegister">삭제</button>
+        </div>
+      </div>
+    </aside>
+  </section>
+  </div><!-- #pageContent -->
+</section>
+
+<!-- ── 레지스터 추가 모달 ─────────────────────────────────────── -->
+<div class="modal-backdrop" id="addRegisterModal" hidden>
+  <div class="modal-card" style="max-width: 680px;">
+    <div class="modal-head">
+      <h2>레지스터 추가</h2>
+      <button class="modal-close" type="button" id="arCloseBtn">×</button>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>태그명 <span style="color:#ff7d82">*</span></label>
+        <input class="input" id="arTagName" placeholder="예: TEMP_01" />
+      </div>
+
+      <div class="form-field">
+        <label>표시명</label>
+        <input class="input" id="arDisplay" placeholder="예: 냉수 온도" />
+      </div>
+
+      <div class="form-field">
+        <label>타입 <span style="color:#ff7d82">*</span></label>
+        <select class="select" id="arType">
+          <option value="holding_register">Holding Register</option>
+          <option value="input_register">Input Register</option>
+          <option value="coil">Coil</option>
+          <option value="discrete_input">Discrete Input</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>주소</label>
+        <input class="input" id="arAddress" type="number" min="0" value="0" />
+      </div>
+
+      <div class="form-field">
+        <label>길이</label>
+        <select class="select" id="arLength">
+          <option value="1" selected>1 Word (16bit)</option>
+          <option value="2">2 Word (32bit)</option>
+          <option value="3">3 Word (48bit)</option>
+          <option value="4">4 Word (64bit)</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>단위</label>
+        <select class="select" id="arUnit">
+          <option value="" selected>없음</option>
+          <option value="°C">°C (섭씨)</option>
+          <option value="°F">°F (화씨)</option>
+          <option value="%">%</option>
+          <option value="Pa">Pa</option>
+          <option value="kPa">kPa</option>
+          <option value="%RH">%RH</option>
+          <option value="mV">mV</option>
+          <option value="V">V</option>
+          <option value="Ω">Ω</option>
+          <option value="mmHg">mmHg</option>
+          <option value="kgf">kgf</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>스케일</label>
+        <select class="select" id="arScale">
+          <option value="100">100</option>
+          <option value="10">10</option>
+          <option value="1" selected>1</option>
+          <option value="0.1">0.1</option>
+          <option value="0.01">0.01</option>
+          <option value="0.001">0.001</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>바이트 오더</label>
+        <select class="select" id="arByteOrder">
+          <option value="default" selected>Follow Device Setting</option>
+          <option value="big">Big Endian</option>
+          <option value="little">Little Endian</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>읽기/쓰기 속성</label>
+        <select class="select" id="arReadOnly">
+          <option value="true" selected>READ ONLY</option>
+          <option value="false">READ/WRITE</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>부호</label>
+        <select class="select" id="arSigned">
+          <option value="false" selected>없음</option>
+          <option value="true">있음</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>최소값</label>
+        <input class="input" id="arMin" placeholder="제한 없음" />
+      </div>
+
+      <div class="form-field">
+        <label>최대값</label>
+        <input class="input" id="arMax" placeholder="제한 없음" />
+      </div>
+
+      <div class="form-field full">
+        <label>비트 라벨 (JSON)</label>
+        <textarea
+          class="input"
+          id="arBitLabels"
+          rows="3"
+          placeholder='{"0":"경보1","1":"경보2"} — 비워두면 미사용'
+          style="height:auto; padding:10px 14px; resize:vertical;"
+        ></textarea>
+      </div>
+
+      <div class="form-field full">
+        <label>통합 레지스터 ID</label>
+        <div class="unified-id-wrap">
+          <div class="uid-row">
+            <select class="select uid-assign-select" id="arUidSelect">
+              <option value="auto">AUTO</option>
+              <option value="manual">MANUAL</option>
+            </select>
+            <input class="input uid-id-input" id="arUnifiedId" type="number" min="5000" max="5999" placeholder="5000 ~ 5999" disabled />
+            <button class="btn ghost uid-verify-btn" type="button" id="arUidVerifyBtn" disabled>Verify</button>
+          </div>
+          <span class="uid-status" id="arUidStatus"></span>
+        </div>
+      </div>
+
+      <p class="form-error" id="arFormMsg" hidden></p>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" type="button" id="arCancelBtn">취소</button>
+      <button class="btn primary" type="button" id="arSubmitBtn">추가</button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SmartRoute</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">S</div>
+        <div class="brand-text">SmartRoute</div>
+      </div>
+
+      <nav class="nav-menu" id="navMenu">
+        <a class="nav-item active" href="#dashboard" data-page="dashboard">
+          <i class="nav-icon nav-icon--dashboard"></i><span>대시보드</span>
+        </a>
+        <a class="nav-item" href="#devices" data-page="devices">
+          <i class="nav-icon nav-icon--devices"></i><span>장비 관리</span>
+        </a>
+        <a class="nav-item" href="#registers" data-page="registers">
+          <i class="nav-icon nav-icon--registers"></i><span>레지스터 관리</span>
+        </a>
+        <a class="nav-item" href="#realtime" data-page="realtime">
+          <i class="nav-icon nav-icon--realtime"></i><span>실시간 모니터링</span>
+        </a>
+        <a class="nav-item" href="#users" data-page="users">
+          <i class="nav-icon nav-icon--users"></i><span>사용자 관리</span>
+        </a>
+        <a class="nav-item" href="#logs" data-page="logs">
+          <i class="nav-icon nav-icon--logs"></i><span>로그</span>
+        </a>
+        <a class="nav-item" href="#trends" data-page="trends">
+          <i class="nav-icon nav-icon--trends"></i><span>트렌드</span>
+        </a>
+        <a class="nav-item" href="#hmi" data-page="hmi">
+          <i class="nav-icon nav-icon--hmi"></i><span>HMI 빌더</span>
+        </a>
+        <a class="nav-item" href="#settings" data-page="settings">
+          <i class="nav-icon nav-icon--settings"></i><span>시스템 설정</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span>© 2026 Samwontechnology Inc.</span>
+        <span>v1.0.0</span>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <button class="menu-button" id="menuButton" type="button" aria-label="menu">☰</button>
+        <div class="topbar-spacer"></div>
+
+        <div class="topbar-info">
+          <span class="time" id="topbarTime">◷ --:--:--</span>
+          <span class="divider"></span>
+
+          <div class="user-menu" id="userMenu">
+            <button class="user-btn" id="userBtn" type="button">
+              <i class="mini-icon mini-icon--user"></i>
+              <span id="userLabel">-</span>
+              <span class="user-caret">▾</span>
+            </button>
+            <div class="user-dropdown" id="userDropdown" hidden>
+              <button class="dropdown-item logout-item" id="logoutBtn" type="button">⎋ 로그아웃</button>
+            </div>
+          </div>
+
+          <span class="divider"></span>
+          <button class="status-pill polling-pill" id="pollingPill" type="button" title="클릭하여 폴링 정지/시작">
+            <span class="dot" id="pollingDot"></span>
+            <span id="pollingPillText">CHECKING…</span>
+          </button>
+          <span class="divider"></span>
+          <div class="status-pill"><span class="dot green"></span>정상 <b id="topbarOkCount">—</b></div>
+          <div class="status-pill"><span class="dot red"></span>오류 <b id="topbarErrCount">—</b></div>
+        </div>
+      </header>
+
+      <main id="pageRoot" class="page-root"></main>
+
+      <!-- Full-screen busy overlay (polling start/stop) -->
+      <div id="busyOverlay" class="busy-overlay" hidden>
+        <div class="busy-overlay-box">
+          <div class="busy-spinner"></div>
+          <p>처리 중...</p>
+        </div>
+      </div>
+
+      <!-- Global loading / error overlay -->
+      <div id="pageOverlay" class="page-overlay" hidden>
+        <div id="pageOverlayLoading" class="overlay-loading">
+          <div class="overlay-spinner"></div>
+          <p>불러오는 중...</p>
+        </div>
+        <div id="pageOverlayError" class="overlay-error" hidden>
+          <span class="overlay-error-icon">⚠</span>
+          <h3>연결 실패</h3>
+          <p id="pageOverlayMsg">서버에 연결할 수 없습니다.</p>
+          <button class="btn ghost" id="pageOverlayRetry" style="margin-top:4px">다시 시도</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="./config.js"></script>
+  <script src="./main.js"></script>
+</body>
+</html>

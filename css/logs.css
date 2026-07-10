@@ -1,0 +1,316 @@
+/* ------------------------------ */
+/* Logs Page */
+/* ------------------------------ */
+
+/* ── 높이 체인 ── */
+
+.logs-page {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-h) - 60px);
+}
+
+.logs-page #pageContent {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── 필터 패널 ── */
+
+.logs-filter-panel {
+  padding: 16px 20px;
+}
+
+.logs-filter-grid {
+  display: grid;
+  grid-template-columns: 140px 160px 160px auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.logs-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.logs-field-group.logs-field-btns {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.logs-field-label {
+  color: #9badc5;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+/* ── 요약 카드 ── */
+
+.logs-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.logs-kpi-card {
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(29, 43, 61, 0.94), rgba(20, 31, 45, 0.96));
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-height: 88px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+.logs-kpi-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.logs-kpi-icon.total { color: var(--blue-2); background: rgba(47, 128, 255, 0.14); border: 1px solid rgba(47, 128, 255, 0.32); }
+.logs-kpi-icon.info  { color: var(--blue-2); background: rgba(47, 128, 255, 0.14); border: 1px solid rgba(47, 128, 255, 0.32); }
+.logs-kpi-icon.warn  { color: var(--amber);  background: rgba(255, 173, 50, 0.13); border: 1px solid rgba(255, 173, 50, 0.32); }
+.logs-kpi-icon.error { color: var(--red);    background: rgba(255, 93, 98, 0.13);  border: 1px solid rgba(255, 93, 98, 0.32); }
+
+.logs-kpi-label {
+  color: #9badc5;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.logs-kpi-value {
+  margin-top: 4px;
+  font-size: 30px;
+  font-weight: 850;
+  letter-spacing: -0.04em;
+  color: var(--text);
+}
+
+/* ── 테이블 패널 ── */
+/*
+  고정 높이 계산 (page-root 블록 컨텍스트 → flex chain 불안정)
+  100vh
+  - var(--topbar-h)  : 76px (상단바)
+  - 24px             : page-root padding-top
+  - 82px             : .page-title-row (h1+p+margin-bottom)
+  - 101px            : filter panel (label+input+padding+border)
+  - 14px             : #pageContent gap
+  - 90px             : kpi-grid (min-height 88 + border)
+  - 14px             : #pageContent gap
+  - 36px             : page-root padding-bottom
+  = calc(100vh - var(--topbar-h) - 361px) → 여유 10px 추가
+*/
+.logs-table-panel {
+  height: calc(100vh - var(--topbar-h) - 371px);
+  min-height: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.logs-table-panel .panel-header h2 small {
+  font-size: 14px;
+  font-weight: 700;
+  color: #6a7f99;
+  margin-left: 6px;
+}
+
+#logSearchBtn {
+  width: 120px;
+}
+
+
+#logResetBtn {
+  width: 120px;
+}
+
+/* ── 테이블 ── */
+
+.logs-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.logs-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.logs-table thead tr {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.logs-table th {
+  height: 42px;
+  padding: 0 14px;
+  text-align: left;
+  color: #c6d3e4;
+  font-size: 12px;
+  font-weight: 850;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: rgba(22, 33, 48, 0.97);
+  z-index: 1;
+}
+
+.logs-table td {
+  height: 44px;
+  padding: 0 14px;
+  color: #dce5f1;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  vertical-align: middle;
+}
+
+.logs-table tbody tr:hover {
+  background: rgba(47, 128, 255, 0.055);
+}
+
+.logs-table .log-row-warn td  { color: #ffc870; }
+.logs-table .log-row-error td { color: #ff7b7f; }
+
+.logs-table .col-time  { width: 175px; }
+.logs-table .col-level { width: 76px; }
+
+.log-ts {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  color: #8fa4bf;
+  white-space: nowrap;
+}
+
+.log-msg {
+  word-break: break-all;
+}
+
+/* ── 레벨 배지 ── */
+
+.log-level-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  min-width: 52px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.log-level-badge.log-info {
+  color: #7bb8ff;
+  background: rgba(47, 128, 255, 0.14);
+  border: 1px solid rgba(47, 128, 255, 0.22);
+}
+
+.log-level-badge.log-warn {
+  color: #ffc870;
+  background: rgba(255, 173, 50, 0.14);
+  border: 1px solid rgba(255, 173, 50, 0.24);
+}
+
+.log-level-badge.log-error {
+  color: #ff7b7f;
+  background: rgba(255, 93, 98, 0.14);
+  border: 1px solid rgba(255, 93, 98, 0.24);
+}
+
+/* ── 테이블 푸터 / 페이지네이션 ── */
+
+.logs-table-footer {
+  min-height: 52px;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-top: 1px solid var(--border);
+}
+
+.logs-page-info {
+  color: #7a8fa6;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.logs-pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.logs-pagination button {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #cbd7e7;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.logs-pagination button.active {
+  color: #ffffff;
+  background: rgba(47, 128, 255, 0.35);
+  border-color: rgba(47, 128, 255, 0.6);
+}
+
+.logs-pagination button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.logs-pagination .page-ellipsis {
+  color: #4a5a6e;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+}
+
+/* ── 반응형 ── */
+
+@media (max-width: 1100px) {
+  .logs-filter-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .logs-field-group.logs-field-btns {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 720px) {
+  .logs-kpi-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .logs-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .logs-field-group.logs-field-btns {
+    grid-column: auto;
+  }
+}

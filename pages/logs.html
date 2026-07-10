@@ -1,0 +1,97 @@
+<section class="page logs-page">
+  <div class="page-title-row">
+    <div>
+      <h1>로그</h1>
+      <p>시스템 이벤트 및 통신 오류 기록을 조회합니다.</p>
+    </div>
+  </div>
+
+  <div id="pageContent" hidden>
+
+    <!-- 필터 패널 -->
+    <article class="panel logs-filter-panel">
+      <div class="logs-filter-grid">
+        <div class="logs-field-group">
+          <label class="logs-field-label">레벨</label>
+          <select class="select" id="logLevelSel">
+            <option value="">전체</option>
+            <option value="INFO">INFO</option>
+            <option value="WARN">WARN</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+        </div>
+        <div class="logs-field-group">
+          <label class="logs-field-label">시작일</label>
+          <input type="date" class="input" id="logFromDate">
+        </div>
+        <div class="logs-field-group">
+          <label class="logs-field-label">종료일</label>
+          <input type="date" class="input" id="logToDate">
+        </div>
+        <div class="logs-field-group logs-field-btns">
+          <button class="btn primary" id="logSearchBtn">조회</button>
+          <button class="btn ghost"   id="logResetBtn">초기화</button>
+        </div>
+      </div>
+    </article>
+
+    <!-- 요약 카드 -->
+    <section class="logs-kpi-grid">
+      <article class="logs-kpi-card">
+        <div class="logs-kpi-icon total">☷</div>
+        <div>
+          <span class="logs-kpi-label">전체</span>
+          <div class="logs-kpi-value" id="logKpiTotal">—</div>
+        </div>
+      </article>
+      <article class="logs-kpi-card">
+        <div class="logs-kpi-icon info">i</div>
+        <div>
+          <span class="logs-kpi-label">INFO</span>
+          <div class="logs-kpi-value log-info" id="logKpiInfo">—</div>
+        </div>
+      </article>
+      <article class="logs-kpi-card">
+        <div class="logs-kpi-icon warn">!</div>
+        <div>
+          <span class="logs-kpi-label">WARN</span>
+          <div class="logs-kpi-value log-warn" id="logKpiWarn">—</div>
+        </div>
+      </article>
+      <article class="logs-kpi-card">
+        <div class="logs-kpi-icon error">×</div>
+        <div>
+          <span class="logs-kpi-label">ERROR</span>
+          <div class="logs-kpi-value log-error" id="logKpiError">—</div>
+        </div>
+      </article>
+    </section>
+
+    <!-- 로그 테이블 -->
+    <article class="panel logs-table-panel">
+      <div class="panel-header">
+        <h2><span class="header-icon">☷</span>로그 목록 <small id="logCountLabel"></small></h2>
+      </div>
+
+      <div class="logs-table-wrap">
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th class="col-time">시간</th>
+              <th class="col-level">레벨</th>
+              <th>메시지</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="logs-table-footer">
+        <div class="logs-page-info" id="logPageInfo"></div>
+        <div></div>
+        <div class="logs-pagination" id="logPagination"></div>
+      </div>
+    </article>
+
+  </div>
+</section>

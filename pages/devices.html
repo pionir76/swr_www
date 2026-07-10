@@ -1,0 +1,230 @@
+<section class="page devices-page">
+  <div class="page-title-row">
+    <div>
+      <h1>장비 관리</h1>
+      <p>수집 대상 장비를 등록하고 통신 설정을 관리합니다.</p>
+    </div>
+    <div class="page-actions">
+      <button class="btn primary" type="button" id="addDeviceBtn">+ 장비 추가</button>
+      <button class="btn danger" type="button" id="bulkDeleteBtn">− 선택 삭제</button>
+    </div>
+  </div>
+
+  <div id="pageContent" hidden>
+  <section class="device-layout">
+    <article class="panel device-list-panel">
+      <div class="panel-header">
+        <h2><span class="header-icon">▤</span>장비 목록</h2>
+        <span class="table-summary" id="deviceSummary">불러오는 중…</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:44px;"><input type="checkbox" id="selectAllCheckbox" /></th>
+              <th>장비 코드</th>
+              <th>장비명</th>
+              <th>연결</th>
+              <th>프로토콜</th>
+              <th>IP / 포트</th>
+              <th>Slave ID</th>
+              <th>상태</th>
+            </tr>
+          </thead>
+          <tbody id="deviceTableBody"></tbody>
+        </table>
+      </div>
+    </article>
+
+    <aside class="panel device-form-panel">
+      <div class="panel-header">
+        <h2><span class="header-icon">⚙</span>장비 상세 정보</h2>
+        <span class="form-chip" id="selectedChip">선택 장비</span>
+      </div>
+
+      <div class="device-form">
+        <div class="form-grid">
+          <div class="form-field">
+            <label>장비 코드</label>
+            <input class="input" id="dfCode" />
+          </div>
+
+          <div class="form-field">
+            <label>장비명</label>
+            <input class="input" id="dfName" />
+          </div>
+
+          <div class="form-field">
+            <label>표시명</label>
+            <input class="input" id="dfDisplay" />
+          </div>
+
+          <div class="form-field">
+            <label>연결 방식</label>
+            <select class="select" id="connTypeSelect">
+              <option value="serial" selected>SERIAL</option>
+              <option value="tcp">TCP/IP</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>프로토콜</label>
+            <select class="select" id="protocolSelect">
+              <!-- 연결 방식에 따라 js/devices.js가 옵션을 동적으로 채움 -->
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>Slave ID</label>
+            <input class="input" id="dfSlave" value="1" />
+          </div>
+
+          <div class="form-field">
+            <label>IP 주소</label>
+            <input class="input" id="dfIp" placeholder="TCP 장비일 때 사용" />
+          </div>
+
+          <div class="form-field">
+            <label>TCP 포트</label>
+            <input class="input" id="dfPort" value="502" />
+          </div>
+
+          <div class="form-field">
+            <label>Timeout (ms)</label>
+            <input class="input" id="dfTimeout" value="3000" />
+          </div>
+
+          <div class="form-field">
+            <label>Polling Interval (ms)</label>
+            <input class="input" id="dfInterval" value="1000" />
+          </div>
+
+          <div class="form-field">
+            <label>Byte Order</label>
+            <select class="select" id="dfByteOrder">
+              <option value="big" selected>Big Endian</option>
+              <option value="little">Little Endian</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label>Retry Count</label>
+            <input class="input" id="dfRetry" value="3" />
+          </div>
+        </div>
+
+        <div class="device-meta-card">
+          <div class="meta-row">
+            <span>최근 통신 시각</span>
+            <b id="dfLastComm">-</b>
+          </div>
+          <div class="meta-row">
+            <span>통신 상태</span>
+            <b class="muted-text" id="dfCommState">-</b>
+          </div>
+          <div class="meta-row">
+            <span>최근 오류</span>
+            <b class="muted-text" id="dfLastError">-</b>
+          </div>
+        </div>
+
+        <p class="form-error" id="dfFormMsg" hidden></p>
+
+        <div class="form-actions">
+          <button class="btn primary" type="button" id="dfSaveBtn">저장</button>
+          <button class="btn ghost" type="button" id="dfResetBtn">초기화</button>
+          <button class="btn danger" type="button" id="dfDeleteBtn">삭제</button>
+        </div>
+      </div>
+    </aside>
+  </section>
+  </div><!-- #pageContent -->
+</section>
+
+<!-- 신규 장비 등록 모달 -->
+<div class="modal-backdrop" id="addDeviceModal" hidden>
+  <div class="modal-card" style="max-width: 640px;">
+    <div class="modal-head">
+      <h2>신규 장비 등록</h2>
+      <button class="modal-close" type="button" id="addModalClose">×</button>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>장비 코드</label>
+        <input class="input" id="ndCode" placeholder="예: CH-003" />
+      </div>
+
+      <div class="form-field">
+        <label>장비명</label>
+        <input class="input" id="ndName" placeholder="예: chiller3" />
+      </div>
+
+      <div class="form-field full">
+        <label>표시명</label>
+        <input class="input" id="ndDisplay" placeholder="예: 냉동기 3호기" />
+      </div>
+
+      <div class="form-field">
+        <label>연결 방식</label>
+        <select class="select" id="ndConnType">
+          <option value="serial" selected>SERIAL</option>
+          <option value="tcp">TCP/IP</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>프로토콜</label>
+        <select class="select" id="ndProtocol">
+          <!-- 연결 방식에 따라 js/devices.js가 옵션을 동적으로 채움 -->
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>Slave ID</label>
+        <input class="input" id="ndSlave" value="1" />
+      </div>
+
+      <div class="form-field">
+        <label>IP 주소</label>
+        <input class="input" id="ndIp" placeholder="TCP 장비일 때 사용" />
+      </div>
+
+      <div class="form-field">
+        <label>TCP 포트</label>
+        <input class="input" id="ndPort" value="502" />
+      </div>
+
+      <div class="form-field">
+        <label>Timeout (ms)</label>
+        <input class="input" id="ndTimeout" value="1000" />
+      </div>
+
+      <div class="form-field">
+        <label>Polling Interval (ms)</label>
+        <input class="input" id="ndInterval" value="5000" />
+      </div>
+
+      <div class="form-field">
+        <label>Byte Order</label>
+        <select class="select" id="ndByteOrder">
+          <option value="big" selected>Big Endian</option>
+          <option value="little">Little Endian</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>Retry Count</label>
+        <input class="input" id="ndRetry" value="3" />
+      </div>
+
+      <p class="form-error" id="ndFormMsg" hidden></p>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" type="button" id="ndCancelBtn">취소</button>
+      <button class="btn primary" type="button" id="ndSubmitBtn">추가</button>
+    </div>
+  </div>
+</div>

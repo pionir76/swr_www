@@ -1,0 +1,575 @@
+<section class="page settings-page">
+
+  <div class="page-title-row">
+    <div>
+      <h1>시스템 설정</h1>
+      <p>네트워크, RS485, Modbus TCP Server 설정을 관리합니다.</p>
+    </div>
+  </div>
+
+  <nav class="settings-tabs">
+    <a class="settings-tab" href="#settings">네트워크</a>
+    <a class="settings-tab" href="#settings-maintenance">시스템 유지보수</a>
+    <button class="btn warning settings-restart-btn" id="netRestartBtn">↻ 시스템 재시작</button>
+  </nav>
+
+  <!-- ── 네트워크 탭 ─────────────────────────────────────────────── -->
+  <div class="tab-content" data-tab="settings" hidden>
+    <div class="settings-two-col">
+
+      <!-- 좌: 네트워크 인터페이스 -->
+      <article class="panel settings-panel">
+        <div class="panel-header">
+          <h2><span class="header-icon">▦</span>네트워크 인터페이스</h2>
+          <span class="setting-chip">network</span>
+        </div>
+        <div class="network-card-wrap">
+
+          <div class="network-card" data-iface="eth0">
+            <div class="network-card-head">
+              <div>
+                <h3>eth0 <small>(field)</small></h3>
+                <p>현장 장비 통신용 네트워크</p>
+              </div>
+              <span class="status-chip ok">사용 중</span>
+            </div>
+            <div class="setting-row">
+              <label>사용 여부</label>
+              <label class="switch"><input type="checkbox" data-net="enabled" checked><span></span></label>
+            </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label>모드</label>
+                <select class="select" data-net="mode">
+                  <option value="static">static</option>
+                  <option value="dhcp">dhcp</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>IP 주소</label>
+                <input class="input" data-net="ip" value="192.168.0.150">
+              </div>
+              <div class="form-field">
+                <label>Netmask</label>
+                <input class="input" data-net="netmask" value="255.255.255.0">
+              </div>
+              <div class="form-field">
+                <label>Gateway</label>
+                <input class="input" data-net="gateway" value="192.168.0.1">
+              </div>
+              <div class="form-field full">
+                <label>DNS</label>
+                <input class="input" data-net="dns" value="8.8.8.8">
+              </div>
+            </div>
+          </div>
+
+          <div class="network-card" data-iface="eth1">
+            <div class="network-card-head">
+              <div>
+                <h3>eth1 <small>(service)</small></h3>
+                <p>서비스 및 유지보수 접속용 네트워크</p>
+              </div>
+              <span class="status-chip ok">사용 중</span>
+            </div>
+            <div class="setting-row">
+              <label>사용 여부</label>
+              <label class="switch"><input type="checkbox" data-net="enabled" checked><span></span></label>
+            </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label>모드</label>
+                <select class="select" data-net="mode">
+                  <option value="static">static</option>
+                  <option value="dhcp">dhcp</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>IP 주소</label>
+                <input class="input" data-net="ip" value="192.168.1.150">
+              </div>
+              <div class="form-field">
+                <label>Netmask</label>
+                <input class="input" data-net="netmask" value="255.255.255.0">
+              </div>
+              <div class="form-field">
+                <label>Gateway</label>
+                <input class="input" data-net="gateway" value="192.168.1.1">
+              </div>
+              <div class="form-field full">
+                <label>DNS</label>
+                <input class="input" data-net="dns" value="8.8.8.8">
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </article>
+
+      <!-- 우: RS485 + Modbus -->
+      <div class="settings-right-col">
+
+        <article class="panel settings-panel">
+          <div class="panel-header">
+            <h2><span class="header-icon">▤</span>RS485 설정</h2>
+            <span class="setting-chip">serial</span>
+          </div>
+          <div class="settings-form-block">
+            <div class="form-grid">
+              <div class="form-field full field-disabled">
+                <label>Device</label>
+                <input class="input readonly-input" data-serial="device" value="/dev/ttymxc1" disabled>
+              </div>
+              <div class="form-field">
+                <label>Baudrate</label>
+                <select class="select" data-serial="baudRate">
+                  <option value="9600">9600</option>
+                  <option value="19200">19200</option>
+                  <option value="38400">38400</option>
+                  <option value="57600">57600</option>
+                  <option value="115200">115200</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Parity</label>
+                <select class="select" data-serial="parity">
+                  <option value="none">none</option>
+                  <option value="even">even</option>
+                  <option value="odd">odd</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Stop bits</label>
+                <select class="select" data-serial="stopBits">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Data bits</label>
+                <select class="select" data-serial="dataBits">
+                  <option value="7">7</option>
+                  <option value="8" selected>8</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel settings-panel">
+          <div class="panel-header">
+            <h2><span class="header-icon">▧</span>Modbus TCP Server</h2>
+            <span class="setting-chip active">외부 접근 사용</span>
+          </div>
+          <div class="settings-form-block">
+            <div class="setting-row">
+              <label>사용 여부</label>
+              <label class="switch"><input type="checkbox" data-modbus="enabled" checked><span></span></label>
+            </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label>Port</label>
+                <input class="input" data-modbus="port" value="502">
+              </div>
+              <div class="form-field">
+                <label>Slave ID</label>
+                <input class="input" data-modbus="slaveId" value="1">
+              </div>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+    <div class="settings-action-bar">
+      <button class="btn primary" id="netSaveBtn">▣ 저장</button>
+      <button class="btn ghost" id="netResetBtn">↻ 초기화</button>
+    </div>
+  </div>
+
+  <!-- ── 시스템 유지보수 탭 ──────────────────────────────────────── -->
+  <div class="tab-content" data-tab="settings-maintenance" hidden>
+    <div class="maintenance-page">
+      <div class="maintenance-3col-grid">
+
+        <!-- 좌: 2칸 — 시스템 정보 + 디스크 이용량 -->
+        <article class="panel maintenance-system-card">
+          <div class="maintenance-card-header">
+            <div class="maintenance-icon">ⓘ</div>
+            <div>
+              <h2>시스템 정보</h2>
+              <p>현재 시스템 버전과 기본 설정 정보</p>
+            </div>
+          </div>
+
+          <div class="system-info-list">
+            <div class="system-info-item">
+              <span>시스템 버전</span>
+              <strong id="sysVersion">—</strong>
+            </div>
+            <div class="system-info-item">
+              <span>리비전</span>
+              <strong id="sysRevision">—</strong>
+            </div>
+            <div class="system-info-item">
+              <span>특주 코드</span>
+              <strong id="sysZcode">—</strong>
+            </div>
+            <div class="system-info-item">
+              <span>마지막 업데이트 날짜</span>
+              <strong id="sysLastUpdate">—</strong>
+            </div>
+          </div>
+
+          <div class="ntp-box">
+            <label>NTP 서버</label>
+            <div class="ntp-row">
+              <input class="input" id="ntpServerInput" value="pool.ntp.org" />
+              <button class="btn primary" id="ntpApplyBtn">적용</button>
+            </div>
+            <div class="ntp-status-row">
+              <span class="ntp-stat-label">동기화 상태</span>
+              <span id="ntpSyncedEl">—</span>
+              <span class="ntp-sep">|</span>
+              <span class="ntp-stat-label">최대 오차</span>
+              <span id="ntpErrorEl">—</span>
+            </div>
+          </div>
+
+          <!-- 시스템 리소스 -->
+          <div class="sysres-section">
+            <div class="sysres-section-title">시스템 리소스</div>
+
+            <div class="sysres-grid">
+
+              <!-- CPU -->
+              <div class="sysres-card">
+                <span class="sysres-res-name">CPU</span>
+                <div class="sysres-donut-area">
+                  <svg class="sysres-donut" viewBox="0 0 100 100">
+                    <defs>
+                      <linearGradient id="cpuGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%"   stop-color="#1e40af"/>
+                        <stop offset="100%" stop-color="#60a5fa"/>
+                      </linearGradient>
+                    </defs>
+                    <circle class="sysres-donut-bg" cx="50" cy="50" r="40"/>
+                    <circle class="sysres-donut-fill" id="cpuDonutFill" cx="50" cy="50" r="40" stroke="url(#cpuGrad)"/>
+                    <text class="sysres-donut-pct" id="cpuDonutPct" x="50" y="55">—</text>
+                  </svg>
+                </div>
+                <div class="sysres-main-val" id="cpuUsageVal">— %</div>
+                <div class="sysres-card-footer">
+                  <div class="sysres-sub-row"><span>온도</span><span id="cpuTemp">—</span></div>
+                  <div class="sysres-sub-row"><span>부하 1m</span><span id="cpuLoad1">—</span></div>
+                  <div class="sysres-sub-row"><span>부하 5m</span><span id="cpuLoad5">—</span></div>
+                </div>
+              </div>
+
+              <!-- Memory -->
+              <div class="sysres-card">
+                <span class="sysres-res-name">MEMORY</span>
+                <div class="sysres-donut-area">
+                  <svg class="sysres-donut" viewBox="0 0 100 100">
+                    <defs>
+                      <linearGradient id="memGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%"   stop-color="#5b21b6"/>
+                        <stop offset="100%" stop-color="#a78bfa"/>
+                      </linearGradient>
+                    </defs>
+                    <circle class="sysres-donut-bg" cx="50" cy="50" r="40"/>
+                    <circle class="sysres-donut-fill" id="memDonutFill" cx="50" cy="50" r="40" stroke="url(#memGrad)"/>
+                    <text class="sysres-donut-pct" id="memDonutPct" x="50" y="55">—</text>
+                  </svg>
+                </div>
+                <div class="sysres-main-val" id="memUsageVal">— %</div>
+                <div class="sysres-card-footer">
+                  <div class="sysres-sub-row"><span>사용</span><span id="memUsedVal">—</span></div>
+                  <div class="sysres-sub-row"><span>전체</span><span id="memTotalVal">—</span></div>
+                  <div class="sysres-sub-row"><span>스왑</span><span id="swapUsedVal">—</span></div>
+                </div>
+              </div>
+
+              <!-- Disk / -->
+              <div class="sysres-card">
+                <span class="sysres-res-name">DISK /</span>
+                <div class="sysres-donut-area">
+                  <svg class="sysres-donut" viewBox="0 0 100 100">
+                    <defs>
+                      <linearGradient id="diskRootGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%"   stop-color="#9a3412"/>
+                        <stop offset="100%" stop-color="#fb923c"/>
+                      </linearGradient>
+                    </defs>
+                    <circle class="sysres-donut-bg" cx="50" cy="50" r="40"/>
+                    <circle class="sysres-donut-fill" id="diskRootFill" cx="50" cy="50" r="40" stroke="url(#diskRootGrad)"/>
+                    <text class="sysres-donut-pct" id="diskRootPct" x="50" y="55">—</text>
+                  </svg>
+                </div>
+                <div class="sysres-main-val" id="diskRootUsageVal">— %</div>
+                <div class="sysres-card-footer">
+                  <div class="sysres-sub-row"><span>사용</span><span id="diskRootUsed">—</span></div>
+                  <div class="sysres-sub-row"><span>전체</span><span id="diskRootTotal">—</span></div>
+                  <div class="sysres-sub-row"><span>여유</span><span id="diskRootFree">—</span></div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- 하단 통합 정보 카드 -->
+            <div class="sysres-strip">
+              <div class="sysres-info-meta">
+                <div class="sysres-info-meta-item">
+                  <span class="sysres-info-key">System Uptime</span>
+                  <span class="sysres-info-val" id="sysUptime">—</span>
+                </div>
+                <div class="sysres-info-meta-item">
+                  <span class="sysres-info-key">Last Updated</span>
+                  <span class="sysres-info-val time-val" id="sysCachedAt">—</span>
+                </div>
+              </div>
+
+              <div class="sysres-info-divider"></div>
+
+              <div class="sysres-net-rows">
+                <div class="sysres-net-block">
+                  <div class="sysres-net-block-head">
+                    <span class="sysres-net-block-tag">Ethernet Device</span>
+                    <span class="sysres-net-block-sep">·</span>
+                    <span class="sysres-net-block-iface">eth0</span>
+                  </div>
+                  <div class="sysres-net-stat">
+                    <span class="sysres-net-stat-key">누적 수신량</span>
+                    <span class="sysres-net-stat-val rx" id="ethRx0">—</span>
+                  </div>
+                  <div class="sysres-net-stat">
+                    <span class="sysres-net-stat-key">누적 송신량</span>
+                    <span class="sysres-net-stat-val tx" id="ethTx0">—</span>
+                  </div>
+                </div>
+                <div class="sysres-net-block-divider"></div>
+                <div class="sysres-net-block">
+                  <div class="sysres-net-block-head">
+                    <span class="sysres-net-block-tag">Ethernet Device</span>
+                    <span class="sysres-net-block-sep">·</span>
+                    <span class="sysres-net-block-iface">eth1</span>
+                  </div>
+                  <div class="sysres-net-stat">
+                    <span class="sysres-net-stat-key">누적 수신량</span>
+                    <span class="sysres-net-stat-val rx" id="ethRx1">—</span>
+                  </div>
+                  <div class="sysres-net-stat">
+                    <span class="sysres-net-stat-key">누적 송신량</span>
+                    <span class="sysres-net-stat-val tx" id="ethTx1">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 우: 파라메터 + 펌웨어 (세로 스택) -->
+        <div class="maintenance-right-col">
+
+          <!-- 파라메터 백업 / 복원 -->
+          <article class="panel maintenance-param-card">
+            <div class="maintenance-card-header">
+              <div class="maintenance-icon">▤</div>
+              <div>
+                <h2>전체 파라메터</h2>
+                <p>디바이스 리스트, 레지스터 리스트 및 설정값 백업/복원</p>
+              </div>
+            </div>
+
+            <div class="param-stack">
+              <section class="param-action-card">
+                <div class="param-action-icon">↓</div>
+                <div class="param-action-body">
+                  <h3>백업 Download</h3>
+                  <p>현재 전체 파라메터를 파일로 다운로드합니다.</p>
+                  <div class="param-meta">
+                    <span id="backupDeviceCount">장비 —대</span>
+                    <span id="backupRegisterCount">레지스터 —개</span>
+                  </div>
+                </div>
+                <button class="btn primary" id="backupDownloadBtn">Download</button>
+              </section>
+
+              <!-- 복원 카드 — 상태 기반 -->
+              <section class="restore-card">
+
+                <!-- IDLE: 파일 선택 -->
+                <div id="restoreIdle">
+                  <div class="restore-card-head">
+                    <div class="param-action-icon">↑</div>
+                    <div>
+                      <h3>복원 Upload</h3>
+                      <p>백업 파일(.zip)을 업로드하여 전체 파라메터를 복원합니다.</p>
+                    </div>
+                  </div>
+                  <label class="restore-drop-zone" id="restoreDropZone">
+                    <input type="file" id="restoreFileInput" accept=".zip" />
+                    <span class="restore-drop-icon">↑</span>
+                    <span class="restore-drop-text">파일 선택 또는 드래그 &amp; 드롭</span>
+                    <small>.zip 파일만 지원합니다</small>
+                  </label>
+                </div>
+
+                <!-- VALIDATING -->
+                <div id="restoreValidating" hidden>
+                  <div class="restore-status-box">
+                    <div class="restore-spinner"></div>
+                    <span>파일 검증 중…</span>
+                  </div>
+                </div>
+
+                <!-- READY_TO_APPLY: 미리보기 -->
+                <div id="restorePreview" hidden>
+                  <div class="restore-preview-head">
+                    <div>
+                      <h3>복원 미리보기</h3>
+                      <div class="restore-meta" id="restoreMetaInfo"></div>
+                    </div>
+                    <button class="btn ghost" id="restoreCancelBtn">✕ 취소</button>
+                  </div>
+                  <div id="restoreWarnings" class="restore-warnings" hidden></div>
+                  <div class="restore-options" id="restoreOptions"></div>
+                  <div class="restore-apply-row">
+                    <p class="restore-apply-note">복원 적용 후 시스템 재시작이 필요합니다.</p>
+                    <button class="btn primary" id="restoreApplyBtn">복원 적용</button>
+                  </div>
+                </div>
+
+                <!-- APPLYING -->
+                <div id="restoreApplying" hidden>
+                  <div class="restore-status-box">
+                    <div class="restore-spinner"></div>
+                    <span>복원 적용 중…</span>
+                  </div>
+                </div>
+
+                <!-- DONE -->
+                <div id="restoreDone" hidden>
+                  <div class="restore-done-box">
+                    <span class="restore-done-icon">✓</span>
+                    <div>
+                      <strong>복원이 완료되었습니다.</strong>
+                      <p>변경 사항을 완전히 적용하려면 상단의 시스템 재시작 버튼을 눌러주세요.</p>
+                    </div>
+                  </div>
+                </div>
+
+              </section>
+            </div>
+          </article>
+
+          <!-- 공장 초기화 -->
+          <article class="panel maintenance-factory-reset-card">
+            <div class="maintenance-card-header">
+              <div class="maintenance-icon factory-reset-icon">✕</div>
+              <div>
+                <h2>공장 초기화</h2>
+                <p>모든 설정·데이터를 공장 출고 상태로 되돌립니다.</p>
+              </div>
+            </div>
+
+            <div id="factoryResetIdle">
+              <ul class="factory-reset-warn-list">
+                <li>장비·레지스터·사용자 계정 정보가 모두 삭제됩니다.</li>
+                <li>시스템 설정이 공장 기본값으로 초기화됩니다.</li>
+                <li>로그가 전부 삭제됩니다.</li>
+                <li>이 작업은 되돌릴 수 없습니다.</li>
+              </ul>
+              <div class="factory-reset-action-row">
+                <p class="factory-reset-note" id="factoryResetNote"></p>
+                <button class="btn danger" id="factoryResetBtn">공장 초기화</button>
+              </div>
+            </div>
+
+            <div id="factoryResetBusy" hidden>
+              <div class="restore-status-box">
+                <div class="restore-spinner"></div>
+                <span>공장 초기화 중… 시스템을 재시작합니다.</span>
+              </div>
+            </div>
+          </article>
+
+          <!-- 펌웨어 업데이트 -->
+          <article class="panel maintenance-firmware-card">
+            <div class="maintenance-card-header">
+              <div class="maintenance-icon">⚙</div>
+              <div>
+                <h2>펌웨어 업데이트</h2>
+                <p>펌웨어 파일을 업로드하여 시스템을 업데이트합니다.</p>
+              </div>
+            </div>
+
+            <div class="firmware-update-panel">
+              <div class="firmware-top-row">
+                <div class="firmware-version-box">
+                  <span>현재 펌웨어</span>
+                  <strong>Firmware v1.2.0</strong>
+                  <small>Build Date : 2025-05-20</small>
+                </div>
+
+                <label class="firmware-file-drop">
+                  <input type="file" />
+                  <div class="firmware-file-icon">⬆</div>
+                  <div>
+                    <span>업데이트 파일 선택 또는 드래그 & 드롭</span>
+                    <small>.bin 또는 .swu 파일을 업로드하세요</small>
+                  </div>
+                </label>
+              </div>
+
+              <div class="firmware-bottom-row">
+                <div class="firmware-progress-box">
+                  <div class="progress-head">
+                    <span>업데이트 대기</span>
+                    <b>0%</b>
+                  </div>
+                  <div class="progress-bar"><span style="width:0%"></span></div>
+                </div>
+                <button class="btn primary firmware-start-btn">↻ 업데이트 시작</button>
+              </div>
+            </div>
+          </article>
+
+        </div>
+      </div>
+
+      <!-- 하단 재부팅 알림 -->
+      <div class="maintenance-reboot-notice">
+        <span class="notice-symbol">!</span>
+        <p>파라메터 복원 또는 펌웨어 업데이트를 적용한 경우 시스템 재부팅이 필요합니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 하단 공지 (전체 폭) ─────────────────────────────────────── -->
+  <footer class="settings-footer-notice">
+    <span>ⓘ</span> 일부 설정은 저장 후 애플리케이션 재시작 또는 시스템 재부팅 후 적용됩니다.
+    네트워크·RS485·Modbus TCP Server 설정 변경은 현재 통신 상태에 영향을 줄 수 있습니다.
+  </footer>
+
+  <!-- 공장 초기화 비밀번호 확인 모달 -->
+  <div class="modal-backdrop" id="factoryResetModal" hidden>
+    <div class="modal-card" style="max-width: 400px;">
+      <div class="modal-head">
+        <h2>비밀번호 확인</h2>
+        <button class="modal-close" type="button" id="factoryResetModalClose">×</button>
+      </div>
+      <p style="color:#8fa0b7;font-size:13px;margin:0 0 16px;">공장 초기화를 진행하려면 현재 계정의 비밀번호를 입력하세요.</p>
+      <div class="form-field">
+        <label>비밀번호</label>
+        <input class="input" type="password" id="factoryResetPwInput" autocomplete="current-password" />
+      </div>
+      <p class="form-error" id="factoryResetPwError" hidden></p>
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="factoryResetModalCancel">취소</button>
+        <button class="btn danger" type="button" id="factoryResetModalConfirm">확인 및 초기화</button>
+      </div>
+    </div>
+  </div>
+
+</section>

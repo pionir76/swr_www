@@ -1,0 +1,283 @@
+<section class="page users-page">
+  <div class="page-title-row users-title-row">
+    <div>
+      <h1>사용자 설정</h1>
+      <p>시스템 접속 계정과 권한을 관리합니다.</p>
+    </div>
+
+    <div class="users-top-actions">
+      <button class="btn ghost" type="button" id="clearHistoryBtn">이력 삭제</button>
+      <button class="btn primary" type="button" id="addUserBtn">＋ 사용자 추가</button>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <section class="users-summary-grid">
+    <article class="user-summary-card">
+      <div class="user-summary-icon total">👥</div>
+      <div>
+        <span>전체 사용자</span>
+        <strong id="userCountTotal">—</strong>
+      </div>
+    </article>
+
+    <article class="user-summary-card">
+      <div class="user-summary-icon active">✓</div>
+      <div>
+        <span>활성 사용자</span>
+        <strong id="userCountActive">—</strong>
+      </div>
+    </article>
+
+    <article class="user-summary-card">
+      <div class="user-summary-icon disabled">×</div>
+      <div>
+        <span>비활성 사용자</span>
+        <strong id="userCountDisabled">—</strong>
+      </div>
+    </article>
+
+    <article class="user-summary-card">
+      <div class="user-summary-icon admin">🛡</div>
+      <div>
+        <span>관리자</span>
+        <strong id="userCountAdmin">—</strong>
+      </div>
+    </article>
+
+    <article class="user-summary-card">
+      <div class="user-summary-icon login">◷</div>
+      <div>
+        <span>최근 로그인</span>
+        <strong class="recent-login-text" id="userRecentLogin">—</strong>
+      </div>
+    </article>
+  </section>
+
+  <!-- Filter -->
+  <article class="panel users-filter-panel">
+    <div class="users-filter-grid">
+      <div class="user-search-box">
+        <span>⌕</span>
+        <input class="input" id="userSearch" placeholder="사용자 ID, 이름 검색" />
+      </div>
+
+      <div class="form-field">
+        <label>권한</label>
+        <select class="select" id="filterRole">
+          <option value="">전체</option>
+          <option value="ADMIN">관리자</option>
+          <option value="MANAGER">매니저</option>
+          <option value="USER">일반사용자</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>상태</label>
+        <select class="select" id="filterStatus">
+          <option value="">전체</option>
+          <option value="ACTIVE">ACTIVE</option>
+          <option value="DISABLED">DISABLED</option>
+          <option value="LOCKED">LOCKED</option>
+        </select>
+      </div>
+
+      <button class="btn ghost" id="filterResetBtn">필터 초기화</button>
+    </div>
+  </article>
+
+  <!-- Main Layout (2×2 grid) -->
+  <section class="users-main-layout">
+    <!-- Row 1 Left: User Table -->
+    <article class="panel users-table-panel">
+      <div class="panel-header">
+        <h2>사용자 목록</h2>
+        <span class="panel-sub-text" id="userTableCount">—</span>
+      </div>
+
+      <div class="users-table-wrap">
+        <table class="users-table">
+          <thead>
+            <tr>
+              <th style="width:90px">상태</th>
+              <th style="width:120px">사용자 ID</th>
+              <th style="width:180px">이름</th>
+              <th style="width:140px">권한</th>
+              <th>설명</th>
+              <th style="width:180px">마지막 로그인</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody"></tbody>
+        </table>
+      </div>
+    </article>
+
+    <!-- Row 1 Right: Selected User Detail -->
+    <article class="panel user-detail-panel">
+      <div class="panel-header">
+        <h2>선택 사용자 정보</h2>
+        <span class="detail-inline-msg" id="detailFormMsg" hidden></span>
+      </div>
+
+      <div class="user-detail-form" id="detailForm">
+        <div class="form-field">
+          <label>사용자 ID</label>
+          <input class="input readonly-input" id="detailUsername" readonly />
+        </div>
+
+        <div class="form-field">
+          <label>이름</label>
+          <input class="input" id="detailDisplayName" />
+        </div>
+
+        <div class="form-field">
+          <label>권한</label>
+          <select class="select" id="detailRole">
+            <option value="ADMIN">관리자</option>
+            <option value="MANAGER">매니저</option>
+            <option value="USER">일반사용자</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label>상태</label>
+          <select class="select" id="detailStatus">
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="DISABLED">DISABLED</option>
+            <option value="LOCKED">LOCKED</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label>설명</label>
+          <input class="input" id="detailDescription" />
+        </div>
+
+        <div class="user-detail-actions">
+          <button class="btn ghost" type="button" id="detailResetPwBtn">비밀번호 리셋</button>
+          <button class="btn primary" type="button" id="detailSaveBtn">저장</button>
+          <button class="btn danger" type="button" id="detailDeleteBtn">삭제</button>
+        </div>
+      </div>
+    </article>
+
+    <!-- Row 2 Left: Login History -->
+    <article class="panel login-history-panel">
+      <div class="panel-header">
+        <h2>최근 로그인 이력</h2>
+      </div>
+
+      <div class="login-history-wrap">
+        <table class="login-history-table">
+          <thead>
+            <tr>
+              <th>시간</th>
+              <th>사용자 ID</th>
+              <th>결과</th>
+              <th>IP 주소</th>
+            </tr>
+          </thead>
+
+          <tbody id="loginHistoryBody"></tbody>
+        </table>
+      </div>
+    </article>
+
+    <!-- Row 2 Right: Login Security -->
+    <article class="panel login-policy-panel">
+      <div class="panel-header">
+        <h2>로그인 보안 설정</h2>
+      </div>
+
+      <div class="policy-list">
+        <div class="policy-row">
+          <label>로그인 실패 허용 횟수</label>
+          <select class="select" id="policyMaxFailed">
+            <option value="3">3회</option>
+            <option value="5">5회</option>
+            <option value="10">10회</option>
+          </select>
+        </div>
+
+        <div class="policy-row">
+          <label>세션 타임아웃(분)</label>
+          <select class="select" id="policySessionTimeout">
+            <option value="10">10분</option>
+            <option value="30">30분</option>
+            <option value="60">60분</option>
+          </select>
+        </div>
+
+        <div class="policy-row">
+          <label>비밀번호 최소 길이</label>
+          <select class="select" id="policyMinPwLen">
+            <option value="6">6자</option>
+            <option value="8">8자</option>
+            <option value="10">10자</option>
+          </select>
+        </div>
+
+        <div class="policy-row">
+          <label>자동 로그아웃</label>
+          <select class="select" id="policyAutoLogout">
+            <option value="true">사용</option>
+            <option value="false">미사용</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="policy-actions">
+        <span class="detail-inline-msg" id="policyMsg" hidden></span>
+        <button class="btn primary" type="button" id="policySaveBtn">저장</button>
+      </div>
+    </article>
+  </section>
+</section>
+
+<!-- 사용자 추가 모달 -->
+<div class="modal-backdrop" id="addUserModal" hidden>
+  <div class="modal-card" style="max-width: 480px;">
+    <div class="modal-head">
+      <h2>사용자 추가</h2>
+      <button class="modal-close" type="button" id="addUserModalClose">×</button>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-field full">
+        <label>사용자 ID <span style="color:#ff5d62">*</span></label>
+        <input class="input" id="nuUsername" placeholder="예: user01" autocomplete="off" />
+      </div>
+
+      <div class="form-field full">
+        <label>이름</label>
+        <input class="input" id="nuDisplayName" placeholder="예: 홍길동" />
+      </div>
+
+      <div class="form-field full">
+        <label>비밀번호 <span style="color:#ff5d62">*</span></label>
+        <input class="input" id="nuPassword" type="password" placeholder="8자 이상" autocomplete="new-password" />
+      </div>
+
+      <div class="form-field full">
+        <label>권한</label>
+        <select class="select" id="nuRole">
+          <option value="ADMIN">관리자</option>
+          <option value="MANAGER">매니저</option>
+          <option value="USER" selected>일반사용자</option>
+        </select>
+      </div>
+
+      <div class="form-field full">
+        <label>설명</label>
+        <input class="input" id="nuDescription" placeholder="계정 용도 메모 (선택)" />
+      </div>
+    </div>
+
+    <p class="form-error" id="nuFormMsg" hidden></p>
+
+    <div class="modal-actions">
+      <button class="btn ghost" type="button" id="nuCancelBtn">취소</button>
+      <button class="btn primary" type="button" id="nuSubmitBtn">추가</button>
+    </div>
+  </div>
+</div>
