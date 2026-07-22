@@ -1,15 +1,43 @@
-<section class="page blank-page">
-  <div class="page-title-row">
-    <div>
-      <h1>트렌드</h1>
-      <p>2차 개발 예정: 트렌드 기록 및 그래프 화면</p>
+<section class="page trends-page">
+
+  <!-- ── 컨트롤 바 ──────────────────────────────────────────────── -->
+  <div class="trends-toolbar">
+    <button class="trends-nav-arrow" id="trendPrevBtn">&#8592;</button>
+    <div class="trends-range-group" id="trendsRangeGroup">
+      <button class="trends-range-btn" data-range="1h">1h</button>
+      <button class="trends-range-btn" data-range="6h">6h</button>
+      <button class="trends-range-btn active" data-range="24h">24h</button>
+      <button class="trends-range-btn" data-range="7d">7d</button>
+      <button class="trends-range-btn" data-range="30d">30d</button>
+      <button class="trends-range-btn" data-range="1y">1y</button>
     </div>
+    <button class="trends-nav-arrow" id="trendNextBtn">&#8594;</button>
   </div>
 
-  <article class="panel blank-panel">
-    <div class="blank-icon">⌁</div>
-    <h2>트렌드</h2>
-    <p>이 페이지는 메뉴 이동과 기본 레이아웃 확인을 위한 빈 화면입니다.</p>
-    <p class="muted">추후 API 연동, 입력 폼, 테이블, 실시간 데이터 표시 기능을 이 파일에서 구현합니다.</p>
+  <!-- ── 차트 패널 ──────────────────────────────────────────────── -->
+  <article class="panel trends-chart-panel">
+    <div class="trends-chart-meta">
+      <div class="trends-meta-left">
+        <span class="trends-resolution-badge" id="trendsResolutionBadge">5m</span>
+        <span class="trends-time-label" id="trendsTimeLabel">—</span>
+      </div>
+      <span class="trends-point-hint">포인트 위에 마우스를 올리면 상세값을 확인할 수 있습니다</span>
+    </div>
+    <div class="trends-chart-wrap" id="trendsChartWrap">
+      <canvas id="trendsChart"></canvas>
+      <div class="trends-skeleton" id="trendsSkeleton" hidden>
+        <div class="trends-skeleton-shimmer"></div>
+      </div>
+      <div class="trends-empty" id="trendsEmpty" hidden>
+        <div class="trends-empty-icon">⌁</div>
+        <p>표시할 채널이 없습니다</p>
+        <span class="trends-empty-hint">하단 스탯 카드를 클릭하여 채널을 표시하세요</span>
+      </div>
+    </div>
   </article>
+
+  <!-- ── 채널 스탯 카드 ─────────────────────────────────────────── -->
+  <div class="trends-stats-row" id="trendsStatsRow"></div>
+
+
 </section>
