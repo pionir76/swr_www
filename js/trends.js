@@ -1,5 +1,14 @@
 (() => {
 
+  // ── 자동 갱신 로직 ──────────────────────────────────────────────
+  // - 현재 시각 범위(isLiveWindow) + raw 해상도 → 30초마다 갱신
+  // - 현재 시각 범위(isLiveWindow) + 5m/10m 해상도 → 5분마다 갱신
+  // - ◀ 눌러 과거 이동 시 → 타이머 취소, 갱신 없음
+  // - ▶ 눌러 현재 복귀 / 범위 버튼 클릭 시 → 갱신 후 타이머 재설정
+  // - 브라우저 탭 비활성 시 → 타이머 일시 정지
+  // - 탭 복귀 시 → 즉시 갱신 + 타이머 재설정
+  // ────────────────────────────────────────────────────────────────
+
   // ── 채널 색상 팔레트 ────────────────────────────────────────────
   const PALETTE = [
     '#4da0ff', '#4cd96b', '#ffd84a', '#ff6b6b', '#c77dff',
@@ -46,6 +55,10 @@
   let _chart         = null;
   let _fetching      = false;
   let _initialized   = false; // 첫 응답 후 슬롯/표시 초기화 완료 여부
+  let _yMin          = null;  // null = 자동
+  let _yMax          = null;
+  let _autoRefreshTimer = null;
+  let _lastResolution   = null;
 
   // ── DOM ─────────────────────────────────────────────────────────
   const rangeGroup   = $('#trendsRangeGroup');
@@ -56,6 +69,9 @@
   const statsRow     = $('#trendsStatsRow');
   const skeleton     = $('#trendsSkeleton');
   const emptyEl      = $('#trendsEmpty');
+  const yMinInput    = $('#trendsYMin');
+  const yMaxInput    = $('#trendsYMax');
+  const yResetBtn    = $('#trendsYReset');
 
   // ── 유틸 ────────────────────────────────────────────────────────
   function rawToValue(raw, isSigned, scale) {
@@ -70,6 +86,26 @@
 
   function getTimeWindow() {
     return { from: _currentTo - RANGES[_currentRange].sec * 1000, to: _currentTo };
+  }
+
+  function isLiveWindow() {
+    return Date.now() - _currentTo < 10_000;
+  }
+
+  function scheduleAutoRefresh() {
+    clearTimeout(_autoRefreshTimer);
+    _autoRefreshTimer = null;
+    if (!isLiveWindow()) return;
+
+    const { from, to } = getTimeWindow();
+    const resolution = calcResolution(from, to);
+    const delayMs = resolution === 'raw' ? 30_000 : 300_000;
+
+    _autoRefreshTimer = setTimeout(() => {
+      if (document.hidden) { scheduleAutoRefresh(); return; }
+      _currentTo = Date.now();
+      renderChart(true);
+    }, delayMs);
   }
 
   function formatTimeLabel(from, to) {
@@ -135,32 +171,30 @@
   }
 
   // ── 차트 렌더 ───────────────────────────────────────────────────
-  async function renderChart() {
+  // silent=true: 자동 갱신 경로 — skeleton/badge/timeLabelEl 변화 없음
+  async function renderChart(silent = false) {
     if (_fetching) return;
     _fetching = true;
 
     const { from, to } = getTimeWindow();
     const resolution = calcResolution(from, to);
 
-    if (resolutionEl) {
-      resolutionEl.textContent = RES_LABEL[resolution];
-      resolutionEl.className   = `trends-resolution-badge ${RES_CLASS[resolution]}`;
+    if (!silent) {
+      if (resolutionEl) {
+        resolutionEl.textContent = RES_LABEL[resolution];
+        resolutionEl.className   = `trends-resolution-badge ${RES_CLASS[resolution]}`;
+      }
+      if (timeLabelEl) timeLabelEl.textContent = formatTimeLabel(from, to);
+      if (emptyEl) emptyEl.hidden = true;
+      showSkeleton();
     }
-    if (timeLabelEl) timeLabelEl.textContent = formatTimeLabel(from, to);
-
-    if (emptyEl) emptyEl.hidden = true;
-    showSkeleton();
 
     try {
 
-      // Loading indicator를 보여주고 fetchTrendData() 호출
-      // (fetchTrendData()는 configuredChannels, meta)
       const resp = await fetchTrendData();
 
-      // configuredChannels로 슬롯/표시 채널 갱신 (항상 최신 설정 반영)
       applyConfiguredChannels(resp.configuredChannels);
 
-      // 최신 메타/포인트 저장
       Object.entries(resp.meta || {}).forEach(([key, m]) => {
         _lastApiMeta[Number(key)] = m;
       });
@@ -168,7 +202,6 @@
         _lastChannelPts[Number(key)] = pts;
       });
 
-      // 차트 dataset 구성 (_visibleIds 기준으로 필터)
       const datasets = [];
       _visibleIds.forEach((id) => {
         const pts = _lastChannelPts[id];
@@ -190,38 +223,45 @@
         });
       });
 
-      hideSkeleton();
-
-      const showEmpty = datasets.length === 0;
-      if (emptyEl) {
-        emptyEl.hidden = !showEmpty;
-        const p = emptyEl.querySelector('p');
-        if (p && showEmpty) {
-          p.textContent = _visibleIds.size === 0
-            ? '표시할 채널이 없습니다'
-            : '선택한 기간에 데이터가 없습니다';
+      if (!silent) {
+        hideSkeleton();
+        const showEmpty = datasets.length === 0;
+        if (emptyEl) {
+          emptyEl.hidden = !showEmpty;
+          const p = emptyEl.querySelector('p');
+          if (p && showEmpty) {
+            p.textContent = _visibleIds.size === 0
+              ? '표시할 채널이 없습니다'
+              : '선택한 기간에 데이터가 없습니다';
+          }
         }
       }
+
       if (_chart) {
         _chart.data.datasets = datasets;
         _chart.options.scales.x.min = from;
         _chart.options.scales.x.max = to;
-        _chart.update({ duration: 350, easing: 'easeOutQuart' });
+        applyYRange();
+        const animate = !silent && resolution !== _lastResolution;
+        _lastResolution = resolution;
+        _chart.update(animate ? { duration: 350, easing: 'easeOutQuart' } : { duration: 0 });
       }
 
       renderStats();
 
     } catch (err) {
-      hideSkeleton();
-      
-      console.error('trend data 로드 실패:', err);
-      if (emptyEl) {
-        emptyEl.hidden = false;
-        const p = emptyEl.querySelector('p');
-        if (p) p.textContent = '데이터를 불러올 수 없습니다';
+      if (!silent) {
+        hideSkeleton();
+        if (emptyEl) {
+          emptyEl.hidden = false;
+          const p = emptyEl.querySelector('p');
+          if (p) p.textContent = '데이터를 불러올 수 없습니다';
+        }
       }
+      console.error('trend data 로드 실패:', err);
     } finally {
       _fetching = false;
+      scheduleAutoRefresh();
     }
   }
 
@@ -443,7 +483,7 @@ const crosshairPlugin = {
       options: {
         responsive: true, 
         maintainAspectRatio: false,
-        animation:   { duration: 350, easing: 'easeOutQuart' },
+        animation:   { duration: 0 },
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
@@ -502,10 +542,49 @@ const crosshairPlugin = {
 
   }
 
+  // ── Y축 범위 적용 ───────────────────────────────────────────────
+  function applyYRange() {
+    if (!_chart) return;
+    const y = _chart.options.scales.y;
+    if (_yMin !== null) { y.min = _yMin; } else { delete y.min; }
+    if (_yMax !== null) { y.max = _yMax; } else { delete y.max; }
+  }
+
+  function syncYRangeUI() {
+    if (yMinInput) {
+      yMinInput.value = _yMin !== null ? _yMin : '';
+      yMinInput.classList.toggle('active', _yMin !== null);
+    }
+    if (yMaxInput) {
+      yMaxInput.value = _yMax !== null ? _yMax : '';
+      yMaxInput.classList.toggle('active', _yMax !== null);
+    }
+  }
+
   // ── 이벤트 바인딩 ───────────────────────────────────────────────
   $$('.trends-range-btn', rangeGroup).forEach((btn) =>
     btn.addEventListener('click', () => setRange(btn.dataset.range))
   );
+
+  if (yMinInput) yMinInput.addEventListener('change', () => {
+    const v = yMinInput.value.trim();
+    _yMin = v !== '' ? Number(v) : null;
+    syncYRangeUI();
+    if (_chart) { applyYRange(); _chart.update(); }
+  });
+
+  if (yMaxInput) yMaxInput.addEventListener('change', () => {
+    const v = yMaxInput.value.trim();
+    _yMax = v !== '' ? Number(v) : null;
+    syncYRangeUI();
+    if (_chart) { applyYRange(); _chart.update(); }
+  });
+
+  if (yResetBtn) yResetBtn.addEventListener('click', () => {
+    _yMin = null; _yMax = null;
+    syncYRangeUI();
+    if (_chart) { applyYRange(); _chart.update(); }
+  });
 
   if (prevBtn) prevBtn.addEventListener('click', () => {
     _currentTo -= RANGES[_currentRange].sec * 1000;
@@ -517,6 +596,13 @@ const crosshairPlugin = {
     _currentTo = Math.min(_currentTo + RANGES[_currentRange].sec * 1000, Date.now());
     nextBtn.disabled = _currentTo >= Date.now();
     renderChart();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && isLiveWindow()) {
+      _currentTo = Date.now();
+      renderChart(true);
+    }
   });
 
   // ── 초기 실행 ───────────────────────────────────────────────────

@@ -20,7 +20,7 @@ LIGHTTPD_CONF     = "/etc/lighttpd/lighttpd.conf"
 CORS_DEV_ORIGIN   = "http://127.0.0.1:5500"
 CORS_PROD_ORIGIN  = f"http://{HOST}"
 
-EXCLUDE_DIRS  = {"referencs", "webtest_for_help", "webtest", "__pycache__", "docs"}
+EXCLUDE_DIRS  = {"referencs", "webtest_for_help", "webtest", "__pycache__", "docs", ".git"}
 EXCLUDE_FILES = {"dev-server.py", "deploy.py", "dev_restore.py"}
 EXCLUDE_EXTS  = {".md"}
 

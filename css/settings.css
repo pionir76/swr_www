@@ -1468,6 +1468,192 @@
   .settings-tabs { gap: 18px; }
 }
 
+/* ── 트렌드 설정 탭 ─────────────────────────────────────────────── */
+
+.trend-config-panel {
+  margin-bottom: 16px;
+}
+
+.trend-config-desc {
+  font-size: 13px;
+  color: #8fa0b7;
+  margin: 0 0 14px;
+  line-height: 1.6;
+}
+
+.trend-config-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trend-config-label {
+  font-size: 13px;
+  color: #8fa0b7;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
+.trend-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.trend-reset-desc {
+  font-size: 13px;
+  color: #8fa0b7;
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+
+.trend-reset-range {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 20px;
+}
+
+.trend-reset-range-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.trend-reset-sep {
+  font-size: 14px;
+  color: #4a5f75;
+  padding-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.trend-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffd84a;
+  text-align: right;
+  flex: 1;
+}
+
+.trend-msg.error {
+  color: #ff6b6b;
+}
+
+.trend-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  color: #c8d8ee;
+  cursor: pointer;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.trend-radio-label:has(input:checked) {
+  border-color: #4da0ff;
+  background: rgba(77, 160, 255, 0.08);
+  color: #eaf2ff;
+}
+
+.trend-radio-label input[type="radio"] {
+  accent-color: #4da0ff;
+}
+
+.trend-recommend {
+  font-size: 11px;
+  color: #4cd96b;
+}
+
+.trend-channel-count {
+  font-size: 13px;
+  font-weight: 400;
+  color: #4da0ff;
+}
+
+/* 테이블 */
+.trend-table-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 620px);
+  min-height: 180px;
+}
+
+.trend-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.trend-table thead th {
+  position: sticky;
+  top: 0;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  color: #8fa0b7;
+  background: rgba(20, 31, 45, 0.97);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.trend-table tbody tr {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  transition: background 0.12s;
+}
+
+.trend-table tbody tr:hover {
+  background: rgba(77, 160, 255, 0.04);
+}
+
+.trend-table tbody tr:has(input:checked) {
+  background: rgba(77, 160, 255, 0.07);
+}
+
+.trend-table td {
+  padding: 9px 12px;
+  color: #c8d8ee;
+  vertical-align: middle;
+}
+
+.trend-table .col-check {
+  width: 36px;
+  text-align: center;
+}
+
+.trend-table .col-check input {
+  accent-color: #4da0ff;
+  cursor: pointer;
+}
+
+.trend-table .col-addr {
+  width: 80px;
+  color: #ffd84a;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.trend-table .col-devname {
+  min-width: 140px;
+}
+
+.trend-table .col-devaddr {
+  width: 110px;
+  color: #7bb8ff;
+}
+
+.trend-table .col-regname {
+  min-width: 160px;
+}
+
 
 
 

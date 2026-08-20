@@ -1,22 +1,29 @@
 (() => {
-  const validTabs = ['settings', 'settings-maintenance'];
+  const validTabs = ['settings', 'settings-maintenance', 'settings-trend'];
 
   let currentTab = window.location.hash.replace('#', '');
   if (!validTabs.includes(currentTab)) currentTab = 'settings';
 
-  let cachedConfig = null;
+  let cachedConfig    = null;
+  let _trendRegMap    = {};    // regId → register object (from /api/registers/realtime)
+  let _trendCfgChMap  = {};    // regId → TrendChannelConfig (from /api/trend/config)
+  let _trendDataRange = null;  // { from, to } unix sec | null
+  let _pendingTrend   = null;  // { sampleIntervalSec, channels } — 모달 확인 대기 중
 
   const tabSubtitles = {
     'settings':             '네트워크, RS485, Modbus TCP Server 설정을 관리합니다.',
     'settings-maintenance': '시스템 정보 확인, 백업·복원, 펌웨어 업데이트 및 재시작을 관리합니다.',
+    'settings-trend':       '트렌드 레코딩 채널과 샘플 간격을 설정합니다.',
   };
 
   // ── 탭 전환 ───────────────────────────────────────────────────────
   function switchTab(tabName) {
     currentTab = tabName;
     $$('.tab-content').forEach((el) => { el.hidden = true; });
+
     const panel = $(`.tab-content[data-tab="${tabName}"]`);
     if (panel) panel.hidden = false;
+    
     $$('.settings-tab').forEach((a) => {
       a.classList.toggle('active', a.getAttribute('href') === `#${tabName}`);
     });
@@ -276,12 +283,25 @@
 
   // ── 메시지 배너 (4초 후 자동 숨김) ──────────────────────────────
   function showMsg(text, type = 'ok') {
+    // 트렌드 탭: 적용 버튼 옆 인라인 메시지 사용
+    const trendMsg = $('#trendMsg');
+    if (trendMsg && !trendMsg.closest('.tab-content')?.hidden) {
+      trendMsg.textContent = text;
+      trendMsg.className = `trend-msg${type === 'error' ? ' error' : ''}`;
+      trendMsg.hidden = false;
+      clearTimeout(trendMsg._timer);
+      trendMsg._timer = setTimeout(() => { trendMsg.hidden = true; }, 4000);
+      return;
+    }
+
     let el = $('#settingsMsg');
     if (!el) {
       el = document.createElement('div');
       el.id = 'settingsMsg';
-      $('.settings-action-bar')?.insertAdjacentElement('beforebegin', el);
     }
+    const anchor = $('.settings-action-bar') ?? $('.tab-content:not([hidden])');
+    anchor?.insertAdjacentElement('beforebegin', el);
+
     el.className = `banner${type === 'error' ? ' warn' : ''}`;
     el.textContent = text;
     el.hidden = false;
@@ -806,11 +826,246 @@
     }
   });
 
+  // ── 트렌드 설정 ──────────────────────────────────────────────────
+
+  async function loadTrendConfig() {
+    const tbodyEl = $('#trendChannelList');
+    const countEl = $('#trendChannelCount');
+    if (!tbodyEl) return;
+
+    try {
+      const [regRes, devRes, cfgRes] = await Promise.all([
+        apiFetch('/api/registers/realtime'),
+        apiFetch('/api/devices'),
+        apiFetch('/api/trend/config'),
+      ]);
+
+      if (!regRes.ok || !devRes.ok || !cfgRes.ok) throw new Error('로드 실패');
+
+      const regData = await regRes.json();
+      const devData = await devRes.json();
+      const cfg     = await cfgRes.json();
+
+      // 디바이스 맵 (id → device)
+      const devMap = {};
+      (devData.devices ?? []).forEach((d) => { devMap[d.id] = d; });
+
+      // 샘플 간격 라디오
+      const radio = $(`input[name="trendInterval"][value="${cfg.sampleIntervalSec ?? 10}"]`);
+      if (radio) radio.checked = true;
+
+      // 레지스터 맵 / 기존 트렌드 채널 맵 저장 (PUT 시 참조)
+      _trendRegMap   = {};
+      _trendCfgChMap = {};
+      _trendDataRange = cfg.dataRange ?? null;
+
+      (regData.registers ?? []).forEach((r) => { _trendRegMap[r.id] = r; });
+      (cfg.channels ?? []).forEach((ch) => { _trendCfgChMap[ch.regId] = ch; });
+
+      // 채널 테이블 빌드
+      const registers = (regData.registers ?? []).slice().sort((a, b) => a.id - b.id);
+      const activeSet = new Set((cfg.channels ?? []).map((ch) => ch.regId));
+      
+      buildChannelTable(tbodyEl, countEl, registers, devMap, activeSet);
+
+    } catch (err) {
+      tbodyEl.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:24px 0;">불러오기 실패: ${err.message}</td></tr>`;
+    }
+  }
+
+  function buildChannelTable(tbodyEl, countEl, registers, devMap, activeSet) {
+    tbodyEl.innerHTML = '';
+
+    if (registers.length === 0) {
+      tbodyEl.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px 0;">등록된 레지스터가 없습니다.</td></tr>';
+      updateChannelCount(countEl, 0);
+      return;
+    }
+
+    registers.forEach((r) => {
+      const unifiedAddr = r.id;
+      const addrStr     = `4${String(unifiedAddr).padStart(4, '0')}`;
+      const dev         = devMap[r.deviceId] ?? {};
+      const devName     = dev.displayName || dev.name || `장치 ${r.deviceId}`;
+      const regName     = r.displayName || r.tagName || '—';
+
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td class="col-check"><input type="checkbox" value="${unifiedAddr}"${activeSet.has(unifiedAddr) ? ' checked' : ''}></td>` +
+        `<td class="col-addr">${addrStr}</td>` +
+        `<td class="col-devname">${devName}</td>` +
+        `<td class="col-devaddr">${r.localAddress}</td>` +
+        `<td class="col-regname">${regName}</td>`;
+
+      tr.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
+        const checked = tbodyEl.querySelectorAll('input[type="checkbox"]:checked');
+        if (checked.length > 16) {
+          e.target.checked = false;
+          showMsg('최대 16개 채널까지 선택 가능합니다.', 'error');
+          return;
+        }
+        updateChannelCount(countEl, checked.length);
+        syncSelectAll();
+      });
+
+      tbodyEl.appendChild(tr);
+    });
+
+    const totalChecked = tbodyEl.querySelectorAll('input[type="checkbox"]:checked').length;
+    updateChannelCount(countEl, totalChecked);
+
+    // 전체 선택 체크박스
+    const selectAllCb = $('#trendSelectAll');
+    if (selectAllCb) {
+      syncSelectAll();
+      selectAllCb.addEventListener('change', () => {
+        const cbs = tbodyEl.querySelectorAll('input[type="checkbox"]');
+        const toCheck = selectAllCb.checked;
+        let count = 0;
+        cbs.forEach((cb) => {
+          if (toCheck && count >= 16) { cb.checked = false; return; }
+          cb.checked = toCheck;
+          if (toCheck) count++;
+        });
+        if (toCheck && cbs.length > 16) showMsg('최대 16개까지만 선택됩니다.', 'error');
+        updateChannelCount(countEl, tbodyEl.querySelectorAll('input[type="checkbox"]:checked').length);
+      });
+    }
+  }
+
+  function syncSelectAll() {
+    const selectAllCb = $('#trendSelectAll');
+    if (!selectAllCb) return;
+
+    const all     = $$('input[type="checkbox"]', $('#trendChannelList'));
+    const checked = [...all].filter((c) => c.checked);
+    
+    selectAllCb.indeterminate = checked.length > 0 && checked.length < all.length;
+    selectAllCb.checked = all.length > 0 && checked.length === all.length;
+  }
+
+  function updateChannelCount(countEl, n) {
+    if (countEl) countEl.textContent = `(${n} / 16)`;
+  }
+
+  // ── 트렌드 설정 PUT 실행 ─────────────────────────────────────────
+  async function applyTrendConfig(sampleIntervalSec, channels) {
+    const btn = $('#trendApplyBtn');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/trend/config', {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ sampleIntervalSec, channels }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error ?? `HTTP ${res.status}`);
+      }
+
+      const saved = await res.json();
+      
+      _trendCfgChMap  = {};
+      _trendDataRange = saved.dataRange ?? null;
+
+      (saved.channels ?? []).forEach((ch) => { _trendCfgChMap[ch.regId] = ch; });
+      showMsg('트렌드 설정이 저장되었습니다.');
+    } catch (err) {
+      showMsg(`저장 실패: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // ── datetime-local 변환 헬퍼 ─────────────────────────────────────
+  function toDatetimeLocal(unixSec) {
+    const d = new Date(unixSec * 1000);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  // ── 트렌드 리셋 모달 ─────────────────────────────────────────────
+  function openTrendResetModal() {
+    const modal    = $('#trendResetModal');
+    const fromInput = $('#trendExportFrom');
+    const toInput   = $('#trendExportTo');
+    if (!modal || !_trendDataRange) return;
+
+    const minStr = toDatetimeLocal(_trendDataRange.from);
+    const maxStr = toDatetimeLocal(_trendDataRange.to);
+    fromInput.min = fromInput.value = minStr;
+    toInput.max   = toInput.value   = maxStr;
+    fromInput.max = maxStr;
+    toInput.min   = minStr;
+
+    modal.hidden = false;
+  }
+
+  $('#trendResetModalClose')?.addEventListener('click', () => { $('#trendResetModal').hidden = true; _pendingTrend = null; });
+  $('#trendResetModalCancel')?.addEventListener('click', () => { $('#trendResetModal').hidden = true; _pendingTrend = null; });
+
+  $('#trendExportBtn')?.addEventListener('click', () => {
+    const from = Math.floor(new Date($('#trendExportFrom').value).getTime() / 1000);
+    const to   = Math.floor(new Date($('#trendExportTo').value).getTime()   / 1000);
+    if (!from || !to || to <= from) { showMsg('올바른 기간을 선택하세요.', 'error'); return; }
+    const a = document.createElement('a');
+    a.href = `/api/trend/export?from=${from}&to=${to}`;
+    a.click();
+  });
+
+  $('#trendResetModalConfirm')?.addEventListener('click', async () => {
+    $('#trendResetModal').hidden = true;
+    if (_pendingTrend) await applyTrendConfig(_pendingTrend.sampleIntervalSec, _pendingTrend.channels);
+    _pendingTrend = null;
+  });
+
+  // ── 적용 버튼 ────────────────────────────────────────────────────
+  const trendApplyBtn = $('#trendApplyBtn');
+  if (trendApplyBtn) {
+    trendApplyBtn.addEventListener('click', async () => {
+      const sampleIntervalSec = parseInt($('input[name="trendInterval"]:checked')?.value ?? '10', 10);
+
+      const channels = [];
+      $('#trendChannelList')?.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
+        const regId = parseInt(cb.value, 10);
+        const reg   = _trendRegMap[regId]   ?? {};
+        const prev  = _trendCfgChMap[regId] ?? {};
+        channels.push({
+          regId,
+          name:     reg.displayName || reg.tagName || String(regId),
+          unit:     reg.unit     ?? '',
+          scale:    reg.scale    ?? 1.0,
+          isSigned: prev.isSigned ?? false,
+          minValue: prev.minValue ?? 0,
+          maxValue: prev.maxValue ?? 65535,
+        });
+      });
+
+      // 채널 변경 여부 감지 (regId 집합 비교)
+      const oldIds = new Set(Object.keys(_trendCfgChMap).map(Number));
+      const newIds = new Set(channels.map((ch) => ch.regId));
+      const channelsChanged = oldIds.size !== newIds.size ||
+                              [...oldIds].some((id) => !newIds.has(id));
+
+      if (channelsChanged && _trendDataRange) {
+        // 기존 데이터 있음 → 경고 모달
+        _pendingTrend = { sampleIntervalSec, channels };
+        openTrendResetModal();
+      } else {
+        // 데이터 없거나 채널 변경 없음 → 바로 적용
+        if (!window.confirm(`트렌드 설정을 저장합니다. 계속하시겠습니까?`)) return;
+        await applyTrendConfig(sampleIntervalSec, channels);
+      }
+    });
+  }
+
   // ── 초기 실행 ────────────────────────────────────────────────────
   switchTab(currentTab);
+  
   loadConfig();
   loadSystemInfo();
   loadCurrentUserRole();
   loadSystemResources();
   setInterval(loadSystemResources, 8000);
+  loadTrendConfig();
 })();

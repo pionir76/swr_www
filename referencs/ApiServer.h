@@ -9,6 +9,7 @@ namespace DataCollection::Store   { class RegisterTable; class DeviceList; }
 namespace DataCollection::Polling { class PollingManager; }
 namespace DataCollection::Model   { struct DeviceInfo; struct RegisterConfig; }
 namespace Util { class SystemMonitor; }
+namespace Trend { class TrendDatabase; }
 
 namespace Api{
 
@@ -22,6 +23,7 @@ public:
                        std::shared_ptr<DataCollection::Store::DeviceList> deviceList,
                        DataCollection::Polling::PollingManager *pollingManager,
                        Util::SystemMonitor *systemMonitor,
+                       Trend::TrendDatabase *trendDb,
                        QObject *parent = nullptr);
 
     ~ApiServer() override;
@@ -107,6 +109,14 @@ private:
     // System Resources
     QHttpServerResponse handleGetSystemResources(const QHttpServerRequest &request);
 
+    // Trend Config
+    QHttpServerResponse handleGetTrendConfig(const QHttpServerRequest &request);
+    QHttpServerResponse handlePutTrendConfig(const QHttpServerRequest &request);
+
+    // Trend Data
+    QHttpServerResponse handleGetTrendData(const QHttpServerRequest &request);
+    QHttpServerResponse handleGetTrendExport(const QHttpServerRequest &request);
+
     // Security Policy
     QHttpServerResponse handleGetSecurityPolicy(const QHttpServerRequest &request);
     QHttpServerResponse handlePutSecurityPolicy(const QHttpServerRequest &request);
@@ -125,6 +135,7 @@ private:
     std::shared_ptr<DataCollection::Store::DeviceList> m_deviceList;
     DataCollection::Polling::PollingManager *m_pollingManager;
     Util::SystemMonitor *m_systemMonitor;
+    Trend::TrendDatabase *m_trendDb;
     QHttpServer m_server;
 
     mutable QMutex m_sessionMutex;

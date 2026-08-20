@@ -21,7 +21,13 @@
         <span class="trends-resolution-badge" id="trendsResolutionBadge">5m</span>
         <span class="trends-time-label" id="trendsTimeLabel">—</span>
       </div>
-      <span class="trends-point-hint">포인트 위에 마우스를 올리면 상세값을 확인할 수 있습니다</span>
+      <div class="trends-yrange">
+        <span class="trends-yrange-label">Y축</span>
+        <input class="trends-yrange-input" id="trendsYMin" type="number" placeholder="자동" title="Y축 최솟값">
+        <span class="trends-yrange-sep">~</span>
+        <input class="trends-yrange-input" id="trendsYMax" type="number" placeholder="자동" title="Y축 최댓값">
+        <button class="trends-yrange-reset" id="trendsYReset" title="자동 범위로 초기화">↺</button>
+      </div>
     </div>
     <div class="trends-chart-wrap" id="trendsChartWrap">
       <canvas id="trendsChart"></canvas>
