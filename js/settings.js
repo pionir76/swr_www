@@ -39,10 +39,11 @@
     if (subtitle) subtitle.textContent = tabSubtitles[tabName] ?? '';
   }
 
-  window.addEventListener('hashchange', () => {
+  function onHashChangeTab() {
     const hash = window.location.hash.replace('#', '');
     if (hash.startsWith('settings')) switchTab(hash);
-  });
+  }
+  window.addEventListener('hashchange', onHashChangeTab);
 
   // ── GET /api/config → 전체 폼 채우기 ─────────────────────────────
   async function loadConfig() {
@@ -493,7 +494,7 @@
     }
   }
 
-  PollingState.subscribe(updateApplyPollWarning);
+  const unsubApplyPollWarning = PollingState.subscribe(updateApplyPollWarning);
 
   // ── GET /api/maintenance/backup → ZIP 다운로드 ───────────────────
   async function downloadBackup() {
@@ -930,7 +931,7 @@
     }
   }
 
-  PollingState.subscribe((running) => {
+  const unsubFactoryResetPoll = PollingState.subscribe((running) => {
     frPollingRunning = running;
     updateFactoryResetBtn();
   });
@@ -1357,14 +1358,25 @@
 
   // ── 초기 실행 ────────────────────────────────────────────────────
   switchTab(currentTab);
-  
+
   loadConfig();
   loadSystemInfo();
   loadCurrentUserRole();
   loadSystemResources();
-  setInterval(loadSystemResources, 8000);
+  const sysResourcesTimer = setInterval(loadSystemResources, 8000);
   loadSystemTime();
   loadRecordingGuardState();
-  setInterval(loadRecordingGuardState, 8000);
+  const recordingGuardTimer = setInterval(loadRecordingGuardState, 8000);
   loadTrendConfig();
+
+  // ── 페이지 전환 시 타이머/구독 정리 ────────────────────────────────
+  // main.js가 loadPage()를 다시 부를 때마다(언어 전환으로 같은 페이지를 재로드하는
+  // 경우 포함) 'spa:beforeload'가 발생하므로 그 시점에 무조건 정리한다.
+  window.addEventListener('spa:beforeload', () => {
+    clearInterval(sysResourcesTimer);
+    clearInterval(recordingGuardTimer);
+    unsubApplyPollWarning();
+    unsubFactoryResetPoll();
+    window.removeEventListener('hashchange', onHashChangeTab);
+  }, { once: true });
 })();

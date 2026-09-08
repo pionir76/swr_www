@@ -582,14 +582,14 @@
   });
 
   // ── 페이지 전환 시 타이머 정리 ───────────────────────────────────
-  function onHashChange() {
-    if (location.hash !== '#realtime') {
-      destroyed = true;
-      stopAutoRefresh();
-      window.removeEventListener('hashchange', onHashChange);
-    }
+  // main.js가 loadPage()를 다시 부를 때마다(언어 전환으로 같은 페이지를 재로드하는
+  // 경우 포함) 'spa:beforeload'가 발생하므로 그 시점에 무조건 정리한다.
+  function onBeforeLoad() {
+    destroyed = true;
+    stopAutoRefresh();
+    window.removeEventListener('spa:beforeload', onBeforeLoad);
   }
-  window.addEventListener('hashchange', onHashChange);
+  window.addEventListener('spa:beforeload', onBeforeLoad);
 
   // ── 초기 실행 ────────────────────────────────────────────────────
   loadDevices().then(() => {

@@ -16,31 +16,31 @@
 
       <nav class="nav-menu" id="navMenu">
         <a class="nav-item active" href="#dashboard" data-page="dashboard">
-          <i class="nav-icon nav-icon--dashboard"></i><span>대시보드</span>
+          <i class="nav-icon nav-icon--dashboard"></i><span data-i18n="nav.dashboard">대시보드</span>
         </a>
         <a class="nav-item" href="#devices" data-page="devices">
-          <i class="nav-icon nav-icon--devices"></i><span>장비 관리</span>
+          <i class="nav-icon nav-icon--devices"></i><span data-i18n="nav.devices">장비 관리</span>
         </a>
         <a class="nav-item" href="#registers" data-page="registers">
-          <i class="nav-icon nav-icon--registers"></i><span>레지스터 관리</span>
+          <i class="nav-icon nav-icon--registers"></i><span data-i18n="nav.registers">레지스터 관리</span>
         </a>
         <a class="nav-item" href="#realtime" data-page="realtime">
-          <i class="nav-icon nav-icon--realtime"></i><span>실시간 모니터링</span>
+          <i class="nav-icon nav-icon--realtime"></i><span data-i18n="nav.realtime">실시간 모니터링</span>
         </a>
         <a class="nav-item" href="#users" data-page="users">
-          <i class="nav-icon nav-icon--users"></i><span>사용자 관리</span>
+          <i class="nav-icon nav-icon--users"></i><span data-i18n="nav.users">사용자 관리</span>
         </a>
         <a class="nav-item" href="#logs" data-page="logs">
-          <i class="nav-icon nav-icon--logs"></i><span>로그</span>
+          <i class="nav-icon nav-icon--logs"></i><span data-i18n="nav.logs">로그</span>
         </a>
         <a class="nav-item" href="#trends" data-page="trends">
-          <i class="nav-icon nav-icon--trends"></i><span>트렌드 기록</span>
+          <i class="nav-icon nav-icon--trends"></i><span data-i18n="nav.trends">트렌드 기록</span>
         </a>
         <a class="nav-item" href="#hmi" data-page="hmi">
-          <i class="nav-icon nav-icon--hmi"></i><span>HMI 빌더</span>
+          <i class="nav-icon nav-icon--hmi"></i><span data-i18n="nav.hmi">HMI 빌더</span>
         </a>
         <a class="nav-item" href="#settings" data-page="settings">
-          <i class="nav-icon nav-icon--settings"></i><span>시스템 설정</span>
+          <i class="nav-icon nav-icon--settings"></i><span data-i18n="nav.settings">시스템 설정</span>
         </a>
       </nav>
 
@@ -65,23 +65,33 @@
               <span id="userLabel">-</span>
               <span class="user-caret">▾</span>
             </button>
-            <div class="user-dropdown" id="userDropdown" hidden>
-              <button class="dropdown-item logout-item" id="logoutBtn" type="button">⎋ 로그아웃</button>
-            </div>
           </div>
 
           <span class="divider"></span>
-          <button class="status-pill polling-pill" id="pollingPill" type="button" title="클릭하여 폴링 정지/시작">
+          <button class="status-pill polling-pill" id="pollingPill" type="button" data-i18n-title="topbar.pollingTitle" title="클릭하여 폴링 정지/시작">
             <span class="dot" id="pollingDot"></span>
-            <span id="pollingPillText">CHECKING…</span>
+            <span id="pollingPillText" data-i18n="topbar.pollingChecking">CHECKING…</span>
           </button>
           <span class="divider"></span>
-          <div class="status-pill"><span class="dot green"></span>정상 <b id="topbarOkCount">—</b></div>
-          <div class="status-pill"><span class="dot red"></span>오류 <b id="topbarErrCount">—</b></div>
+          <div class="status-pill"><span class="dot green"></span><span data-i18n="topbar.ok">정상</span> <b id="topbarOkCount">—</b></div>
+          <div class="status-pill"><span class="dot red"></span><span data-i18n="topbar.error">오류</span> <b id="topbarErrCount">—</b></div>
+          <span class="divider"></span>
+          <select class="lang-select" id="langSelect" aria-label="Language">
+            <option value="ko">한국어</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="zh">中文</option>
+          </select>
         </div>
       </header>
 
       <main id="pageRoot" class="page-root"></main>
+
+      <!-- 사용자 메뉴 드롭다운 — .topbar의 overflow:hidden/stacking context를 완전히
+           벗어나도록 .user-menu가 아닌 .workspace 바로 아래(오버레이들과 같은 레벨)에 둔다. -->
+      <div class="user-dropdown" id="userDropdown" hidden>
+        <button class="dropdown-item logout-item" id="logoutBtn" type="button" data-i18n="common.logout">⎋ 로그아웃</button>
+      </div>
 
       <!-- Full-screen busy overlay (polling start/stop) -->
       <div id="busyOverlay" class="busy-overlay" hidden>
@@ -108,6 +118,8 @@
   </div>
 
   <script src="./config.js"></script>
+  <script src="./i18n.js"></script>
+  <script src="./js/tnd-format.js"></script>
   <script src="./main.js"></script>
 </body>
 </html>

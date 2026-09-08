@@ -67,9 +67,10 @@
 
   function fmtBytes(bytes) {
     if (bytes == null) return '—';
-    const gb = bytes / (1024 ** 3);
-    if (gb >= 1) return `${gb.toFixed(1)} GB`;
-    return `${Math.round(bytes / (1024 ** 2))} MB`;
+    if (bytes < 1024)          return `${bytes} B`;
+    if (bytes < 1024 ** 2)     return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 ** 3)     return `${Math.round(bytes / (1024 ** 2))} MB`;
+    return `${(bytes / (1024 ** 3)).toFixed(1)} GB`;
   }
 
   function scBadge(enabled, onLabel = '활성', offLabel = '비활성') {
@@ -297,116 +298,237 @@
     });
   }
 
-  // ── Trend Chart (가상 데이터) ─────────────────────────────────────────────────
-  function drawTrendChart() {
-    const canvas = $('#trendChart');
+  // ── Trend Chart (파일 기반 트렌드 기록 실데이터) ───────────────────────────────
+  // 대시보드는 "지금 상태를 훑어보는" 위젯이므로 항상 최신 파일 하나만 본다 —
+  // 레코딩 중이면 그 파일을 계속 갱신하고, 아니면 마지막으로 완료된 파일을
+  // 1회만 읽는다(별도로 "레코딩 중이 아닐 때" 분기를 두지 않아도 됨).
+  let _trendData = null; // { header, points, recording } | null — 최근 성공한 결과(실패 시 유지해 깜빡임 방지)
+  // 캔버스가 실제로 그려졌을 때 측정된 폭 캐시. 최초 로드 시(PageLoader가 콘텐츠를
+  // 아직 숨긴 상태라 폭을 읽을 수 없는 순간) 넉넉하게 큰 값으로 시작해 부족하게
+  // 가져오는 일이 없게 하고, 렌더링 시점에 실제 폭만큼만 잘라서 그린다.
+  let _lastGoodWidthPx = 1200;
+
+  async function loadTrendWidget() {
+    try {
+      const statusRes = await apiFetch('/api/tfile/status');
+      if (!statusRes.ok) throw new Error(`status ${statusRes.status}`);
+      const status = await statusRes.json();
+
+      let filename, toSec, durationSec, fileSize;
+      if (status.recording) {
+        filename    = status.filename;
+        toSec       = Math.floor(Date.now() / 1000);
+        durationSec = status.elapsedSec;
+        fileSize    = status.fileSize;
+      } else {
+        const filesRes = await apiFetch('/api/tfile/files');
+        if (!filesRes.ok) throw new Error(`files ${filesRes.status}`);
+        const files = (await filesRes.json()).files ?? [];
+        if (files.length === 0) { _trendData = null; renderTrendChart(); return; }
+        const latest = files.reduce((a, b) => (b.endTime > a.endTime ? b : a));
+        filename    = latest.filename;
+        toSec       = latest.endTime;
+        durationSec = latest.endTime - latest.startTime;
+        fileSize    = latest.fileSize;
+      }
+
+      const hdrRes = await apiFetch(`/api/tfile/header?file=${encodeURIComponent(filename)}`);
+      if (!hdrRes.ok) throw new Error(`header ${hdrRes.status}`);
+      const header = TndFormat.parseHeader(await hdrRes.arrayBuffer());
+
+      // 항상 1픽셀 = 1데이터(step=1)로 그린다 — 데이터가 캔버스 폭보다 적으면(막
+      // 녹화를 시작한 경우) 그 수만큼만 그려지고, 많으면 최신 데이터로 캔버스
+      // 폭만큼만 잘라서 가져온다. 늘려서 채우지 않는다.
+      // 폭은 캔버스가 아니라 항상 보이는 wrap에서 측정 — 캔버스 자체는 최초
+      // 로드 시 hidden 상태라 clientWidth가 0으로 읽힐 수 있어, 그 경우 마지막으로
+      // 측정에 성공한 폭(또는 넉넉한 기본값)을 대신 쓴다.
+      const widthPx = $('.trend-chart-wrap')?.clientWidth || _lastGoodWidthPx;
+      const fromSec = Math.max(header.startTime, toSec - widthPx * header.freq);
+
+      const sampleRes = await apiFetch(
+        `/api/tfile/sample?file=${encodeURIComponent(filename)}&from=${fromSec}&to=${toSec}&step=1`
+      );
+      if (!sampleRes.ok) throw new Error(`sample ${sampleRes.status}`);
+      const points = TndFormat.parseSample(await sampleRes.arrayBuffer(), fromSec, toSec, 1, header);
+
+      _trendData = { header, points, recording: !!status.recording, durationSec, fileSize };
+    } catch (err) {
+      console.warn('[Dashboard] loadTrendWidget:', err);
+      // 실패 시 직전 상태를 그대로 유지 — 일시적 네트워크 오류로 위젯이 비는 것 방지
+    }
+    renderTrendChart();
+  }
+
+  function trendFormatElapsed(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${p(h)}:${p(m)}:${p(s)}`;
+  }
+
+  function trendFormatDate(unixSec) {
+    const d = new Date(unixSec * 1000);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  function renderTrendChart() {
+    const canvas  = $('#trendChart');
+    const emptyEl = $('#trendEmpty');
+    const badgeEl = $('#trendRecBadge');
+    const infoEl  = $('#trendInfo');
+    const legend  = $('#trendLegend');
     if (!canvas) return;
+
+    const hasData = !!_trendData && _trendData.points.length > 0 && _trendData.header.chCnt > 0;
+    if (badgeEl) badgeEl.hidden = !_trendData?.recording;
+    if (emptyEl) emptyEl.hidden = hasData;
+    canvas.hidden = !hasData;
+    if (infoEl) infoEl.hidden = !hasData;
+    if (!hasData) { if (legend) legend.innerHTML = ''; return; }
+
+    const { header, points, durationSec, fileSize } = _trendData;
+    const channels = header.channels.slice(0, header.chCnt);
+
+    // 기본 정보(시작 일시/기간/용량) — 타이틀과 같은 줄에 한 줄로 표시하고
+    // 공간이 모자라면 말줄임표로 잘린다(중요도 순으로 앞에 배치). 라벨 없이
+    // 값만 "|"로 구분.
+    if (infoEl) {
+      infoEl.textContent =
+        `${trendFormatDate(header.startTime)} | ${trendFormatElapsed(durationSec ?? 0)} | ${fmtBytes(fileSize)}`;
+    }
+
+    // 범례는 캔버스 레이아웃(폭/높이)과 무관하게 항상 갱신한다 — 위젯이 막
+    // 나타난 직후라 캔버스 크기가 아직 0으로 측정되는 경우에도 정상 표시되도록.
+    // 채널명 대신 고정 CH01~ 번호만 표시(메인 화면은 전반적인 추세만 보여주는
+    // 용도라 세부 채널명은 트렌드 기록 메뉴에서 확인).
+    if (legend) {
+      legend.innerHTML = channels.map((_, i) =>
+        `<span class="trend-legend-item"><i style="background:${TndFormat.PALETTE[i % TndFormat.PALETTE.length]}"></i>CH${String(i + 1).padStart(2, '0')}</span>`
+      ).join('');
+    }
 
     const dpr = window.devicePixelRatio || 1;
     const W   = canvas.clientWidth;
     const H   = canvas.clientHeight;
-    if (W === 0 || H === 0) return;
+    // 최초 로드 시 PageLoader.hide()가 #pageContent를 최소 노출시간(setTimeout)
+    // 이후에 보여주므로, 그 사이에 데이터 fetch가 먼저 끝나면 캔버스 크기가
+    // 아직 0으로 읽힌다 — 다음 프레임에 다시 시도(15초 폴링까지 기다리지 않음).
+    if (W === 0 || H === 0) { requestAnimationFrame(() => renderTrendChart()); return; }
+    _lastGoodWidthPx = W; // 다음 fetch가 이 값을 기준으로 정확한 폭만큼 요청하도록 캐시
     canvas.width  = W * dpr;
     canvas.height = H * dpr;
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
 
-    const N = 49; // 30분 간격 24시간
-    const now = Date.now();
-
-    function smooth(base, amp, freq, noise) {
-      return Array.from({ length: N }, (_, i) => {
-        const t = i / (N - 1);
-        return base
-          + amp  * Math.sin(t * Math.PI * 2 * freq)
-          + amp  * 0.4 * Math.sin(t * Math.PI * 2 * freq * 2.3 + 1)
-          + noise * (Math.random() - 0.5);
-      });
-    }
-
-    const SERIES = [
-      { label: '메인룸 온도',    unit: '°C', color: '#4da0ff', data: smooth(23.5, 2.2, 1,   0.4) },
-      { label: '냉수 공급 온도', unit: '°C', color: '#65e684', data: smooth(7.8,  1.4, 1.3, 0.3) },
-      { label: '목표 온도',      unit: '°C', color: '#ffc15c', data: smooth(22.0, 0.0, 0,   0.0) },
-    ];
-
-    const pad = { top: 14, right: 14, bottom: 36, left: 42 };
+    const pad = { top: 14, right: 14, bottom: 34, left: 42 };
     const cw  = W - pad.left - pad.right;
-    const ch  = H - pad.top  - pad.bottom;
 
-    const allV  = SERIES.flatMap(s => s.data);
-    const minV  = Math.floor(Math.min(...allV) - 1);
-    const maxV  = Math.ceil(Math.max(...allV)  + 1);
-    const range = maxV - minV;
+    // 실제 그리는 영역(cw)보다 데이터가 많으면(fetch 시점 폭 추정이 부정확했거나
+    // 창 크기가 바뀐 경우) 최신 데이터만 남기고 앞부분을 자른다 — 우측 끝이
+    // 항상 최신 데이터와 맞닿고, 우측에 빈 공간이 남지 않도록.
+    const maxCols       = Math.max(1, Math.floor(cw) + 1);
+    const visiblePoints = points.length > maxCols ? points.slice(-maxCols) : points;
+    const N             = visiblePoints.length;
+    const SERIES        = channels.map((ch, i) => ({
+      color: TndFormat.PALETTE[i % TndFormat.PALETTE.length],
+      data:  visiblePoints.map((p) => TndFormat.rawToValue(p.vals[i], ch.isSigned, ch.dotpos)),
+    }));
+    const ch2 = H - pad.top  - pad.bottom;
 
-    const xPos = (i) => pad.left + (i / (N - 1)) * cw;
-    const yPos = (v) => pad.top  + (1 - (v - minV) / range) * ch;
+    const allV  = SERIES.flatMap((s) => s.data).filter(Number.isFinite);
+    const minV  = allV.length ? Math.floor(Math.min(...allV) - 1) : 0;
+    const maxV  = allV.length ? Math.ceil(Math.max(...allV)  + 1) : 1;
+    const range = Math.max(1e-6, maxV - minV);
 
-    // 배경 그리드
+    // 1픽셀 = 1데이터 — 늘려서 채우지 않고 왼쪽 끝부터 실제 데이터 개수만큼만 그린다.
+    const xPos = (i) => pad.left + i;
+    const yPos = (v) => pad.top  + (1 - (v - minV) / range) * ch2;
+
+    // X축 시간 레이블도 그리드와 동일하게 데이터 개수와 무관하게 캔버스 폭
+    // 기준으로 균등 배치한다(pixelOffset은 데이터 배열 인덱스가 아니라 pad.left
+    // 로부터의 픽셀 거리). 시각은 첫 표시 데이터의 timestamp에 freq만큼씩
+    // 더해 계산 — 1픽셀=1데이터(step=1)라 실제 데이터가 없는 구간(녹화 시작
+    // 직후 캔버스 우측 빈 공간)도 정확한 시각으로 외삽된다.
+    const labelCount    = 4;
+    const labelIdxList  = Array.from({ length: labelCount + 1 }, (_, i) => Math.round((i / labelCount) * cw));
+    const firstVisibleTs = N > 0 ? visiblePoints[0].ts : Math.floor(Date.now() / 1000);
+
+    // 배경 그리드 (가로 + 세로) — 데이터 개수와 무관하게 항상 캔버스 전체 폭/높이
+    // 기준으로 균등하게 그린다. labelIdxList(실제 데이터 인덱스)를 그대로 쓰면
+    // 데이터가 적을 때(예: 녹화 시작 직후 10개) 그 좁은 구간 안에서만 나뉘어
+    // 그려져 그리드가 다닥다닥 겹쳐 보이는 문제가 있었다.
     const gridCount = 4;
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth   = 1;
     for (let i = 0; i <= gridCount; i++) {
-      const y = pad.top + (ch / gridCount) * i;
+      const y = pad.top + (ch2 / gridCount) * i;
       ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
     }
+    for (let i = 0; i <= gridCount; i++) {
+      const x = pad.left + (cw / gridCount) * i;
+      ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ch2); ctx.stroke();
+    }
+
+    // 바운딩 박스 (trends.js 축 border와 동일한 톤)
+    ctx.strokeStyle = 'rgba(148,163,184,0.28)';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(pad.left + 0.5, pad.top + 0.5, cw - 1, ch2 - 1);
 
     // Y 축 레이블
     ctx.fillStyle  = '#6a7f99';
-    ctx.font       = `${11}px sans-serif`;
+    ctx.font       = '11px sans-serif';
     ctx.textAlign  = 'right';
     ctx.textBaseline = 'middle';
     for (let i = 0; i <= gridCount; i++) {
       const v = maxV - (range / gridCount) * i;
-      ctx.fillText(v.toFixed(1), pad.left - 6, pad.top + (ch / gridCount) * i);
+      ctx.fillText(v.toFixed(1), pad.left - 6, pad.top + (ch2 / gridCount) * i);
     }
 
-    // X 축 시간 레이블 (6시간 간격)
-    ctx.textAlign    = 'center';
+    // X 축 시간 레이블 — trends.js와 동일하게 날짜/시간 두 줄로 표시.
+    // 첫 값은 좌측 라인에서 시작(왼쪽 정렬), 마지막 값은 우측 라인에서 끝나도록
+    // (오른쪽 정렬) — 가운데 정렬이면 양 끝 텍스트 절반이 박스 밖으로 튀어나감.
     ctx.textBaseline = 'top';
-    const step6h = Math.round((N - 1) / 4);
-    for (let i = 0; i <= 4; i++) {
-      const idx = i * step6h;
-      const ms  = now - (N - 1 - idx) * 30 * 60 * 1000;
-      const d   = new Date(ms);
-      const lbl = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    ctx.font         = '10px sans-serif';
+    labelIdxList.forEach((pixelOffset, i) => {
+      const d   = new Date((firstVisibleTs + pixelOffset * header.freq) * 1000);
+      const p   = (n) => String(n).padStart(2, '0');
+      const dateLbl = `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+      const timeLbl = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+      ctx.textAlign = i === 0 ? 'left' : (i === labelIdxList.length - 1 ? 'right' : 'center');
       ctx.fillStyle = '#6a7f99';
-      ctx.fillText(lbl, xPos(idx), H - pad.bottom + 6);
-    }
+      ctx.fillText(dateLbl, xPos(pixelOffset), H - pad.bottom + 6);
+      ctx.fillText(timeLbl, xPos(pixelOffset), H - pad.bottom + 18);
+    });
 
-    // 라인 그리기
-    SERIES.forEach(s => {
-      // 영역 채우기
-      ctx.beginPath();
-      s.data.forEach((v, i) => i === 0 ? ctx.moveTo(xPos(i), yPos(v)) : ctx.lineTo(xPos(i), yPos(v)));
-      ctx.lineTo(xPos(N - 1), pad.top + ch);
-      ctx.lineTo(xPos(0), pad.top + ch);
-      ctx.closePath();
-      const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
-      grad.addColorStop(0,   s.color + '28');
-      grad.addColorStop(1,   s.color + '00');
-      ctx.fillStyle = grad;
-      ctx.fill();
-
-      // 라인
+    // 라인만 그리기 (영역 그라데이션 채우기 없음)
+    SERIES.forEach((s) => {
       ctx.beginPath();
       s.data.forEach((v, i) => i === 0 ? ctx.moveTo(xPos(i), yPos(v)) : ctx.lineTo(xPos(i), yPos(v)));
       ctx.strokeStyle = s.color;
-      ctx.lineWidth   = 1.8;
+      ctx.lineWidth   = 1.6;
       ctx.lineJoin    = 'round';
       ctx.stroke();
     });
-
-    // 범례
-    const legendEl = $('#trendLegend');
-    if (legendEl && legendEl.childElementCount === 0) {
-      legendEl.innerHTML = SERIES.map(s =>
-        `<span class="trend-legend-item">
-           <i style="background:${s.color}"></i>${s.label}
-         </span>`
-      ).join('');
-    }
   }
+
+  // 창 크기를 줄였다가 되돌리면 캔버스의 실제 비트맵 해상도(canvas.width/height)가
+  // CSS 표시 크기와 어긋나 확대/저해상도로 보인다 — 15초 폴링을 기다리지 않고
+  // 크기 변화가 감지되는 즉시 다시 그린다. 서버 재요청 없이 이미 받아둔
+  // _trendData를 그대로 재사용하는 캔버스 repaint라 비용이 크지 않고, rAF로
+  // 묶어서 드래그 리사이즈 중 과도하게 반복 호출되지 않게 한다.
+  let _resizeRaf = null;
+  const trendResizeObserver = new ResizeObserver(() => {
+    if (_resizeRaf) return;
+    _resizeRaf = requestAnimationFrame(() => {
+      _resizeRaf = null;
+      renderTrendChart();
+    });
+  });
+  const trendChartWrapEl = $('.trend-chart-wrap');
+  if (trendChartWrapEl) trendResizeObserver.observe(trendChartWrapEl);
 
   // ── Modals ────────────────────────────────────────────────────────────────────
   function openModal(id)  { const m = $(id); if (m) m.hidden = false; }
@@ -465,7 +587,7 @@
       if (isFirstLoad) {
         isFirstLoad = false;
         PageLoader.hide($('#pageContent'));
-        requestAnimationFrame(drawTrendChart);
+        loadTrendWidget();
       }
 
       ok = true;
@@ -491,14 +613,21 @@
     }
   }
 
-  window.addEventListener('hashchange', () => {
+  // main.js가 loadPage()를 다시 부를 때마다(언어 전환으로 같은 페이지를 재로드하는
+  // 경우 포함) 'spa:beforeload'가 발생하므로 그 시점에 무조건 정리한다.
+  window.addEventListener('spa:beforeload', () => {
     destroyed = true;
     clearTimeout(refreshTimer);
     refreshTimer = null;
+    clearInterval(sysInfoTimer);
+    clearInterval(trendTimer);
+    trendResizeObserver.disconnect();
+    if (_resizeRaf) { cancelAnimationFrame(_resizeRaf); _resizeRaf = null; }
   }, { once: true });
 
   PageLoader.show();
   scheduleRefresh();
   fetchSysInfo();
-  setInterval(fetchSysInfo, 30000);
+  const sysInfoTimer = setInterval(fetchSysInfo, 30000);
+  const trendTimer   = setInterval(loadTrendWidget, 15000);
 })();

@@ -291,33 +291,127 @@
   overflow: hidden;
 }
 
-.trend-panel canvas {
+/* 정보 텍스트를 "트렌드 기록" 타이틀과 같은 줄(.panel-header)에 넣어 차트
+   영역 높이에 전혀 영향을 주지 않게 한다 — 폭이 좁은 사이드 위젯이라 한 줄로
+   넣고 넘치면 말줄임표로 처리. */
+.trend-panel .panel-header {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.trend-panel .panel-header h2 {
+  flex-shrink: 0;
+}
+
+.trend-info {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c9d6e5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trend-info[hidden] {
+  display: none;
+}
+
+.trend-chart-wrap {
   flex: 1;
   min-height: 0;
+  position: relative;
+}
+
+.trend-chart-wrap canvas {
   width: 100%;
+  height: 100%;
   display: block;
+}
+
+/* canvas.hidden=true를 줘도 위 규칙(display:block, [hidden]보다 상세도 높음)이
+   이겨서 실제로는 안 사라지던 문제 — 빈 상태 메시지가 위에 겹쳐 가려서 눈에는
+   안 띄었을 뿐, 캔버스는 계속 렌더링되고 있었다. */
+.trend-chart-wrap canvas[hidden] {
+  display: none;
+}
+
+.trend-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5a6b7e;
+  font-size: 13px;
+}
+
+/* .trend-empty의 display:flex가 UA 기본 [hidden]{display:none}과 동일 우선순위라
+   나중에 로드된 이 규칙이 이겨서 hidden 속성이 무시되던 문제 — 명시적으로 재정의. */
+.trend-empty[hidden] {
+  display: none;
+}
+
+.trend-rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ff5c5c;
+  letter-spacing: 0.4px;
+  flex-shrink: 0;
+  /* 그래프 바운딩 박스 우측 끝(캔버스 pad.right=14px)과 맞춤 —
+     .panel-header가 이미 우측에 2px 여백을 갖고 있어 차액만 보정 */
+  margin-right: 12px;
+}
+
+/* display:inline-flex가 UA 기본 [hidden]{display:none}과 동일 우선순위라 나중에
+   로드된 이 규칙이 이겨버리는 문제 방지(.trend-empty/.trend-info와 동일한 버그) —
+   badgeEl.hidden = true를 줘도 실제로는 계속 보이던 원인. */
+.trend-rec-badge[hidden] {
+  display: none;
+}
+
+.trend-rec-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff5c5c;
+  box-shadow: 0 0 6px rgba(255, 92, 92, 0.7);
+  animation: trendRecPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes trendRecPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
 }
 
 .trend-legend {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 2px 0;
+  max-height: 62px;
+  overflow-y: auto;
+  flex-shrink: 0;
 }
 
 .trend-legend-item {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: 11px;
   color: #9badc5;
   white-space: nowrap;
 }
 
 .trend-legend-item i {
   display: inline-block;
-  width: 20px;
-  height: 2px;
-  border-radius: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 

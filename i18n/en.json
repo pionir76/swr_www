@@ -1,0 +1,25 @@
+{
+  "nav.dashboard": "Dashboard",
+  "nav.devices": "Devices",
+  "nav.registers": "Registers",
+  "nav.realtime": "Real-time Monitoring",
+  "nav.users": "Users",
+  "nav.logs": "Logs",
+  "nav.trends": "Trend Recording",
+  "nav.hmi": "HMI Builder",
+  "nav.settings": "System Settings",
+
+  "common.logout": "Logout",
+  "common.retry": "Retry",
+  "common.loading": "Loading...",
+  "common.processing": "Processing...",
+  "common.connectionFailed": "Connection Failed",
+  "common.connectionFailedDesc": "Unable to connect to the server.",
+  "common.pageLoadFailedTitle": "Failed to load page",
+  "common.pageLoadFailedDesc": "Please check the {file} file.",
+
+  "topbar.pollingTitle": "Click to stop/start polling",
+  "topbar.pollingChecking": "CHECKING…",
+  "topbar.ok": "OK",
+  "topbar.error": "Error"
+}

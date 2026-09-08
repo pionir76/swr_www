@@ -1,0 +1,25 @@
+{
+  "nav.dashboard": "仪表盘",
+  "nav.devices": "设备管理",
+  "nav.registers": "寄存器管理",
+  "nav.realtime": "实时监控",
+  "nav.users": "用户管理",
+  "nav.logs": "日志",
+  "nav.trends": "趋势记录",
+  "nav.hmi": "HMI 生成器",
+  "nav.settings": "系统设置",
+
+  "common.logout": "登出",
+  "common.retry": "重试",
+  "common.loading": "加载中...",
+  "common.processing": "处理中...",
+  "common.connectionFailed": "连接失败",
+  "common.connectionFailedDesc": "无法连接到服务器。",
+  "common.pageLoadFailedTitle": "无法加载页面",
+  "common.pageLoadFailedDesc": "请检查 {file} 文件。",
+
+  "topbar.pollingTitle": "点击停止/开始轮询",
+  "topbar.pollingChecking": "检查中…",
+  "topbar.ok": "正常",
+  "topbar.error": "错误"
+}

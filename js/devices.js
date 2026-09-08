@@ -720,17 +720,15 @@
     refreshTimer = null;
   }
 
-  // 다른 페이지로 이동하면(hash 변경) 타이머를 정리해 백그라운드에서
-  // 계속 폴링하거나 중복 타이머가 누적되는 것을 막는다.
-  function onHashChange() {
-    const current = window.location.hash.replace("#", "").trim();
-    if (current !== "devices") {
-      stopAutoRefresh();
-      unsubscribePolling();
-      window.removeEventListener("hashchange", onHashChange);
-    }
+  // main.js가 loadPage()를 다시 부를 때마다(언어 전환으로 같은 페이지를 재로드하는
+  // 경우 포함) 'spa:beforeload'가 발생하므로 그 시점에 무조건 정리한다 — 그렇지
+  // 않으면 백그라운드에서 계속 폴링하거나 중복 타이머/구독이 누적된다.
+  function onBeforeLoad() {
+    stopAutoRefresh();
+    unsubscribePolling();
+    window.removeEventListener("spa:beforeload", onBeforeLoad);
   }
-  window.addEventListener("hashchange", onHashChange);
+  window.addEventListener("spa:beforeload", onBeforeLoad);
 
   PageLoader.show();
   scheduleRefresh();

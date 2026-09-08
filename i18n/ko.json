@@ -1,0 +1,25 @@
+{
+  "nav.dashboard": "대시보드",
+  "nav.devices": "장비 관리",
+  "nav.registers": "레지스터 관리",
+  "nav.realtime": "실시간 모니터링",
+  "nav.users": "사용자 관리",
+  "nav.logs": "로그",
+  "nav.trends": "트렌드 기록",
+  "nav.hmi": "HMI 빌더",
+  "nav.settings": "시스템 설정",
+
+  "common.logout": "로그아웃",
+  "common.retry": "다시 시도",
+  "common.loading": "불러오는 중...",
+  "common.processing": "처리 중...",
+  "common.connectionFailed": "연결 실패",
+  "common.connectionFailedDesc": "서버에 연결할 수 없습니다.",
+  "common.pageLoadFailedTitle": "페이지를 불러올 수 없습니다",
+  "common.pageLoadFailedDesc": "{file} 파일을 확인하세요.",
+
+  "topbar.pollingTitle": "클릭하여 폴링 정지/시작",
+  "topbar.pollingChecking": "CHECKING…",
+  "topbar.ok": "정상",
+  "topbar.error": "오류"
+}

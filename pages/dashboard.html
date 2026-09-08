@@ -149,9 +149,14 @@
       <article class="panel trend-panel">
         <div class="panel-header">
           <h2><span class="header-icon">↗</span>트렌드 기록</h2>
-          <div class="trend-legend" id="trendLegend"></div>
+          <span class="trend-info" id="trendInfo" hidden></span>
+          <span class="trend-rec-badge" id="trendRecBadge" hidden><span class="trend-rec-dot"></span>REC</span>
         </div>
-        <canvas id="trendChart"></canvas>
+        <div class="trend-chart-wrap">
+          <canvas id="trendChart" hidden></canvas>
+          <div class="trend-empty" id="trendEmpty">레코딩된 데이터가 없습니다.</div>
+        </div>
+        <div class="trend-legend" id="trendLegend"></div>
       </article>
 
       <!-- 경보 발생 내역 -->

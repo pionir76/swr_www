@@ -163,15 +163,38 @@ pollingPill.addEventListener("click", async () => {
 userBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   userDropdown.hidden = !userDropdown.hidden;
+  if (!userDropdown.hidden) {
+    // position:fixed라 .topbar의 overflow:hidden에 안 잘리는 대신, 매번 열 때
+    // 버튼 위치 기준으로 좌표를 직접 계산해야 한다.
+    const rect = userBtn.getBoundingClientRect();
+    userDropdown.style.top   = `${rect.bottom + 8}px`;
+    userDropdown.style.right = `${window.innerWidth - rect.right}px`;
+    // userDropdown이 DOM상 버튼과 멀리 떨어져 있어(.workspace 직속) Tab 자연
+    // 순서로는 안 이어지므로, 열릴 때 포커스를 직접 안으로 옮겨준다.
+    logoutBtn.focus();
+  }
 });
 
 logoutBtn.addEventListener("click", () => Auth.logout());
 
 document.addEventListener("click", (e) => {
-  if (!$("#userMenu").contains(e.target)) {
+  // userDropdown은 이제 #userMenu 밖(.workspace 직속)에 있으므로 둘 다 확인해야 한다.
+  if (!$("#userMenu").contains(e.target) && !userDropdown.contains(e.target)) {
     userDropdown.hidden = true;
   }
 });
+
+// 포커스가 버튼/드롭다운 바깥으로 빠지면(Tab 이동 등) 자동으로 닫는다.
+// focusout은 버블링하므로 버튼 쪽과 드롭다운 쪽 양쪽에 걸어야 한다(서로 다른
+// 서브트리라 하나로는 못 잡음). relatedTarget이 없을 때(포커스가 완전히
+// 문서 밖으로 나갈 때)도 안전하게 닫는다.
+function hideUserDropdownIfFocusLeft(e) {
+  const next = e.relatedTarget;
+  if (next && ($("#userMenu").contains(next) || userDropdown.contains(next))) return;
+  userDropdown.hidden = true;
+}
+$("#userMenu").addEventListener("focusout", hideUserDropdownIfFocusLeft);
+userDropdown.addEventListener("focusout", hideUserDropdownIfFocusLeft);
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
@@ -206,6 +229,11 @@ function loadPageJs(pageName) {
 }
 
 async function loadPage(pageName) {
+  // 페이지 스크립트(realtime.js, trends.js 등)가 자신의 타이머/폴링을 정리할 신호.
+  // 실제 해시 변경 여부와 무관하게 loadPage()가 다시 불릴 때마다(언어 전환 등으로
+  // 같은 페이지를 재로드하는 경우 포함) 항상 발생시켜야 이전 인스턴스가 남지 않는다.
+  window.dispatchEvent(new CustomEvent("spa:beforeload"));
+
   PageLoader.beginTransition();   // 전환 즉시 오버레이 → 이전 페이지 콘텐츠/CSS 불일치 플래시 방지
   const fileName = pageMap[pageName] || pageMap.dashboard;
 
@@ -215,6 +243,7 @@ async function loadPage(pageName) {
 
     loadPageCss(pageName);
     pageRoot.innerHTML = await response.text();
+    I18n.applyI18n(pageRoot);
     loadPageJs(pageName);
     updateActiveMenu(pageName);
 
@@ -223,8 +252,8 @@ async function loadPage(pageName) {
       <section class="page blank-page">
         <article class="panel blank-panel">
           <div class="blank-icon">!</div>
-          <h2>페이지를 불러올 수 없습니다</h2>
-          <p>${fileName} 파일을 확인하세요.</p>
+          <h2>${I18n.t("common.pageLoadFailedTitle")}</h2>
+          <p>${I18n.t("common.pageLoadFailedDesc", { file: fileName })}</p>
         </article>
       </section>
     `;
@@ -257,6 +286,15 @@ window.addEventListener("hashchange", (e) => {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await I18n.init();
+  I18n.applyI18n(document);
+  const langSelect = $("#langSelect");
+  if (langSelect) langSelect.value = I18n.lang;
+  langSelect?.addEventListener("change", async (e) => {
+    const changed = await I18n.setLanguage(e.target.value);
+    if (changed) loadPage(getCurrentPage());
+  });
+
   setInterval(tickClock, 1000);
   tickClock();
 

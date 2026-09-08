@@ -341,6 +341,22 @@ body.polling-live .topbar::after {
   border-color: var(--border-strong);
 }
 
+.lang-select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.038);
+  border-radius: 999px;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lang-select:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--border-strong);
+}
+
 .dot {
   display: inline-block;
   border-radius: 50%;
@@ -737,9 +753,11 @@ body.sidebar-collapsed .nav-item {
 }
 
 .user-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  /* .topbar가 스캔라인 애니메이션 때문에 overflow:hidden이라, 그 안에서
+     position:absolute로 두면 하단이 잘린다. position:fixed는 조상의
+     overflow:hidden에 클리핑되지 않으므로 이걸로 탈출한다 — top/right는
+     버튼 위치 기준으로 JS(main.js)가 열릴 때마다 계산해서 넣는다. */
+  position: fixed;
   min-width: 148px;
   background: #1a2a3e;
   border: 1px solid var(--border-strong);

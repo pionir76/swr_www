@@ -442,6 +442,13 @@
   gap: 10px;
 }
 
+/* display:flex가 [hidden]{display:none}과 동일 우선순위라 나중 규칙이 이기는
+   문제 방지 — 지금은 부모(#tfileSkeleton)가 항상 같이 숨겨져서 안 보였을 뿐,
+   이 요소 자체의 hidden 토글은 실제로는 안 먹고 있었다. */
+.tfile-load-progress[hidden] {
+  display: none;
+}
+
 .tfile-load-progress-bar {
   width: 100%;
   height: 6px;

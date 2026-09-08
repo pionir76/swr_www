@@ -1,11 +1,7 @@
 (() => {
 
-  // ── 채널 색상 팔레트 ────────────────────────────────────────
-  const PALETTE = [
-    '#4da0ff', '#4cd96b', '#ffd84a', '#ff6b6b', '#c77dff',
-    '#ff9a3c', '#00d4aa', '#ff5d8f', '#7bcfff', '#a8ff78',
-    '#ffb347', '#87ceeb', '#dda0dd', '#98fb98', '#f0e68c', '#ff7f50',
-  ];
+  // ── 채널 색상 팔레트 (js/tnd-format.js 공용) ─────────────────
+  const PALETTE = TndFormat.PALETTE;
 
   // 줌 배율 (서로 역수 관계 — 확대/축소 반복 시 원위치)
   const ZOOM_IN_FACTOR  = 0.8;
@@ -71,84 +67,14 @@
   const timeLabelEl = $('#tfileTimeLabel');
   const statsRow    = $('#tfileStatsRow');
 
-  // ── 바이너리 파싱 ────────────────────────────────────────────
+  // ── 바이너리 파싱 (공용 로직은 js/tnd-format.js의 TndFormat 참고) ─────────
+  const parseTndHeader = TndFormat.parseHeader;
+  const rawToValue     = TndFormat.rawToValue;
 
-  // STIME[6] = {yy, mm, dd, hh, min, ss} binary (NOT BCD), 로컬 시각
-  function stimeToUnix(u8, offset) {
-    return Math.floor(new Date(
-      2000 + u8[offset], u8[offset + 1] - 1, u8[offset + 2],
-      u8[offset + 3], u8[offset + 4], u8[offset + 5]
-    ).getTime() / 1000);
-  }
-
-  // 백엔드가 CHTAG/UNIT을 Latin-1로 기록해(예: "°C"의 "°"가 단일 바이트 0xB0)
-  // UTF-8로 해석하면 깨진 문자(U+FFFD)가 나온다. UTF-8로 먼저 시도하고
-  // 깨졌으면 Latin-1로 재해석해 예전에 기록된 파일도 정상 표시되게 한다.
-  function decodeNullStr(u8slice) {
-    let end = u8slice.indexOf(0);
-    if (end < 0) end = u8slice.length;
-    const bytes = u8slice.slice(0, end);
-    const utf8  = new TextDecoder('utf-8').decode(bytes);
-    if (utf8.includes('�')) return new TextDecoder('iso-8859-1').decode(bytes);
-    return utf8;
-  }
-
-  function parseTndHeader(buf) {
-    const u8 = new Uint8Array(buf);
-    const dv = new DataView(buf);
-    if (buf.byteLength < 512) throw new Error('Header too short');
-    if (u8[0] !== 0x53 || u8[1] !== 0x57) throw new Error('Invalid magic');
-
-    const chCnt    = u8[5];
-    const startTime = stimeToUnix(u8, 6);
-    const freq     = dv.getUint16(12, true);
-    const channels = [];
-
-    for (let i = 0; i < 16; i++) {
-      const off = 64 + i * 28;
-      // TndChannelInfo layout (28 bytes): CHTAG[16] INRH[2] INRL[2] DOTPOS[1] IS_SIGNED[1] UNIT[4] reserved[2]
-      channels.push({
-        chtag:    decodeNullStr(u8.slice(off,      off + 16)),
-        inrh:     dv.getUint16(off + 16, true),
-        inrl:     dv.getUint16(off + 18, true),
-        dotpos:   u8[off + 20],
-        isSigned: u8[off + 21] !== 0,
-        unit:     decodeNullStr(u8.slice(off + 22, off + 26)),
-      });
-    }
-    return { chCnt, startTime, freq, channels };
-  }
-
-  // buf: ArrayBuffer of N*32 bytes
-  // fromSec/toSec: requested range unix sec
-  // step: step sent to server (server may have bumped it silently)
+  // buf: ArrayBuffer of N*32 bytes. fromSec/toSec: requested range unix sec.
+  // step: step sent to server (server may have bumped it silently).
   function parseSampleBuf(buf, fromSec, toSec, step) {
-    if (!_file || buf.byteLength < 32) return [];
-    const dv  = new DataView(buf);
-    const nRec = Math.floor(buf.byteLength / 32);
-    const riStart = Math.max(0, Math.floor((fromSec - _file.startTime) / _file.freq));
-    // Server may bump step when (to-from)/step > 50000; infer actual step from nRec
-    const riEnd = Math.floor((toSec - _file.startTime) / _file.freq);
-    const actualStep = nRec > 1
-      ? Math.max(step, Math.round((riEnd - riStart) / (nRec - 1)))
-      : step;
-    const pts = [];
-    for (let i = 0; i < nRec; i++) {
-      const ri = riStart + i * actualStep;
-      const ts = _file.startTime + ri * _file.freq;
-      const vals = new Array(16);
-      for (let ch = 0; ch < 16; ch++) {
-        vals[ch] = dv.getUint16(i * 32 + ch * 2, true);
-      }
-      pts.push({ ts, vals });
-    }
-    return pts;
-  }
-
-  // ── 값 변환 ──────────────────────────────────────────────────
-  function rawToValue(raw, isSigned, dotpos) {
-    const v = (isSigned && raw > 32767) ? raw - 65536 : raw;
-    return v / Math.pow(10, dotpos);
+    return TndFormat.parseSample(buf, fromSec, toSec, step, _file);
   }
 
   // ── 포맷 유틸 ────────────────────────────────────────────────
@@ -1251,18 +1177,17 @@
 
   // ── 페이지 전환 시 타이머 정리 ───────────────────────────────────
   // main.js의 loadPageJs()는 <script> 태그만 교체할 뿐 실행 중인 타이머/클로저는
-  // 정리하지 않는다. 정리하지 않으면 다른 메뉴로 이동해도 _statusTimer/_liveTimer가
-  // 백그라운드에서 계속 돌며 API를 호출한다 — realtime.js와 동일한 패턴으로 방지.
-  function onHashChange() {
-    if (location.hash !== '#trends') {
-      _destroyed = true;
-      if (_statusTimer) { clearTimeout(_statusTimer); _statusTimer = null; }
-      if (_diskTimer)   { clearInterval(_diskTimer);   _diskTimer = null; }
-      stopLive();
-      window.removeEventListener('hashchange', onHashChange);
-    }
+  // 정리하지 않는다. main.js가 loadPage()를 다시 호출할 때마다(실제 메뉴 이동뿐
+  // 아니라 언어 전환으로 같은 페이지를 재로드하는 경우 포함) 'spa:beforeload'를
+  // 발생시키므로, 그 시점에 무조건 정리한다 — realtime.js와 동일한 패턴.
+  function onBeforeLoad() {
+    _destroyed = true;
+    if (_statusTimer) { clearTimeout(_statusTimer); _statusTimer = null; }
+    if (_diskTimer)   { clearInterval(_diskTimer);   _diskTimer = null; }
+    stopLive();
+    window.removeEventListener('spa:beforeload', onBeforeLoad);
   }
-  window.addEventListener('hashchange', onHashChange);
+  window.addEventListener('spa:beforeload', onBeforeLoad);
 
   PageLoader.show();
   init()

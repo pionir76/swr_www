@@ -1,0 +1,25 @@
+{
+  "nav.dashboard": "ダッシュボード",
+  "nav.devices": "機器管理",
+  "nav.registers": "レジスタ管理",
+  "nav.realtime": "リアルタイム監視",
+  "nav.users": "ユーザー管理",
+  "nav.logs": "ログ",
+  "nav.trends": "トレンド記録",
+  "nav.hmi": "HMIビルダー",
+  "nav.settings": "システム設定",
+
+  "common.logout": "ログアウト",
+  "common.retry": "再試行",
+  "common.loading": "読み込み中...",
+  "common.processing": "処理中...",
+  "common.connectionFailed": "接続失敗",
+  "common.connectionFailedDesc": "サーバーに接続できません。",
+  "common.pageLoadFailedTitle": "ページを読み込めません",
+  "common.pageLoadFailedDesc": "{file} ファイルを確認してください。",
+
+  "topbar.pollingTitle": "クリックしてポーリングを停止/開始",
+  "topbar.pollingChecking": "確認中…",
+  "topbar.ok": "正常",
+  "topbar.error": "エラー"
+}

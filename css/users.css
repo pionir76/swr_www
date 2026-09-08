@@ -390,6 +390,13 @@
   gap: 12px;
 }
 
+/* display:flex가 [hidden]{display:none}과 동일 우선순위라 나중 규칙이 이기는
+   문제 방지 — 사용자 삭제 후 detailForm.hidden=true를 줘도 실제로는 안 사라지고
+   있었다. */
+.user-detail-form[hidden] {
+  display: none;
+}
+
 .user-detail-form .form-field label {
   font-size: 13px;
 }
