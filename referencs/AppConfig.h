@@ -45,6 +45,7 @@ struct LoginSecurityConfig {
 struct TrendChannelConfig {
     int     regId    = -1;
     QString name;
+    QString tag;                 // ASCII tag for .tnd file CHTAG[16], e.g. "CH_01"
     QString unit;
     double  scale    = 1.0;
     bool    isSigned = false;    // frontend sign interpretation (storage unaffected)

@@ -7,8 +7,16 @@
   let cachedConfig    = null;
   let _trendRegMap    = {};    // regId → register object (from /api/registers/realtime)
   let _trendCfgChMap  = {};    // regId → TrendChannelConfig (from /api/trend/config)
-  let _trendDataRange = null;  // { from, to } unix sec | null
-  let _pendingTrend   = null;  // { sampleIntervalSec, channels } — 모달 확인 대기 중
+
+  // 트렌드 채널 페이지네이션 — 전체 레지스터는 한 번에 불러오되(서버 페이징 없음)
+  // 테이블은 클라이언트에서 페이지 단위로 잘라 보여준다. 체크/태그 상태는 페이지
+  // 전환에도 유지되도록 DOM이 아닌 아래 상태를 단일 소스로 사용한다.
+  const TREND_PAGE_SIZE   = 16;
+  let _trendRegistersAll  = [];        // 정렬된 전체 레지스터 목록
+  let _trendDevMap        = {};        // deviceId → device
+  let _trendCheckedSet    = new Set(); // 현재 선택된 regId
+  let _trendTagMap        = new Map(); // regId → 입력된 태그명
+  let _trendPage          = 1;
 
   const tabSubtitles = {
     'settings':             '네트워크, RS485, Modbus TCP Server 설정을 관리합니다.',
@@ -554,6 +562,205 @@
     }
   });
 
+  // ── 시간대 / NTP on-off / 수동 시간 설정 ────────────────────────────
+  let _ntpEnabled      = true;  // 조회 전까지는 보수적으로 true(수동 입력 비활성) 가정
+  let _recordingActive = false; // 트렌드 레코딩 중이면 시간대/시간 변경 자체를 막음
+
+  function updateSystimeGuards() {
+    const tzSel       = $('#timezoneSelect');
+    const manualInput = $('#manualDatetimeInput');
+    const applyBtn    = $('#systimeApplyBtn');
+    const hint        = $('#systimeHint');
+
+    // NTP가 꺼져 있으면(수동 시간 관리 모드) 시간대 변경은 막는다 — 시간대만 바꾸고
+    // 수동 시간을 다시 안 맞추면 표시 시각이 꼬이는 걸 방지. NTP/수동시간/시간대는
+    // 서로 배타적으로 하나만 활성화된다. 적용 버튼은 하나를 공유하며, NTP 상태에 따라
+    // 시간대 적용/수동시간 적용으로 동작이 바뀐다(레코딩 중일 때만 버튼 자체를 잠금).
+    const tzBlocked = _recordingActive || !_ntpEnabled;
+    if (tzSel) tzSel.disabled = tzBlocked;
+
+    const manualBlocked = _recordingActive || _ntpEnabled;
+    if (manualInput) manualInput.disabled = manualBlocked;
+
+    if (applyBtn) applyBtn.disabled = _recordingActive;
+
+    if (hint) {
+      if (_recordingActive) {
+        hint.textContent = '레코딩 중에는 시간대·시간을 변경할 수 없습니다. 먼저 레코딩을 정지하세요.';
+        hint.hidden = false;
+      } else if (!_ntpEnabled) {
+        hint.textContent = 'NTP가 꺼진 상태에서는 시간대를 변경할 수 없습니다. 시간대를 바꾸려면 NTP를 다시 켜세요.';
+        hint.hidden = false;
+      } else {
+        hint.hidden = true;
+      }
+    }
+  }
+
+  async function loadSystemTime() {
+    try {
+      const res = await apiFetch('/api/system/time');
+      if (!res.ok) return;
+      const d = await res.json();
+
+      _ntpEnabled = !!d.ntpEnabled;
+      const toggle = $('#ntpEnabledToggle');
+      if (toggle) toggle.checked = _ntpEnabled;
+
+      const tzSel = $('#timezoneSelect');
+      if (tzSel && d.timezone) tzSel.value = d.timezone;
+
+      const manualInput = $('#manualDatetimeInput');
+      if (manualInput && d.localTime) manualInput.value = d.localTime.slice(0, 19);
+
+      updateSystimeGuards();
+    } catch (_) { /* API 미구현 시 무시 */ }
+  }
+
+  async function loadRecordingGuardState() {
+    try {
+      const res = await apiFetch('/api/tfile/status');
+      if (!res.ok) return;
+      const d = await res.json();
+      _recordingActive = !!d.recording;
+      updateSystimeGuards();
+      updateTrendGuards();
+    } catch (_) { /* tfile API 미구현 시 무시 */ }
+  }
+
+  // 녹화 중에는 트렌드 채널/샘플 간격 설정과 전체 삭제를 잠근다 — 이미 시작된
+  // 파일의 헤더는 시작 시점 설정으로 고정되므로, 녹화 중 변경은 혼란만 준다.
+  function updateTrendGuards() {
+    $$('input[name="trendInterval"]').forEach((r) => { r.disabled = _recordingActive; });
+
+    const selectAllCb = $('#trendSelectAll');
+    if (selectAllCb) selectAllCb.disabled = _recordingActive;
+
+    $('#trendChannelList')?.querySelectorAll('tr').forEach((tr) => {
+      const cb  = tr.querySelector('input[type="checkbox"]');
+      const tag = tr.querySelector('.trend-tag-input');
+      if (!cb) return;
+      cb.disabled = _recordingActive;
+      if (tag) tag.disabled = _recordingActive || !cb.checked;
+    });
+
+    const applyBtn = $('#trendApplyBtn');
+    if (applyBtn) applyBtn.disabled = _recordingActive;
+
+    const deleteAllBtn = $('#trendDeleteAllBtn');
+    if (deleteAllBtn) deleteAllBtn.disabled = _recordingActive;
+
+    const guardHint = $('#trendGuardHint');
+    if (guardHint) guardHint.hidden = !_recordingActive;
+
+    const deleteNote = $('#trendDeleteAllNote');
+    if (deleteNote) {
+      deleteNote.textContent = _recordingActive ? '⚠ 녹화 중입니다. 정지한 후 삭제할 수 있습니다.' : '';
+      deleteNote.className   = `factory-reset-note${_recordingActive ? ' polling-warn' : ''}`;
+    }
+  }
+
+  $('#ntpEnabledToggle')?.addEventListener('change', async (e) => {
+    const enabled = e.target.checked;
+    const msg = enabled
+      ? 'NTP 자동 동기화를 켭니다. 계속하시겠습니까?'
+      : 'NTP 자동 동기화를 끕니다. 이후 수동으로 시간을 설정할 수 있습니다. 계속하시겠습니까?';
+    if (!window.confirm(msg)) { e.target.checked = !enabled; return; }
+
+    e.target.disabled = true;
+    showBusy(); // NTP on/off는 실제 적용(timedatectl)까지 살짝 지연이 있어 진행 중임을 표시
+    const minDelay = new Promise((r) => setTimeout(r, 800));
+    try {
+      const [res] = await Promise.all([
+        apiFetch('/api/system/ntp', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        }),
+        minDelay,
+      ]);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showMsg(`NTP 설정 실패: ${d.error || `HTTP ${res.status}`}`, 'error');
+        e.target.checked = !enabled;
+        return;
+      }
+      const d = await res.json();
+      _ntpEnabled = !!d.ntpEnabled;
+      updateSystimeGuards();
+      showMsg(enabled ? 'NTP 동기화가 켜졌습니다.' : 'NTP 동기화가 꺼졌습니다. 수동으로 시간을 설정하세요.');
+    } catch (err) {
+      showMsg(`NTP 설정 실패: ${err.message}`, 'error');
+      e.target.checked = !enabled;
+    } finally {
+      hideBusy();
+      e.target.disabled = false;
+    }
+  });
+
+  async function applyTimezone() {
+    const tz = $('#timezoneSelect')?.value;
+    if (!tz) return;
+    if (!window.confirm(`시간대를 "${tz}"(으)로 변경합니다. 계속하시겠습니까?`)) return;
+
+    const btn = $('#systimeApplyBtn');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/system/timezone', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: tz }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showMsg(`시간대 변경 실패: ${d.error || `HTTP ${res.status}`}`, 'error');
+        return;
+      }
+      showMsg('시간대가 변경되었습니다.');
+      await loadSystemTime();
+    } catch (err) {
+      showMsg(`시간대 변경 실패: ${err.message}`, 'error');
+    } finally {
+      updateSystimeGuards(); // 단일 소스(NTP/레코딩 상태)로 다시 계산 — 임의로 덮어쓰지 않음
+    }
+  }
+
+  async function applyManualTime() {
+    const raw = $('#manualDatetimeInput')?.value;
+    if (!raw) { showMsg('날짜/시간을 입력하세요.', 'error'); return; }
+    if (!window.confirm(`시스템 시간을 "${raw}"(으)로 변경합니다. 계속하시겠습니까?`)) return;
+
+    const btn = $('#systimeApplyBtn');
+    if (btn) btn.disabled = true;
+    try {
+      // datetime-local 값은 초가 생략될 수 있음(YYYY-MM-DDTHH:mm)
+      const datetime = raw.length === 16 ? `${raw}:00` : raw;
+      const res = await apiFetch('/api/system/time', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ datetime }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showMsg(`시간 설정 실패: ${d.error || `HTTP ${res.status}`}`, 'error');
+        return;
+      }
+      showMsg('시스템 시간이 변경되었습니다.');
+      await loadSystemTime();
+    } catch (err) {
+      showMsg(`시간 설정 실패: ${err.message}`, 'error');
+    } finally {
+      updateSystimeGuards(); // 단일 소스(NTP/레코딩 상태)로 다시 계산 — 임의로 덮어쓰지 않음
+    }
+  }
+
+  // 적용 버튼 하나를 공유 — NTP 켜짐이면 시간대 적용, 꺼짐이면 수동시간 적용
+  // (두 필드가 서로 배타적으로만 활성화되므로 버튼도 그에 맞춰 동작이 바뀐다)
+  $('#systimeApplyBtn')?.addEventListener('click', () => {
+    if (_ntpEnabled) applyTimezone();
+    else applyManualTime();
+  });
+
   // ── GET /api/system/info ──────────────────────────────────────────
   async function loadSystemInfo() {
     try {
@@ -830,7 +1037,6 @@
 
   async function loadTrendConfig() {
     const tbodyEl = $('#trendChannelList');
-    const countEl = $('#trendChannelCount');
     if (!tbodyEl) return;
 
     try {
@@ -857,91 +1063,180 @@
       // 레지스터 맵 / 기존 트렌드 채널 맵 저장 (PUT 시 참조)
       _trendRegMap   = {};
       _trendCfgChMap = {};
-      _trendDataRange = cfg.dataRange ?? null;
 
       (regData.registers ?? []).forEach((r) => { _trendRegMap[r.id] = r; });
       (cfg.channels ?? []).forEach((ch) => { _trendCfgChMap[ch.regId] = ch; });
 
-      // 채널 테이블 빌드
-      const registers = (regData.registers ?? []).slice().sort((a, b) => a.id - b.id);
-      const activeSet = new Set((cfg.channels ?? []).map((ch) => ch.regId));
-      
-      buildChannelTable(tbodyEl, countEl, registers, devMap, activeSet);
+      // 채널 테이블 상태 초기화 (페이지네이션은 클라이언트 측에서 처리)
+      _trendRegistersAll = (regData.registers ?? []).slice().sort((a, b) => a.id - b.id);
+      _trendDevMap       = devMap;
+      _trendCheckedSet   = new Set((cfg.channels ?? []).map((ch) => ch.regId));
+      _trendTagMap       = new Map((cfg.channels ?? []).map((ch) => [ch.regId, ch.tag]));
+      _trendPage         = 1;
+
+      renderChannelPage();
 
     } catch (err) {
-      tbodyEl.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:24px 0;">불러오기 실패: ${err.message}</td></tr>`;
+      tbodyEl.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px 0;">불러오기 실패: ${err.message}</td></tr>`;
     }
   }
 
-  function buildChannelTable(tbodyEl, countEl, registers, devMap, activeSet) {
-    tbodyEl.innerHTML = '';
+  // 현재 페이지(_trendPage)의 레지스터만 tbody에 그린다. 체크/태그 상태는
+  // _trendCheckedSet/_trendTagMap에 보관되므로 페이지를 넘겨도 유지된다.
+  function renderChannelPage() {
+    const tbodyEl = $('#trendChannelList');
+    const countEl = $('#trendChannelCount');
+    if (!tbodyEl) return;
 
+    const registers = _trendRegistersAll;
     if (registers.length === 0) {
-      tbodyEl.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px 0;">등록된 레지스터가 없습니다.</td></tr>';
+      tbodyEl.innerHTML = '<tr><td colspan="6" class="muted" style="text-align:center;padding:24px 0;">등록된 레지스터가 없습니다.</td></tr>';
       updateChannelCount(countEl, 0);
+      renderTrendPagination(1);
+      const pageInfoEl = $('#trendPageInfo');
+      if (pageInfoEl) pageInfoEl.textContent = '';
       return;
     }
 
-    registers.forEach((r) => {
+    const totalPages = Math.max(1, Math.ceil(registers.length / TREND_PAGE_SIZE));
+    _trendPage = Math.min(Math.max(1, _trendPage), totalPages);
+
+    // 기본 태그(CH_NN)의 슬롯 순번은 페이지와 무관하게 전체 목록 기준으로 매긴다.
+    const slotIndexByRegId = new Map();
+    let slot = 0;
+    registers.forEach((r) => { if (_trendCheckedSet.has(r.id)) slotIndexByRegId.set(r.id, ++slot); });
+
+    const start         = (_trendPage - 1) * TREND_PAGE_SIZE;
+    const pageRegisters = registers.slice(start, start + TREND_PAGE_SIZE);
+
+    tbodyEl.innerHTML = '';
+    pageRegisters.forEach((r) => {
       const unifiedAddr = r.id;
-      const addrStr     = `4${String(unifiedAddr).padStart(4, '0')}`;
-      const dev         = devMap[r.deviceId] ?? {};
-      const devName     = dev.displayName || dev.name || `장치 ${r.deviceId}`;
-      const regName     = r.displayName || r.tagName || '—';
+      const isActive    = _trendCheckedSet.has(unifiedAddr);
+
+      const addrStr  = `4${String(unifiedAddr).padStart(4, '0')}`;
+      const dev      = _trendDevMap[r.deviceId] ?? {};
+      const devName  = dev.displayName || dev.name || `장치 ${r.deviceId}`;
+      const regName  = r.displayName || r.tagName || '—';
+
+      const defaultTag = `CH_${String(slotIndexByRegId.get(unifiedAddr) ?? 0).padStart(2, '0')}`;
+      const tagValue   = _trendTagMap.get(unifiedAddr) || (isActive ? defaultTag : '');
 
       const tr = document.createElement('tr');
       tr.innerHTML =
-        `<td class="col-check"><input type="checkbox" value="${unifiedAddr}"${activeSet.has(unifiedAddr) ? ' checked' : ''}></td>` +
+        `<td class="col-check"><input type="checkbox" value="${unifiedAddr}"${isActive ? ' checked' : ''}></td>` +
         `<td class="col-addr">${addrStr}</td>` +
         `<td class="col-devname">${devName}</td>` +
         `<td class="col-devaddr">${r.localAddress}</td>` +
-        `<td class="col-regname">${regName}</td>`;
+        `<td class="col-regname">${regName}</td>` +
+        `<td class="col-tag">` +
+          `<input class="trend-tag-input" type="text" maxlength="15" ` +
+            `placeholder="${isActive ? defaultTag : 'CH_NN'}" ` +
+            `value="${tagValue}"${!isActive ? ' disabled' : ''}>` +
+        `</td>`;
 
-      tr.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
-        const checked = tbodyEl.querySelectorAll('input[type="checkbox"]:checked');
-        if (checked.length > 16) {
+      const cb       = tr.querySelector('input[type="checkbox"]');
+      const tagInput = tr.querySelector('.trend-tag-input');
+
+      cb.addEventListener('change', (e) => {
+        if (e.target.checked && _trendCheckedSet.size >= 16) {
           e.target.checked = false;
           showMsg('최대 16개 채널까지 선택 가능합니다.', 'error');
           return;
         }
-        updateChannelCount(countEl, checked.length);
+        if (e.target.checked) {
+          _trendCheckedSet.add(unifiedAddr);
+          tagInput.disabled = false;
+          if (!tagInput.value.trim()) {
+            tagInput.value = `CH_${String(_trendCheckedSet.size).padStart(2, '0')}`;
+            _trendTagMap.set(unifiedAddr, tagInput.value);
+          }
+        } else {
+          _trendCheckedSet.delete(unifiedAddr);
+          tagInput.disabled = true;
+        }
+        updateChannelCount(countEl, _trendCheckedSet.size);
         syncSelectAll();
       });
+
+      tagInput.addEventListener('input', () => { _trendTagMap.set(unifiedAddr, tagInput.value); });
 
       tbodyEl.appendChild(tr);
     });
 
-    const totalChecked = tbodyEl.querySelectorAll('input[type="checkbox"]:checked').length;
-    updateChannelCount(countEl, totalChecked);
+    updateChannelCount(countEl, _trendCheckedSet.size);
+    syncSelectAll();
+    renderTrendPagination(totalPages);
 
-    // 전체 선택 체크박스
-    const selectAllCb = $('#trendSelectAll');
-    if (selectAllCb) {
-      syncSelectAll();
-      selectAllCb.addEventListener('change', () => {
-        const cbs = tbodyEl.querySelectorAll('input[type="checkbox"]');
-        const toCheck = selectAllCb.checked;
-        let count = 0;
-        cbs.forEach((cb) => {
-          if (toCheck && count >= 16) { cb.checked = false; return; }
-          cb.checked = toCheck;
-          if (toCheck) count++;
-        });
-        if (toCheck && cbs.length > 16) showMsg('최대 16개까지만 선택됩니다.', 'error');
-        updateChannelCount(countEl, tbodyEl.querySelectorAll('input[type="checkbox"]:checked').length);
-      });
+    const pageInfoEl = $('#trendPageInfo');
+    if (pageInfoEl) {
+      const endNum = start + pageRegisters.length;
+      pageInfoEl.textContent = `${start + 1}–${endNum} / 전체 ${registers.length}개`;
     }
+
+    updateTrendGuards();
   }
+
+  // logs.js의 페이지네이션 렌더링 방식을 그대로 따른다(‹ 1 … n › + 생략 부호).
+  function renderTrendPagination(totalPages) {
+    const pagination = $('#trendPagination');
+    if (!pagination) return;
+    pagination.innerHTML = '';
+
+    function makeBtn(label, page, active = false, disabled = false) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      if (active) btn.classList.add('active');
+      btn.disabled = disabled;
+      if (!disabled) btn.addEventListener('click', () => {
+        _trendPage = page;
+        renderChannelPage();
+      });
+      return btn;
+    }
+
+    function makeEllipsis() {
+      const sp = document.createElement('span');
+      sp.className = 'page-ellipsis';
+      sp.textContent = '…';
+      return sp;
+    }
+
+    pagination.appendChild(makeBtn('‹', _trendPage - 1, false, _trendPage <= 1));
+    trendPageRange(_trendPage, totalPages).forEach((p) =>
+      pagination.appendChild(p === '…' ? makeEllipsis() : makeBtn(p, p, p === _trendPage))
+    );
+    pagination.appendChild(makeBtn('›', _trendPage + 1, false, _trendPage >= totalPages));
+  }
+
+  function trendPageRange(cur, total) {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    if (cur <= 4)         return [1, 2, 3, 4, 5, '…', total];
+    if (cur >= total - 3) return [1, '…', total - 4, total - 3, total - 2, total - 1, total];
+    return [1, '…', cur - 1, cur, cur + 1, '…', total];
+  }
+
+  // 전체 선택은 페이지 단위가 아니라 전체 레지스터 기준(최대 16개)으로 동작한다.
+  $('#trendSelectAll')?.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      _trendCheckedSet = new Set(_trendRegistersAll.slice(0, 16).map((r) => r.id));
+      if (_trendRegistersAll.length > 16) showMsg('최대 16개까지만 선택됩니다.', 'error');
+    } else {
+      _trendCheckedSet.clear();
+    }
+    renderChannelPage();
+  });
 
   function syncSelectAll() {
     const selectAllCb = $('#trendSelectAll');
     if (!selectAllCb) return;
 
-    const all     = $$('input[type="checkbox"]', $('#trendChannelList'));
-    const checked = [...all].filter((c) => c.checked);
-    
-    selectAllCb.indeterminate = checked.length > 0 && checked.length < all.length;
-    selectAllCb.checked = all.length > 0 && checked.length === all.length;
+    const total   = _trendRegistersAll.length;
+    const checked = _trendCheckedSet.size;
+
+    selectAllCb.indeterminate = checked > 0 && checked < total;
+    selectAllCb.checked       = total > 0 && checked === total;
   }
 
   function updateChannelCount(countEl, n) {
@@ -964,74 +1259,43 @@
       }
 
       const saved = await res.json();
-      
-      _trendCfgChMap  = {};
-      _trendDataRange = saved.dataRange ?? null;
 
-      (saved.channels ?? []).forEach((ch) => { _trendCfgChMap[ch.regId] = ch; });
+      _trendCfgChMap = {};
+      _trendTagMap   = new Map();
+      (saved.channels ?? []).forEach((ch) => {
+        _trendCfgChMap[ch.regId] = ch;
+        _trendTagMap.set(ch.regId, ch.tag);
+      });
+      renderChannelPage();
       showMsg('트렌드 설정이 저장되었습니다.');
     } catch (err) {
       showMsg(`저장 실패: ${err.message}`, 'error');
     } finally {
-      if (btn) btn.disabled = false;
+      if (btn) btn.disabled = _recordingActive;
     }
   }
 
-  // ── datetime-local 변환 헬퍼 ─────────────────────────────────────
-  function toDatetimeLocal(unixSec) {
-    const d = new Date(unixSec * 1000);
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-  }
-
-  // ── 트렌드 리셋 모달 ─────────────────────────────────────────────
-  function openTrendResetModal() {
-    const modal    = $('#trendResetModal');
-    const fromInput = $('#trendExportFrom');
-    const toInput   = $('#trendExportTo');
-    if (!modal || !_trendDataRange) return;
-
-    const minStr = toDatetimeLocal(_trendDataRange.from);
-    const maxStr = toDatetimeLocal(_trendDataRange.to);
-    fromInput.min = fromInput.value = minStr;
-    toInput.max   = toInput.value   = maxStr;
-    fromInput.max = maxStr;
-    toInput.min   = minStr;
-
-    modal.hidden = false;
-  }
-
-  $('#trendResetModalClose')?.addEventListener('click', () => { $('#trendResetModal').hidden = true; _pendingTrend = null; });
-  $('#trendResetModalCancel')?.addEventListener('click', () => { $('#trendResetModal').hidden = true; _pendingTrend = null; });
-
-  $('#trendExportBtn')?.addEventListener('click', () => {
-    const from = Math.floor(new Date($('#trendExportFrom').value).getTime() / 1000);
-    const to   = Math.floor(new Date($('#trendExportTo').value).getTime()   / 1000);
-    if (!from || !to || to <= from) { showMsg('올바른 기간을 선택하세요.', 'error'); return; }
-    const a = document.createElement('a');
-    a.href = `/api/trend/export?from=${from}&to=${to}`;
-    a.click();
-  });
-
-  $('#trendResetModalConfirm')?.addEventListener('click', async () => {
-    $('#trendResetModal').hidden = true;
-    if (_pendingTrend) await applyTrendConfig(_pendingTrend.sampleIntervalSec, _pendingTrend.channels);
-    _pendingTrend = null;
-  });
-
   // ── 적용 버튼 ────────────────────────────────────────────────────
+  // 파일 기반 레코딩은 채널 구성을 바꿔도 기존 파일(자체 헤더 보유)에 영향이 없으므로,
+  // 과거 DB 방식처럼 "채널 변경 시 데이터 전체 삭제" 경고/확인 절차가 필요 없다.
   const trendApplyBtn = $('#trendApplyBtn');
   if (trendApplyBtn) {
     trendApplyBtn.addEventListener('click', async () => {
+      if (_recordingActive) return;
       const sampleIntervalSec = parseInt($('input[name="trendInterval"]:checked')?.value ?? '10', 10);
 
       const channels = [];
-      $('#trendChannelList')?.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
-        const regId = parseInt(cb.value, 10);
+      let slotIdx = 0;
+      _trendRegistersAll.forEach((r) => {
+        if (!_trendCheckedSet.has(r.id)) return;
+        slotIdx++;
+        const regId = r.id;
         const reg   = _trendRegMap[regId]   ?? {};
         const prev  = _trendCfgChMap[regId] ?? {};
+        const tag   = (_trendTagMap.get(regId)?.trim() || `CH_${String(slotIdx).padStart(2, '0')}`).substring(0, 15);
         channels.push({
           regId,
+          tag,
           name:     reg.displayName || reg.tagName || String(regId),
           unit:     reg.unit     ?? '',
           scale:    reg.scale    ?? 1.0,
@@ -1041,23 +1305,55 @@
         });
       });
 
-      // 채널 변경 여부 감지 (regId 집합 비교)
-      const oldIds = new Set(Object.keys(_trendCfgChMap).map(Number));
-      const newIds = new Set(channels.map((ch) => ch.regId));
-      const channelsChanged = oldIds.size !== newIds.size ||
-                              [...oldIds].some((id) => !newIds.has(id));
-
-      if (channelsChanged && _trendDataRange) {
-        // 기존 데이터 있음 → 경고 모달
-        _pendingTrend = { sampleIntervalSec, channels };
-        openTrendResetModal();
-      } else {
-        // 데이터 없거나 채널 변경 없음 → 바로 적용
-        if (!window.confirm(`트렌드 설정을 저장합니다. 계속하시겠습니까?`)) return;
-        await applyTrendConfig(sampleIntervalSec, channels);
-      }
+      if (!window.confirm('트렌드 설정을 저장합니다. 계속하시겠습니까?')) return;
+      await applyTrendConfig(sampleIntervalSec, channels);
     });
   }
+
+  // ── 트렌드 기록 파일 전체 삭제 ────────────────────────────────────
+  $('#trendDeleteAllBtn')?.addEventListener('click', () => {
+    if (_recordingActive) return;
+    const modal = $('#trendDeleteAllModal');
+    if (modal) modal.hidden = false;
+  });
+
+  $('#trendDeleteAllModalClose')?.addEventListener('click', () => { $('#trendDeleteAllModal').hidden = true; });
+  $('#trendDeleteAllModalCancel')?.addEventListener('click', () => { $('#trendDeleteAllModal').hidden = true; });
+  $('#trendDeleteAllModal')?.addEventListener('click', (e) => {
+    if (e.target === $('#trendDeleteAllModal')) $('#trendDeleteAllModal').hidden = true;
+  });
+
+  $('#trendDeleteAllModalConfirm')?.addEventListener('click', async () => {
+    const confirmBtn = $('#trendDeleteAllModalConfirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+    showBusy(); // 파일 개수에 따라 삭제가 순간적으로 끝날 수 있어 최소 노출 시간을 둔다
+    const minDelay = new Promise((r) => setTimeout(r, 800));
+    try {
+      const [deletedCount] = await Promise.all([
+        (async () => {
+          const res = await apiFetch('/api/tfile/files');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data  = await res.json();
+          const files = data.files ?? [];
+
+          for (const f of files) {
+            const r = await apiFetch(`/api/tfile/files/${encodeURIComponent(f.filename)}`, { method: 'DELETE' });
+            if (!r.ok) throw new Error(`${f.filename} 삭제 실패`);
+          }
+          return files.length;
+        })(),
+        minDelay,
+      ]);
+
+      $('#trendDeleteAllModal').hidden = true;
+      showMsg(`녹화 파일 ${deletedCount}개가 삭제되었습니다.`);
+    } catch (err) {
+      showMsg(`전체 삭제 실패: ${err.message}`, 'error');
+    } finally {
+      hideBusy();
+      if (confirmBtn) confirmBtn.disabled = false;
+    }
+  });
 
   // ── 초기 실행 ────────────────────────────────────────────────────
   switchTab(currentTab);
@@ -1067,5 +1363,8 @@
   loadCurrentUserRole();
   loadSystemResources();
   setInterval(loadSystemResources, 8000);
+  loadSystemTime();
+  loadRecordingGuardState();
+  setInterval(loadRecordingGuardState, 8000);
   loadTrendConfig();
 })();

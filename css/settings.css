@@ -822,6 +822,66 @@
 .ntp-synced-on  { color: #4cd96b !important; }
 .ntp-synced-off { color: #ff5d62 !important; }
 
+.systime-box {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.systime-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.systime-row label {
+  color: #aebbd0;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.systime-fields-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.systime-field label {
+  display: block;
+  color: #aebbd0;
+  font-size: 13px;
+  font-weight: 850;
+  margin-bottom: 8px;
+}
+
+.systime-field label small {
+  color: #6a7f95;
+  font-weight: 600;
+  font-size: 11px;
+  margin-left: 2px;
+}
+
+.systime-field .select,
+.systime-field .input {
+  width: 100%;
+  min-width: 0;
+}
+
+.systime-apply-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.systime-hint {
+  margin: 0;
+  color: #ffb020;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 /* Parameter backup / restore */
 
 .param-stack {
@@ -1133,6 +1193,10 @@
 
   .ntp-row,
   .param-action-card {
+    grid-template-columns: 1fr;
+  }
+
+  .systime-fields-row {
     grid-template-columns: 1fr;
   }
 
@@ -1470,10 +1534,6 @@
 
 /* ── 트렌드 설정 탭 ─────────────────────────────────────────────── */
 
-.trend-config-panel {
-  margin-bottom: 16px;
-}
-
 .trend-config-desc {
   font-size: 13px;
   color: #8fa0b7;
@@ -1494,40 +1554,11 @@
   margin-right: 4px;
 }
 
-.trend-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 16px;
-  margin-top: 12px;
-}
-
 .trend-reset-desc {
   font-size: 13px;
   color: #8fa0b7;
   margin: 0 0 16px;
   line-height: 1.6;
-}
-
-.trend-reset-range {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
-  margin-bottom: 20px;
-}
-
-.trend-reset-range-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.trend-reset-sep {
-  font-size: 14px;
-  color: #4a5f75;
-  padding-bottom: 10px;
-  flex-shrink: 0;
 }
 
 .trend-msg {
@@ -1652,6 +1683,88 @@
 
 .trend-table .col-regname {
   min-width: 160px;
+}
+
+.trend-table .col-tag {
+  width: 110px;
+}
+
+.trend-tag-input {
+  width: 90px;
+  height: 24px;
+  padding: 0 7px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: #c8d8ee;
+  font-size: 12px;
+  font-family: monospace;
+  letter-spacing: 0.02em;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.trend-tag-input:focus {
+  border-color: #4da0ff;
+  background: rgba(77, 160, 255, 0.05);
+}
+
+.trend-tag-input:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ── 트렌드 채널 페이지네이션 (logs.css 패턴 참고) ────────────────── */
+
+.trend-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 2px 0;
+}
+
+.trend-page-info {
+  color: #7a8fa6;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.trend-pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trend-pagination button {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: #cbd7e7;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.trend-pagination button.active {
+  color: #ffffff;
+  background: rgba(47, 128, 255, 0.35);
+  border-color: rgba(47, 128, 255, 0.6);
+}
+
+.trend-pagination button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.trend-pagination .page-ellipsis {
+  color: #4a5a6e;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
 }
 
 

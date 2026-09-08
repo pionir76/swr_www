@@ -1,49 +1,87 @@
-<section class="page trends-page">
+<section class="page tfile-page">
 
-  <!-- ── 컨트롤 바 ──────────────────────────────────────────────── -->
-  <div class="trends-toolbar">
-    <button class="trends-nav-arrow" id="trendPrevBtn">&#8592;</button>
-    <div class="trends-range-group" id="trendsRangeGroup">
-      <button class="trends-range-btn" data-range="1h">1h</button>
-      <button class="trends-range-btn" data-range="6h">6h</button>
-      <button class="trends-range-btn active" data-range="24h">24h</button>
-      <button class="trends-range-btn" data-range="7d">7d</button>
-      <button class="trends-range-btn" data-range="30d">30d</button>
-      <button class="trends-range-btn" data-range="1y">1y</button>
-    </div>
-    <button class="trends-nav-arrow" id="trendNextBtn">&#8594;</button>
-  </div>
-
-  <!-- ── 차트 패널 ──────────────────────────────────────────────── -->
-  <article class="panel trends-chart-panel">
-    <div class="trends-chart-meta">
-      <div class="trends-meta-left">
-        <span class="trends-resolution-badge" id="trendsResolutionBadge">5m</span>
-        <span class="trends-time-label" id="trendsTimeLabel">—</span>
-      </div>
-      <div class="trends-yrange">
-        <span class="trends-yrange-label">Y축</span>
-        <input class="trends-yrange-input" id="trendsYMin" type="number" placeholder="자동" title="Y축 최솟값">
-        <span class="trends-yrange-sep">~</span>
-        <input class="trends-yrange-input" id="trendsYMax" type="number" placeholder="자동" title="Y축 최댓값">
-        <button class="trends-yrange-reset" id="trendsYReset" title="자동 범위로 초기화">↺</button>
+  <!-- 1. 레코딩 상태 패널 -->
+  <article class="panel tfile-status-panel">
+    <div class="tfile-status-info">
+      <span class="tfile-rec-dot" id="tfileRecDot"></span>
+      <span class="tfile-status-text" id="tfileStatusText">대기 중</span>
+      <span class="tfile-rec-sep" id="tfileRecSep" hidden>|</span>
+      <span class="tfile-rec-filename" id="tfileRecFilename"></span>
+      <span class="tfile-rec-sep" id="tfileStartSep" hidden>|</span>
+      <span class="tfile-filesize" id="tfileRecStart"></span>
+      <span class="tfile-rec-sep" id="tfileCountSep" hidden>|</span>
+      <span class="tfile-filesize" id="tfileRecCount"></span>
+      <span class="tfile-rec-sep" id="tfileElapsedSep" hidden>|</span>
+      <span class="tfile-elapsed" id="tfileElapsed"></span>
+      <span class="tfile-rec-sep" id="tfileFreqSep" hidden>|</span>
+      <span class="tfile-filesize" id="tfileRecFreq"></span>
+      <span class="tfile-rec-sep" id="tfileSizeSep" hidden>|</span>
+      <span class="tfile-filesize" id="tfileFileSize"></span>
+      <span class="tfile-rec-sep" id="tfileUsageSep">|</span>
+      <div class="tfile-usage-wrap" id="tfileUsageWrap">
+        <span class="tfile-usage-label">시스템 저장공간</span>
+        <div class="tfile-usage-bar">
+          <div class="tfile-usage-fill" id="tfileUsageFill"></div>
+        </div>
+        <span class="tfile-usage-pct" id="tfileUsagePct"></span>
       </div>
     </div>
-    <div class="trends-chart-wrap" id="trendsChartWrap">
-      <canvas id="trendsChart"></canvas>
-      <div class="trends-skeleton" id="trendsSkeleton" hidden>
-        <div class="trends-skeleton-shimmer"></div>
-      </div>
-      <div class="trends-empty" id="trendsEmpty" hidden>
-        <div class="trends-empty-icon">⌁</div>
-        <p>표시할 채널이 없습니다</p>
-        <span class="trends-empty-hint">하단 스탯 카드를 클릭하여 채널을 표시하세요</span>
-      </div>
+    <div class="tfile-status-actions">
+      <button class="btn primary tfile-action-btn" id="tfileRecToggleBtn">● 녹화 시작</button>
     </div>
   </article>
 
-  <!-- ── 채널 스탯 카드 ─────────────────────────────────────────── -->
-  <div class="trends-stats-row" id="trendsStatsRow"></div>
+  <!-- 2. 메인 바디 -->
+  <div class="tfile-body">
 
+    <!-- 파일 목록 사이드바 -->
+    <aside class="panel tfile-sidebar">
+      <div class="tfile-sidebar-header">
+        <span class="tfile-sidebar-title">저장 파일</span>
+        <button class="tfile-icon-btn" id="tfileRefreshFiles" title="새로고침">↺</button>
+      </div>
+      <div class="tfile-file-items" id="tfileFileItems">
+        <div class="tfile-list-empty">불러오는 중…</div>
+      </div>
+    </aside>
+
+    <!-- 차트 + 스탯 카드 -->
+    <div class="tfile-main">
+
+      <article class="panel tfile-chart-panel">
+        <!-- 툴바 -->
+        <div class="tfile-chart-toolbar">
+          <div class="tfile-toolbar-left">
+            <button class="tfile-nav-btn" id="tfileZoomOutBtn" title="축소">&#8722;</button>
+            <button class="tfile-nav-btn" id="tfileZoomInBtn" title="확대">&#43;</button>
+            <button class="tfile-nav-btn" id="tfilePrevBtn" title="이전">&#8592;</button>
+            <button class="tfile-nav-btn" id="tfileNextBtn" title="다음">&#8594;</button>
+            <button class="tfile-nav-btn" id="tfileRangeSelectBtn" title="구간 보기 (드래그로 확대할 영역 선택)">&#11034;</button>
+            <button class="tfile-nav-btn" id="tfileFitAllBtn" title="전체 보기">&#9974;</button>
+            <button class="tfile-live-btn" id="tfileLiveBtn" title="실시간 모드">LIVE</button>
+          </div>
+          <span class="tfile-time-label" id="tfileTimeLabel">—</span>
+        </div>
+
+        <!-- 차트 캔버스 -->
+        <div class="tfile-chart-wrap">
+          <canvas id="tfileChart"></canvas>
+          <div class="tfile-skeleton" id="tfileSkeleton" hidden>
+            <div class="tfile-skeleton-shimmer"></div>
+            <div class="tfile-load-progress" id="tfileLoadProgress" hidden>
+              <div class="tfile-load-progress-bar">
+                <div class="tfile-load-progress-fill" id="tfileLoadProgressFill"></div>
+              </div>
+              <div class="tfile-load-progress-text" id="tfileLoadProgressText">불러오는 중…</div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- 채널 스탯 카드 -->
+      <div class="tfile-stats-row" id="tfileStatsRow"></div>
+
+    </div><!-- .tfile-main -->
+  </div><!-- .tfile-body -->
 
 </section>

@@ -9,7 +9,7 @@ namespace DataCollection::Store   { class RegisterTable; class DeviceList; }
 namespace DataCollection::Polling { class PollingManager; }
 namespace DataCollection::Model   { struct DeviceInfo; struct RegisterConfig; }
 namespace Util { class SystemMonitor; }
-namespace Trend { class TrendDatabase; }
+namespace TrendHandler { class TrendFileRecorder; }
 
 namespace Api{
 
@@ -23,7 +23,7 @@ public:
                        std::shared_ptr<DataCollection::Store::DeviceList> deviceList,
                        DataCollection::Polling::PollingManager *pollingManager,
                        Util::SystemMonitor *systemMonitor,
-                       Trend::TrendDatabase *trendDb,
+                       TrendHandler::TrendFileRecorder *trendFileRecorder,
                        QObject *parent = nullptr);
 
     ~ApiServer() override;
@@ -109,13 +109,25 @@ private:
     // System Resources
     QHttpServerResponse handleGetSystemResources(const QHttpServerRequest &request);
 
-    // Trend Config
+    // System Time
+    QHttpServerResponse handleGetSystemTime(const QHttpServerRequest &request);
+    QHttpServerResponse handlePutSystemNtp(const QHttpServerRequest &request);
+    QHttpServerResponse handlePutSystemTimezone(const QHttpServerRequest &request);
+    QHttpServerResponse handlePutSystemTime(const QHttpServerRequest &request);
+
+    // Trend Config (채널/샘플간격 설정 — TrendFileRecorder 에서 읽음)
     QHttpServerResponse handleGetTrendConfig(const QHttpServerRequest &request);
     QHttpServerResponse handlePutTrendConfig(const QHttpServerRequest &request);
 
-    // Trend Data
-    QHttpServerResponse handleGetTrendData(const QHttpServerRequest &request);
-    QHttpServerResponse handleGetTrendExport(const QHttpServerRequest &request);
+    // Trend File
+    QHttpServerResponse handlePostTfileStart(const QHttpServerRequest &request);
+    QHttpServerResponse handlePostTfileStop(const QHttpServerRequest &request);
+    QHttpServerResponse handleGetTfileStatus(const QHttpServerRequest &request);
+    QHttpServerResponse handleGetTfileFiles(const QHttpServerRequest &request);
+    QHttpServerResponse handleDeleteTfileFile(const QHttpServerRequest &request, const QString &filename);
+    QHttpServerResponse handleGetTfileHeader(const QHttpServerRequest &request);
+    QHttpServerResponse handleGetTfileLatest(const QHttpServerRequest &request);
+    QHttpServerResponse handleGetTfileSample(const QHttpServerRequest &request);
 
     // Security Policy
     QHttpServerResponse handleGetSecurityPolicy(const QHttpServerRequest &request);
@@ -135,7 +147,7 @@ private:
     std::shared_ptr<DataCollection::Store::DeviceList> m_deviceList;
     DataCollection::Polling::PollingManager *m_pollingManager;
     Util::SystemMonitor *m_systemMonitor;
-    Trend::TrendDatabase *m_trendDb;
+    TrendHandler::TrendFileRecorder   *m_trendFileRecorder;
     QHttpServer m_server;
 
     mutable QMutex m_sessionMutex;

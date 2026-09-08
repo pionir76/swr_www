@@ -1,175 +1,172 @@
-/* ── Trends Page ─────────────────────────────────────────────── */
+/* ── File-based Trend Page ─────────────────────────────────── */
 
-.trends-page {
+.tfile-page {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  height: calc(100vh - var(--topbar-h) - 28px);
 }
 
-/* ── 컨트롤 바 ──────────────────────────────────────────────────── */
+/* ── 상태 패널 ──────────────────────────────────────────────── */
 
-.trends-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-/* ── 시간 범위 네비게이션 ──────────────────────────────────────── */
-
-.trends-nav-arrow {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: #8fa0b7;
-  font-size: 16px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-
-.trends-nav-arrow:hover {
-  border-color: #4da0ff;
-  color: #4da0ff;
-  background: rgba(77, 160, 255, 0.06);
-}
-
-.trends-range-group {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.trends-range-btn {
-  height: 32px;
-  padding: 0 14px;
-  border: none;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  color: #8fa0b7;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.trends-range-btn:last-child {
-  border-right: none;
-}
-
-.trends-range-btn:hover {
-  background: rgba(77, 160, 255, 0.06);
-  color: #c8d8ee;
-}
-
-.trends-range-btn.active {
-  background: rgba(77, 160, 255, 0.14);
-  color: #4da0ff;
-  font-weight: 700;
-}
-
-/* ── 차트 패널 ──────────────────────────────────────────────────── */
-
-.trends-chart-panel {
-  padding: 14px 16px 16px;
-}
-
-.trends-chart-meta {
+.tfile-status-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
-  gap: 12px;
+  gap: 16px;
+  padding: 12px 18px;
+  flex-shrink: 0;
 }
 
-.trends-meta-left {
+.tfile-status-info {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
-.trends-resolution-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  background: rgba(77, 160, 255, 0.14);
-  color: #4da0ff;
-  border: 1px solid rgba(77, 160, 255, 0.28);
+/* 녹화 상태 점 */
+.tfile-rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3a4f63;
+  flex-shrink: 0;
+  transition: background 0.3s;
 }
 
-.trends-resolution-badge.raw { background: rgba(76, 217, 107, 0.12); color: #4cd96b; border-color: rgba(76, 217, 107, 0.28); }
-.trends-resolution-badge.m5  { background: rgba(77, 160, 255, 0.12); color: #4da0ff; border-color: rgba(77, 160, 255, 0.28); }
-.trends-resolution-badge.m10 { background: rgba(255, 216, 74, 0.12); color: #ffd84a; border-color: rgba(255, 216, 74, 0.28); }
+.tfile-rec-dot.recording {
+  background: #ff4040;
+  box-shadow: 0 0 0 3px rgba(255, 64, 64, 0.25);
+  animation: recPulse 1.4s ease-in-out infinite;
+}
 
-.trends-time-label {
+@keyframes recPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 64, 64, 0.25); }
+  50%       { box-shadow: 0 0 0 7px rgba(255, 64, 64, 0.08); }
+}
+
+.tfile-status-text {
   font-size: 13px;
+  font-weight: 700;
   color: #8fa0b7;
-}
-
-.trends-point-hint {
-  font-size: 12px;
-  color: #4a5f75;
-}
-
-/* Y축 범위 컨트롤 */
-.trends-yrange {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.trends-yrange-label {
-  font-size: 11px;
-  color: #4a5f75;
-  font-weight: 600;
   letter-spacing: 0.03em;
 }
 
-.trends-yrange-input {
-  width: 72px;
-  height: 26px;
-  padding: 0 7px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.tfile-rec-dot.recording + .tfile-status-text {
+  color: #ff6b6b;
+}
+
+.tfile-rec-sep {
+  color: #2a3a4e;
+  font-size: 12px;
+}
+
+.tfile-rec-filename {
+  font-size: 12px;
+  font-family: monospace;
   color: #c8d8ee;
+}
+
+.tfile-elapsed {
+  font-size: 13px;
+  font-weight: 700;
+  color: #eaf2ff;
+  font-variant-numeric: tabular-nums;
+}
+
+.tfile-filesize {
   font-size: 12px;
-  text-align: right;
-  outline: none;
-  transition: border-color 0.15s;
+  color: #8fa0b7;
 }
 
-.trends-yrange-input:focus {
-  border-color: #4da0ff;
+.tfile-usage-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.trends-yrange-input.active {
-  border-color: rgba(77,160,255,0.5);
-  background: rgba(77,160,255,0.06);
-}
-
-/* Chrome number input 화살표 제거 */
-.trends-yrange-input::-webkit-inner-spin-button,
-.trends-yrange-input::-webkit-outer-spin-button { -webkit-appearance: none; }
-.trends-yrange-input { -moz-appearance: textfield; }
-
-.trends-yrange-sep {
+.tfile-usage-label {
   font-size: 12px;
-  color: #4a5f75;
+  color: #8fa0b7;
+  white-space: nowrap;
 }
 
-.trends-yrange-reset {
+.tfile-usage-bar {
+  width: 80px;
+  height: 6px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.tfile-usage-fill {
+  height: 100%;
+  background: #4da0ff;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.tfile-usage-fill.warn   { background: #ffd84a; }
+.tfile-usage-fill.danger { background: #ff6b6b; }
+
+.tfile-usage-pct {
+  font-size: 11px;
+  color: #5a7090;
+}
+
+.tfile-status-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tfile-action-btn {
+  height: 34px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── 메인 바디 ──────────────────────────────────────────────── */
+
+.tfile-body {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── 파일 목록 사이드바 ─────────────────────────────────────── */
+
+.tfile-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.tfile-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tfile-sidebar-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #8fa0b7;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tfile-icon-btn {
   width: 26px;
   height: 26px;
   border: 1px solid var(--border);
@@ -184,25 +181,226 @@
   transition: border-color 0.15s, color 0.15s;
 }
 
-.trends-yrange-reset:hover {
+.tfile-icon-btn:hover {
   border-color: #4da0ff;
   color: #4da0ff;
 }
 
-/* 차트 영역 */
-.trends-chart-wrap {
-  position: relative;
-  height: calc(100vh - var(--topbar-h) - 360px);
-  min-height: 240px;
+.tfile-file-items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
 }
 
-.trends-chart-wrap canvas {
+.tfile-list-empty {
+  padding: 20px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: #3a4f63;
+}
+
+.tfile-file-item {
+  position: relative;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  margin-bottom: 4px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.tfile-file-item:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.tfile-file-item.active {
+  background: rgba(77,160,255,0.10);
+  border-color: rgba(77,160,255,0.30);
+}
+
+.tfile-file-item-name {
+  font-size: 11px;
+  font-family: monospace;
+  color: #c8d8ee;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-right: 20px;
+}
+
+.tfile-file-rec-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 800;
+  color: #ff4040;
+  background: rgba(255,64,64,0.12);
+  border: 1px solid rgba(255,64,64,0.25);
+  border-radius: 3px;
+  padding: 0 4px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.tfile-file-item-range {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tfile-file-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: #4a5f75;
+}
+
+.tfile-file-del-btn {
+  position: absolute;
+  top: 8px;
+  right: 7px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: #3a4f63;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  opacity: 0;
+}
+
+.tfile-file-item:hover .tfile-file-del-btn {
+  opacity: 1;
+}
+
+.tfile-file-del-btn:hover {
+  background: rgba(255,91,91,0.15);
+  color: #ff6b6b;
+}
+
+/* ── 차트 메인 영역 ─────────────────────────────────────────── */
+
+.tfile-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tfile-chart-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+}
+
+/* ── 툴바 ──────────────────────────────────────────────────── */
+
+.tfile-chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tfile-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tfile-nav-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: #8fa0b7;
+  font-size: 15px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.tfile-nav-btn:hover {
+  border-color: #4da0ff;
+  color: #4da0ff;
+  background: rgba(77,160,255,0.06);
+}
+
+.tfile-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: var(--border);
+  color: #4a5f75;
+  background: transparent;
+}
+
+/* 전체 보기 / 구간 보기처럼 토글 상태를 갖는 버튼의 활성 표시 */
+.tfile-nav-btn.active {
+  background: rgba(77,160,255,0.14);
+  border-color: rgba(77,160,255,0.4);
+  color: #4da0ff;
+}
+
+.tfile-live-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: #4a5f75;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.tfile-live-btn:hover {
+  border-color: rgba(76,217,107,0.4);
+  color: #4cd96b;
+}
+
+.tfile-live-btn.active {
+  background: rgba(76,217,107,0.12);
+  border-color: rgba(76,217,107,0.35);
+  color: #4cd96b;
+}
+
+.tfile-time-label {
+  font-size: 12px;
+  color: #4a5f75;
+  flex-shrink: 0;
+}
+
+/* ── 차트 캔버스 ─────────────────────────────────────────────── */
+
+.tfile-chart-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+}
+
+.tfile-chart-wrap canvas {
   width: 100% !important;
   height: 100% !important;
 }
 
-/* 스켈레톤 로딩 */
-.trends-skeleton {
+/* 스켈레톤 */
+.tfile-skeleton {
   position: absolute;
   inset: 0;
   border-radius: 6px;
@@ -211,15 +409,15 @@
   pointer-events: none;
 }
 
-.trends-skeleton-shimmer {
+.tfile-skeleton-shimmer {
   width: 100%;
   height: 100%;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(77, 160, 255, 0.06) 40%,
-    rgba(77, 160, 255, 0.12) 50%,
-    rgba(77, 160, 255, 0.06) 60%,
+    rgba(77,160,255,0.06) 40%,
+    rgba(77,160,255,0.12) 50%,
+    rgba(77,160,255,0.06) 60%,
     transparent 100%
   );
   background-size: 200% 100%;
@@ -231,32 +429,48 @@
   100% { background-position: -200% 0; }
 }
 
-/* 빈 상태 */
-.trends-empty {
+/* 파일 전체 로딩 진행률 */
+.tfile-load-progress {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 220px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: #4a5f75;
-  font-size: 14px;
-  pointer-events: none;
+  gap: 10px;
 }
 
-.trends-empty-icon {
-  font-size: 40px;
-  margin-bottom: 4px;
-  opacity: 0.5;
+.tfile-load-progress-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
 }
 
-/* ── 채널 스탯 카드 ──────────────────────────────────────────────── */
+.tfile-load-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #4da0ff;
+  border-radius: 3px;
+  transition: width 0.15s ease-out;
+}
 
-.trends-stats-row {
+.tfile-load-progress-text {
+  font-size: 12px;
+  color: #8fa0b7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 채널 스탯 카드 ──────────────────────────────────────────── */
+
+.tfile-stats-row {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: 8px;
+  flex-shrink: 0;
 }
 
 @keyframes statFadeIn {
@@ -264,7 +478,7 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.trends-stat-card {
+.tfile-stat-card {
   border: 1px solid var(--border);
   border-left-width: 3px;
   border-radius: 9px;
@@ -272,8 +486,8 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  background: rgba(255, 255, 255, 0.02);
-  transition: background 0.2s, border-color 0.15s, opacity 0.2s;
+  background: rgba(255,255,255,0.02);
+  transition: background 0.2s, opacity 0.2s;
   animation: statFadeIn 0.3s ease-out both;
   min-width: 0;
   cursor: pointer;
@@ -281,31 +495,37 @@
   position: relative;
 }
 
-/* 레코딩 채널 — 차트 표시 중 */
-.trends-stat-card.active {
+.tfile-stat-card.active {
   border-left-color: var(--ch-color, #4da0ff);
 }
 
-.trends-stat-card.active:hover {
-  background: rgba(255, 255, 255, 0.05);
+.tfile-stat-card.active:hover {
+  background: rgba(255,255,255,0.05);
 }
 
-/* 레코딩 채널 — 차트에서 숨긴 상태 */
-.trends-stat-card.hidden-ch {
+.tfile-stat-card.hidden-ch {
   border-left-color: inherit;
   opacity: 0.45;
 }
 
-.trends-stat-card.hidden-ch:hover {
+.tfile-stat-card.hidden-ch:hover {
   opacity: 0.75;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255,255,255,0.04);
 }
 
-/* 레코딩 미사용 슬롯 */
-.trends-stat-card.unused {
+.tfile-stat-card.unused {
   border-left-color: #2a3a4e;
-  opacity: 0.35;
+  opacity: 0.3;
   cursor: default;
+}
+
+.tfile-stat-card.selected {
+  background: rgba(77,160,255,0.08);
+  box-shadow: inset 0 0 0 1px var(--ch-color, #4da0ff);
+}
+
+.tfile-stat-card.selected:hover {
+  background: rgba(77,160,255,0.12);
 }
 
 .stat-unused-label {
@@ -314,26 +534,30 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   color: #3a4f63;
 }
 
-/* 토글 아이콘 */
 .stat-toggle-btn {
   position: absolute;
-  top: 7px;
-  right: 8px;
-  font-size: 11px;
-  opacity: 0.45;
+  top: 4px;
+  right: 4px;
+  padding: 3px 4px;
+  font-size: 10px;
+  opacity: 0.4;
+  cursor: pointer;
+  border-radius: 5px;
   line-height: 1;
-  pointer-events: none;
 }
 
-.trends-stat-card.active:hover .stat-toggle-btn { opacity: 0.8; }
-.trends-stat-card.hidden-ch .stat-toggle-btn    { opacity: 0.5; }
+.tfile-stat-card.active:hover .stat-toggle-btn { opacity: 0.8; }
 
-/* 색상 도트 */
-.trends-stat-dot {
+.stat-toggle-btn:hover {
+  opacity: 1 !important;
+  background: rgba(255,255,255,0.1);
+}
+
+.tfile-stat-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -341,13 +565,9 @@
   margin-bottom: 1px;
 }
 
-/* 정보 영역 */
-.trends-stat-info {
-  flex: 1;
-  min-width: 0;
-}
+.tfile-stat-info { flex: 1; min-width: 0; }
 
-.trends-stat-name {
+.tfile-stat-name {
   font-size: 11px;
   color: #8fa0b7;
   white-space: nowrap;
@@ -356,64 +576,35 @@
   margin-bottom: 2px;
 }
 
-.trends-stat-device-name {
-  font-size: 10px;
-  color: #4a5f75;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 3px;
-}
-
-.trends-stat-values {
+.tfile-stat-values {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 
-.trends-stat-avg {
+.tfile-stat-avg {
   font-size: 14px;
   font-weight: 700;
   color: #eaf2ff;
   line-height: 1;
 }
 
-.trends-stat-unit {
+.tfile-stat-unit {
   font-size: 10px;
-  font-weight: 400;
   color: #6a7f95;
 }
 
-.trends-stat-minmax {
+.tfile-stat-minmax {
   display: flex;
   flex-direction: column;
   gap: 1px;
   font-size: 10px;
 }
 
-.trends-stat-minmax span:first-child { color: #4cd96b; }
-.trends-stat-minmax span:last-child  { color: #ff6b6b; }
+.tfile-stat-minmax span:first-child { color: #4cd96b; }
+.tfile-stat-minmax span:last-child  { color: #ff6b6b; }
 
-.trends-stat-sparkline {
-  flex-shrink: 0;
-  opacity: 0.7;
-  margin-top: 2px;
-}
-
-/* 바이너리 채널 */
-.trends-stat-binary {
-  font-size: 12px;
-  font-weight: 700;
-  border-radius: 4px;
-  padding: 1px 6px;
-  display: inline-block;
-}
-
-.trends-stat-binary.on  { color: #4cd96b; background: rgba(76,217,107,0.12); }
-.trends-stat-binary.off { color: #ff6b6b; background: rgba(255,107,107,0.12); }
-
-/* 숨김 표시 */
 .stat-hidden-label {
   font-size: 11px;
   color: #3a4f63;

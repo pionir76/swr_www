@@ -141,17 +141,24 @@ AppConfig loadConfig(const QString &filePath)
     // trend
     const QJsonObject tr = root.value(QLatin1String("trend")).toObject();
     config.trend.sampleIntervalSec = tr.value(QLatin1String("sampleIntervalSec")).toInt(10);
+
+    int chIdx = 0;
     for (const QJsonValue &v : tr.value(QLatin1String("channels")).toArray()) {
         const QJsonObject obj = v.toObject();
+
         TrendChannelConfig tch;
         tch.regId    = obj.value(QLatin1String("regId")).toInt(-1);
         tch.name     = obj.value(QLatin1String("name")).toString();
+        tch.tag      = obj.value(QLatin1String("tag")).toString(
+                           QStringLiteral("CH_%1").arg(chIdx + 1, 2, 10, QLatin1Char('0')));
         tch.unit     = obj.value(QLatin1String("unit")).toString();
         tch.scale    = obj.value(QLatin1String("scale")).toDouble(1.0);
         tch.isSigned = obj.value(QLatin1String("isSigned")).toBool(false);
         tch.minValue = static_cast<quint16>(obj.value(QLatin1String("minValue")).toInt(0));
         tch.maxValue = static_cast<quint16>(obj.value(QLatin1String("maxValue")).toInt(65535));
+
         config.trend.channels.append(tch);
+        ++chIdx;
     }
 
     return config;
@@ -210,6 +217,7 @@ bool saveConfig(const QString &filePath, const AppConfig &config, QString &error
         QJsonObject obj;
         obj[QLatin1String("regId")]    = ch.regId;
         obj[QLatin1String("name")]     = ch.name;
+        obj[QLatin1String("tag")]      = ch.tag;
         obj[QLatin1String("unit")]     = ch.unit;
         obj[QLatin1String("scale")]    = ch.scale;
         obj[QLatin1String("isSigned")] = ch.isSigned;
