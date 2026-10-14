@@ -37,10 +37,15 @@
   const dfSlave      = $("#dfSlave");
   const dfIp         = $("#dfIp");
   const dfPort       = $("#dfPort");
+  const dfIpField    = $("#dfIpField");
+  const dfPortField  = $("#dfPortField");
   const dfTimeout    = $("#dfTimeout");
   const dfInterval   = $("#dfInterval");
+  const dfIntervalHint = $("#dfIntervalHint");
+  const dfPollAutoToggle = $("#dfPollAutoToggle");
   const dfByteOrder  = $("#dfByteOrder");
   const dfRetry      = $("#dfRetry");
+  const dfEffectiveInterval = $("#dfEffectiveInterval");
   const dfLastComm   = $("#dfLastComm");
   const dfCommState  = $("#dfCommState");
   const dfLastError  = $("#dfLastError");
@@ -63,8 +68,12 @@
   const ndSlave     = $("#ndSlave");
   const ndIp        = $("#ndIp");
   const ndPort      = $("#ndPort");
+  const ndIpField   = $("#ndIpField");
+  const ndPortField = $("#ndPortField");
   const ndTimeout   = $("#ndTimeout");
   const ndInterval  = $("#ndInterval");
+  const ndIntervalHint = $("#ndIntervalHint");
+  const ndPollAutoToggle = $("#ndPollAutoToggle");
   const ndByteOrder = $("#ndByteOrder");
   const ndRetry     = $("#ndRetry");
   const ndFormMsg   = $("#ndFormMsg");
@@ -86,12 +95,22 @@
     if (selectedValue) targetSelect.value = selectedValue;
   }
 
+  // ── 연결 방식에 따라 필요 없는 입력(TCP 전용 IP/포트) 숨기기 ────────────────
+
+  function updateConnFieldsVisibility(connType, ipField, portField) {
+    const isTcp = connType === "tcp";
+    if (ipField)   ipField.hidden   = !isTcp;
+    if (portField) portField.hidden = !isTcp;
+  }
+
   if (connTypeSelect && protocolSelect) {
     connTypeSelect.addEventListener("change", () => {
       populateProtocolOptions(protocolSelect, connTypeSelect.value);
+      updateConnFieldsVisibility(connTypeSelect.value, dfIpField, dfPortField);
     });
     // 초기 로드 시 현재 연결 방식에 맞는 프로토콜 목록으로 채운다.
     populateProtocolOptions(protocolSelect, connTypeSelect.value);
+    updateConnFieldsVisibility(connTypeSelect.value, dfIpField, dfPortField);
   }
 
   // ── Busy overlay ─────────────────────────────────────────────────────────
@@ -118,6 +137,52 @@
   function minDelay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+
+  // ── 폴링 모드(자동/수동) 공통 로직 ──────────────────────────────────────
+  // 스위치 ON = 자동(시스템 설정의 NTP 자동 동기화 토글과 동일한 관례). 자동일 때는
+  // intervalMs 입력을 "-"로 바꾸고 비활성화한다 — 백엔드가 버스 공유 상태를 보고
+  // 자체 조정하므로(referencs/api-spec.md §4), 사용자가 입력해도 무시된다.
+
+  function getPollMode(toggle) {
+    return toggle.checked ? "auto" : "manual";
+  }
+
+  // 장비 데이터를 폼에 채울 때 호출 — 전환 중인 입력값(dataset.lastValue)에
+  // 기대지 않고 항상 주어진 값 기준으로 결정한다(장비를 번갈아 선택해도 꼬이지 않게).
+  function setIntervalValueForMode(mode, intervalInput, intervalMs) {
+    if (mode === "manual") {
+      intervalInput.value = intervalMs ?? 1000;
+    } else {
+      intervalInput.dataset.lastValue = intervalMs ?? 1000;
+      intervalInput.value = "-";
+    }
+  }
+
+  function applyPollModeUI(mode, intervalInput, hintEl) {
+    intervalInput.disabled = mode !== "manual";
+    if (hintEl) {
+      hintEl.textContent = mode !== "manual"
+        ? "자동 모드 — 같은 버스를 쓰는 다른 장비와의 공유 상태를 보고 시스템이 주기를 조정합니다."
+        : "";
+      hintEl.classList.remove("warn");
+    }
+  }
+
+  // 사용자가 편집 중 스위치를 직접 눌렀을 때 — 입력 중이던 값을 보존했다가 되돌려준다.
+  function onPollToggleChange(toggle, intervalInput, hintEl) {
+    const mode = getPollMode(toggle);
+    if (mode === "auto") {
+      if (intervalInput.value !== "-") intervalInput.dataset.lastValue = intervalInput.value;
+      intervalInput.value = "-";
+    } else {
+      intervalInput.value = (intervalInput.dataset.lastValue && intervalInput.dataset.lastValue !== "-")
+        ? intervalInput.dataset.lastValue : "1000";
+    }
+    applyPollModeUI(mode, intervalInput, hintEl);
+  }
+
+  dfPollAutoToggle.addEventListener("change", () => onPollToggleChange(dfPollAutoToggle, dfInterval, dfIntervalHint));
+  ndPollAutoToggle.addEventListener("change", () => onPollToggleChange(ndPollAutoToggle, ndInterval, ndIntervalHint));
 
   // ── 공통 유틸 ───────────────────────────────────────────────────────────
 
@@ -232,7 +297,25 @@
 
   // ── 상세 정보 패널 ──────────────────────────────────────────────────────
 
-  function fillMeta(status) {
+  function fillMeta(device, status) {
+    if (dfEffectiveInterval) {
+      dfEffectiveInterval.textContent = status?.effectiveIntervalMs != null ? `${status.effectiveIntervalMs} ms` : "-";
+    }
+
+    // 수동 모드인데 실제 적용 주기가 설정값보다 20% 이상 길면 경고 — 버스 공유로
+    // 설정한 주기를 못 맞추고 있다는 뜻(지난 스포란/압축기 사례와 동일한 신호).
+    if (dfIntervalHint && (device?.pollMode ?? "auto") === "manual") {
+      const set = device?.intervalMs;
+      const eff = status?.effectiveIntervalMs;
+      if (set && eff && eff > set * 1.2) {
+        dfIntervalHint.textContent = `⚠ 실제 적용 주기(${eff}ms)가 설정값(${set}ms)보다 깁니다 — 같은 버스의 다른 장비와 충돌 중일 수 있습니다.`;
+        dfIntervalHint.classList.add("warn");
+      } else {
+        dfIntervalHint.textContent = "";
+        dfIntervalHint.classList.remove("warn");
+      }
+    }
+
     dfLastComm.textContent = fmtTime(status?.lastPollTimestamp);
 
     dfCommState.className = "";
@@ -265,16 +348,19 @@
     dfDisplay.value  = device.displayName ?? "";
     connTypeSelect.value = device.connType === "tcp" ? "tcp" : "serial";
     populateProtocolOptions(protocolSelect, connTypeSelect.value, device.protocol);
+    updateConnFieldsVisibility(connTypeSelect.value, dfIpField, dfPortField);
     dfSlave.value    = device.slaveId ?? 1;
     dfIp.value       = device.ipAddress ?? "";
     dfPort.value     = device.tcpPort ?? 502;
     dfTimeout.value  = device.timeoutMs ?? 1000;
-    dfInterval.value = device.intervalMs ?? 5000;
+    dfPollAutoToggle.checked = (device.pollMode ?? "auto") !== "manual";
+    setIntervalValueForMode(device.pollMode ?? "auto", dfInterval, device.intervalMs);
+    applyPollModeUI(device.pollMode ?? "auto", dfInterval, dfIntervalHint);
     dfByteOrder.value = device.byteOrder ?? "big";
     dfRetry.value    = device.retryCount ?? 3;
 
     selectedChip.textContent = `선택: ${device.deviceCode}`;
-    fillMeta(status);
+    fillMeta(device, status);
     hideFormMsg();
   }
 
@@ -285,6 +371,11 @@
       .forEach((el) => { el.value = ""; });
     connTypeSelect.value = "serial";
     populateProtocolOptions(protocolSelect, "serial");
+    updateConnFieldsVisibility("serial", dfIpField, dfPortField);
+    dfPollAutoToggle.checked = true;
+    setIntervalValueForMode("auto", dfInterval, 1000);
+    applyPollModeUI("auto", dfInterval, dfIntervalHint);
+    if (dfEffectiveInterval) dfEffectiveInterval.textContent = "-";
     dfByteOrder.value = "big";
     dfLastComm.textContent  = "-";
     dfCommState.textContent = "-";
@@ -328,8 +419,9 @@
       slaveId:     parseInt(dfSlave.value) || 1,
       byteOrder:   dfByteOrder.value,
       timeoutMs:   parseInt(dfTimeout.value) || 1000,
-      intervalMs:  parseInt(dfInterval.value) || 5000,
+      intervalMs:  parseInt(dfInterval.value !== "-" ? dfInterval.value : dfInterval.dataset.lastValue) || 5000,
       retryCount:  parseInt(dfRetry.value) || 0,
+      pollMode:    getPollMode(dfPollAutoToggle),
     };
     if (connTypeSelect.value === "tcp") {
       body.ipAddress = dfIp.value.trim();
@@ -369,7 +461,8 @@
         return;
       }
 
-      showFormMsg("저장되었습니다.", false);
+      const data = await res.json().catch(() => ({}));
+      showFormMsg(data.warning ? `저장되었습니다. ⚠ ${data.warning}` : "저장되었습니다.", false);
       await loadDeviceList();
     } catch {
       showFormMsg("서버에 연결할 수 없습니다.");
@@ -517,11 +610,14 @@
     ndDisplay.value = "";
     ndConnType.value = "serial";
     populateProtocolOptions(ndProtocol, "serial");
+    updateConnFieldsVisibility("serial", ndIpField, ndPortField);
     ndSlave.value = "1";
     ndIp.value = "";
     ndPort.value = "502";
     ndTimeout.value = "1000";
-    ndInterval.value = "5000";
+    ndPollAutoToggle.checked = true;
+    setIntervalValueForMode("auto", ndInterval, 5000);
+    applyPollModeUI("auto", ndInterval, ndIntervalHint);
     ndByteOrder.value = "big";
     ndRetry.value = "3";
 
@@ -544,6 +640,7 @@
   if (ndConnType) {
     ndConnType.addEventListener("change", () => {
       populateProtocolOptions(ndProtocol, ndConnType.value);
+      updateConnFieldsVisibility(ndConnType.value, ndIpField, ndPortField);
     });
   }
 
@@ -557,8 +654,9 @@
       slaveId:     parseInt(ndSlave.value) || 1,
       byteOrder:   ndByteOrder.value,
       timeoutMs:   parseInt(ndTimeout.value) || 1000,
-      intervalMs:  parseInt(ndInterval.value) || 5000,
+      intervalMs:  parseInt(ndInterval.value !== "-" ? ndInterval.value : ndInterval.dataset.lastValue) || 5000,
       retryCount:  parseInt(ndRetry.value) || 0,
+      pollMode:    getPollMode(ndPollAutoToggle),
     };
     if (ndConnType.value === "tcp") {
       body.ipAddress = ndIp.value.trim();
@@ -674,7 +772,7 @@
       renderDeviceRows();
       if (summary) summary.textContent = `총 ${devices.length}대`;
       if (selectedDeviceId) {
-        fillMeta(statusById[selectedDeviceId]);
+        fillMeta(devices.find((d) => d.id === selectedDeviceId), statusById[selectedDeviceId]);
       }
 
       if (isFirstLoad) {

@@ -12,6 +12,14 @@ function hideError() {
   errorMsg.textContent = "";
 }
 
+// index.html의 main.js와 달리 이 페이지는 독립 HTML이라 자체적으로
+// I18n.init()을 호출해야 디바이스에 설정된 언어가 반영된다. 언어를 바꾸는
+// UI는 여기 없음(시스템 설정으로 이동) — 디바이스 설정값을 읽기만 한다.
+async function initLanguage() {
+  await I18n.init();
+  I18n.applyI18n(document);
+}
+
 // 이미 유효한 토큰이 있으면 바로 메인으로 이동
 async function checkExistingSession() {
   const token = getToken();
@@ -42,12 +50,12 @@ loginForm.addEventListener("submit", async (e) => {
   const password = $("#password").value;
 
   if (!username || !password) {
-    showError("사용자 이름과 비밀번호를 입력하세요.");
+    showError(I18n.t("login.errMissingFields"));
     return;
   }
 
   loginBtn.disabled = true;
-  loginBtn.textContent = "로그인 중…";
+  loginBtn.textContent = I18n.t("login.submitBtnLoading");
 
   try {
     const res = await fetch(`${API_BASE}/api/login`, {
@@ -68,17 +76,20 @@ loginForm.addEventListener("submit", async (e) => {
 
     showError(
       res.status === 401
-        ? "아이디 또는 비밀번호가 올바르지 않습니다."
-        : `로그인에 실패했습니다. (HTTP ${res.status})`
+        ? I18n.t("login.errInvalidCredentials")
+        : I18n.t("login.errFailedHttp", { status: res.status })
     );
     $("#password").value = "";
     $("#password").focus();
   } catch {
-    showError("서버에 연결할 수 없습니다. 네트워크를 확인하세요.");
+    showError(I18n.t("login.errNetworkFailed"));
   }
 
   loginBtn.disabled = false;
-  loginBtn.textContent = "로그인";
+  loginBtn.textContent = I18n.t("login.submitBtn");
 });
 
-document.addEventListener("DOMContentLoaded", checkExistingSession);
+document.addEventListener("DOMContentLoaded", () => {
+  initLanguage();
+  checkExistingSession();
+});

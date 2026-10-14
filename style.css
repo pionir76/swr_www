@@ -341,22 +341,6 @@ body.polling-live .topbar::after {
   border-color: var(--border-strong);
 }
 
-.lang-select {
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.038);
-  border-radius: 999px;
-  color: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.lang-select:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: var(--border-strong);
-}
-
 .dot {
   display: inline-block;
   border-radius: 50%;
@@ -874,6 +858,12 @@ body.sidebar-collapsed .nav-item {
   display: flex;
   flex-direction: column;
   gap: 7px;
+}
+
+/* display:flex가 있으면 [hidden] UA 기본값(display:none)과 명시도가 같아서
+   로드 순서에 따라 깨질 수 있다 — 명시적으로 덮어써서 항상 숨겨지게 한다. */
+.form-field[hidden] {
+  display: none;
 }
 
 .form-field.full {

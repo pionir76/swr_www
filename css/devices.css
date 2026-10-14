@@ -68,6 +68,58 @@
   justify-content: flex-end;
 }
 
+/* ── 폴링 모드(자동/수동) — Polling Interval 라벨과 한 줄, 스위치는 우측 정렬 ── */
+
+.poll-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* label 한 줄 높이로 고정 — 스위치가 Timeout(ms) 등 옆 필드의 라벨 줄과
+     수직으로 어긋나지 않게(form-grid가 2열이라 같은 행끼리 맞춰야 함) */
+  height: 18px;
+}
+
+.poll-mode-switch-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.poll-mode-tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #6a86a8;
+}
+
+/* 좌측 다른 필드들의 라벨 줄(18px 안팎)과 높이를 맞춘 소형 스위치 */
+.switch.sm {
+  width: 30px;
+  height: 16px;
+}
+
+.switch.sm span::after {
+  width: 12px;
+  height: 12px;
+  top: 1px;
+  left: 2px;
+}
+
+.switch.sm input:checked + span::after {
+  transform: translateX(14px);
+}
+
+.poll-mode-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #8fa5bc;
+}
+
+.poll-mode-hint.warn {
+  color: #ffb020;
+  font-weight: 700;
+}
+
 #ndCancelBtn {
   width: 120px;
 }

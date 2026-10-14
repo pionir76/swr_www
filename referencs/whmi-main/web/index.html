@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WHMI</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0e1116; color: #e6e9ef;
+    font-family: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #bar { display: flex; align-items: center; gap: 10px; padding: 6px 14px; font-size: 13px;
+    background: #0b0e12; border-bottom: 1px solid #222a35; }
+  #bar .dot { width: 9px; height: 9px; border-radius: 50%; background: #666; }
+  #bar .dot.ok { background: #2ecc71; } #bar .dot.err { background: #e5534b; }
+  #bar .msg { color: #8a93a3; margin-left: auto; }
+  #stage { flex: 1; min-height: 0; }
+  .whmi-screen { width: 100%; height: 100%; display: block; user-select: none; }
+  .whmi-screen text { font-family: inherit; }
+
+  /* 위젯 공통 */
+  .w .digits { font-family: "Consolas", "D2Coding", ui-monospace, monospace; font-weight: 700; fill: #e6e9ef; }
+  .w .unit { fill: #8a93a3; }
+  .w .scale { font-size: 11px; fill: #8a93a3; }
+  .w .outlined { font-weight: 700; fill: #fff; stroke: #0b0f14; stroke-width: 4px; paint-order: stroke; }
+  .w .level { transition: transform .6s ease, fill .3s; }
+  .w .knob { transition: transform .2s ease; }
+  .w.q-bad { opacity: .45; }
+  .w-button, .w-switch, .w-input { cursor: pointer; }
+  .w-button:active rect { filter: brightness(1.35); }
+  .w.readonly { cursor: not-allowed; }
+  .lamp.blink { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .unknown { fill: none; stroke: #e5534b; stroke-dasharray: 4 3; }
+  .unknown-text { fill: #e5534b; font-size: 12px; }
+
+  /* 대화상자 */
+  .dlg-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; }
+  .dlg-backdrop[hidden] { display: none; }
+  .dlg { background: #1b212b; border: 1px solid #2e3846; border-radius: 10px; padding: 20px; min-width: 280px; max-width: calc(100vw - 32px); box-sizing: border-box; }
+  .dlg p { margin: 0 0 14px; font-size: 16px; }
+  .dlg input { width: 100%; box-sizing: border-box; font-size: 22px; padding: 8px; background: #0b0f14; color: #e6e9ef; border: 1px solid #3fa7ff; border-radius: 6px; }
+  .dlg-hint { color: #8a93a3; font-size: 12px; margin-top: 6px; }
+  .dlg-err { color: #e5534b; font-size: 13px; min-height: 18px; margin-top: 4px; }
+  .dlg-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  .dlg button { font: inherit; padding: 8px 18px; border-radius: 6px; border: 1px solid #2e3846; background: #2a313c; color: #e6e9ef; cursor: pointer; }
+  .dlg button.primary { background: #2d6cdf; border-color: #2d6cdf; }
+</style>
+</head>
+<body>
+  <div id="bar"><span class="dot" id="dot"></span><span id="title">WHMI</span><span class="msg" id="msg">로딩 중…</span></div>
+  <div id="stage"></div>
+  <script src="js/whmi-runtime.js"></script>
+  <script src="js/whmi-widgets.js"></script>
+  <script>
+    const dot = document.getElementById('dot');
+    const msg = document.getElementById('msg');
+    const status = (state, text) => { dot.className = 'dot ' + state; msg.textContent = text; };
+    WHMI.boot(document.getElementById('stage'), status)
+      .then(({ screen }) => { document.getElementById('title').textContent = screen.title; })
+      .catch((e) => { status('err', '로드 실패: ' + e.message); console.error(e); });
+  </script>
+</body>
+</html>

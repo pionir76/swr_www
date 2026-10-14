@@ -3,13 +3,15 @@
 // 정적 텍스트는 HTML에 data-i18n(텍스트) / data-i18n-placeholder / data-i18n-title
 // 속성을 달아두면 applyI18n()이 자동 치환한다. JS가 직접 만드는 문자열(alert,
 // showMsg, 테이블 렌더링 등)은 각 페이지 스크립트에서 I18n.t('key')를 호출해야 한다.
+//
+// 언어는 브라우저가 아니라 디바이스(백엔드 config.json)에 저장된다 — 이 디바이스에
+// 접속하는 모든 사람이 같은 언어를 본다(GET은 인증 불필요라 로그인 화면도 반영됨,
+// PUT은 ManagerOrAbove 권한 필요).
 
 const SUPPORTED_LANGS = ["ko", "en", "ja", "zh"];
-const LANG_KEY = "smartroute_lang";
 
 const I18n = (() => {
-  let _lang = localStorage.getItem(LANG_KEY);
-  if (!SUPPORTED_LANGS.includes(_lang)) _lang = "ko";
+  let _lang = "ko";
   let _dict = {};
 
   async function loadDict(lang) {
@@ -43,20 +45,46 @@ const I18n = (() => {
     });
   }
 
-  // 언어 전환: 사전을 새로 불러오고 셸(사이드바/상단바)을 즉시 재적용한다.
-  // 현재 활성 페이지 콘텐츠까지 새 언어로 다시 그리는 건 호출한 쪽(main.js)의
-  // 책임이다 — 페이지 재로드가 필요한지는 페이지 로직에 따라 다르기 때문.
+  // 디바이스에 저장할 언어를 바꾼다(PUT) — 성공하면 이 세션의 사전도 즉시
+  // 갱신하고 셸을 재적용한다. 실패 시(권한 부족 400/403 등) false와 함께
+  // 서버가 준 에러 메시지를 반환하므로 호출부(설정 화면)에서 안내할 수 있다.
   async function setLanguage(lang) {
-    if (!SUPPORTED_LANGS.includes(lang) || lang === _lang) return false;
+    if (!SUPPORTED_LANGS.includes(lang)) return { ok: false, error: "unsupported language" };
+    try {
+      const res = await apiFetch("/api/system/language", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language: lang }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { ok: false, status: res.status, error: data.error };
+      }
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+
     _lang = lang;
-    localStorage.setItem(LANG_KEY, lang);
     await loadDict(lang);
     document.documentElement.lang = lang;
     applyI18n(document);
-    return true;
+    return { ok: true };
   }
 
+  // 디바이스에 저장된 현재 언어를 읽어온다 — 인증 불필요라 로그인 전에도 호출 가능.
+  // (apiFetch는 토큰이 있으면 Authorization 헤더를 붙이지만, 이 엔드포인트는
+  // 토큰 유무와 무관하게 응답하므로 그대로 재사용한다.) 실패 시(네트워크 오류
+  // 등) 기본값 "ko"로 안전하게 폴백한다.
   async function init() {
+    try {
+      const res = await apiFetch("/api/system/language");
+      if (res.ok) {
+        const data = await res.json();
+        if (SUPPORTED_LANGS.includes(data.language)) _lang = data.language;
+      }
+    } catch {
+      // 네트워크 오류 — 기본값(ko) 유지
+    }
     await loadDict(_lang);
     document.documentElement.lang = _lang;
   }

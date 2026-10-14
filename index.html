@@ -75,13 +75,6 @@
           <span class="divider"></span>
           <div class="status-pill"><span class="dot green"></span><span data-i18n="topbar.ok">정상</span> <b id="topbarOkCount">—</b></div>
           <div class="status-pill"><span class="dot red"></span><span data-i18n="topbar.error">오류</span> <b id="topbarErrCount">—</b></div>
-          <span class="divider"></span>
-          <select class="lang-select" id="langSelect" aria-label="Language">
-            <option value="ko">한국어</option>
-            <option value="en">English</option>
-            <option value="ja">日本語</option>
-            <option value="zh">中文</option>
-          </select>
         </div>
       </header>
 
@@ -105,13 +98,13 @@
       <div id="pageOverlay" class="page-overlay" hidden>
         <div id="pageOverlayLoading" class="overlay-loading">
           <div class="overlay-spinner"></div>
-          <p>불러오는 중...</p>
+          <p data-i18n="common.loading">불러오는 중...</p>
         </div>
         <div id="pageOverlayError" class="overlay-error" hidden>
           <span class="overlay-error-icon">⚠</span>
-          <h3>연결 실패</h3>
+          <h3 data-i18n="common.connectionFailed">연결 실패</h3>
           <p id="pageOverlayMsg">서버에 연결할 수 없습니다.</p>
-          <button class="btn ghost" id="pageOverlayRetry" style="margin-top:4px">다시 시도</button>
+          <button class="btn ghost" id="pageOverlayRetry" style="margin-top:4px" data-i18n="common.retry">다시 시도</button>
         </div>
       </div>
     </section>

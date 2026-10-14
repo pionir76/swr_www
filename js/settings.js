@@ -762,6 +762,51 @@
     else applyManualTime();
   });
 
+  // ── 언어 설정 (디바이스 공통, ManagerOrAbove만 변경 가능) ────────────
+  function loadLanguageSetting() {
+    const sel = $('#languageSelect');
+    if (sel) sel.value = I18n.lang;
+    updateLanguageControl();
+  }
+
+  function updateLanguageControl() {
+    const sel  = $('#languageSelect');
+    const btn  = $('#languageApplyBtn');
+    const hint = $('#languageHint');
+    if (!sel || !btn || !hint) return;
+
+    const allowed = currentUserRole === 'admin' || currentUserRole === 'manager';
+    sel.disabled = !allowed;
+    btn.disabled = !allowed;
+    if (allowed) {
+      hint.hidden = true;
+    } else {
+      hint.textContent = '⚠ Admin 또는 Manager 계정으로만 언어를 변경할 수 있습니다.';
+      hint.hidden = false;
+    }
+  }
+
+  $('#languageApplyBtn')?.addEventListener('click', async () => {
+    const sel = $('#languageSelect');
+    const lang = sel?.value;
+    if (!lang || lang === I18n.lang) return;
+
+    const btn = $('#languageApplyBtn');
+    if (btn) btn.disabled = true;
+    try {
+      const result = await I18n.setLanguage(lang);
+      if (!result.ok) {
+        showMsg(`언어 변경 실패: ${result.error || `HTTP ${result.status}`}`, 'error');
+        return;
+      }
+      loadPage(getCurrentPage()); // 현재 페이지를 새 언어로 다시 렌더링
+    } catch (err) {
+      showMsg(`언어 변경 실패: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = !(currentUserRole === 'admin' || currentUserRole === 'manager');
+    }
+  });
+
   // ── GET /api/system/info ──────────────────────────────────────────
   async function loadSystemInfo() {
     try {
@@ -910,6 +955,7 @@
       if (me) currentUserRole = me.role;
     } catch (_) {}
     updateFactoryResetBtn();
+    updateLanguageControl();
   }
 
   function updateFactoryResetBtn() {
@@ -1361,6 +1407,7 @@
 
   loadConfig();
   loadSystemInfo();
+  loadLanguageSetting();
   loadCurrentUserRole();
   loadSystemResources();
   const sysResourcesTimer = setInterval(loadSystemResources, 8000);

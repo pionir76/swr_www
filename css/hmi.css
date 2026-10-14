@@ -1,0 +1,83 @@
+/* ── HMI 빌더 (WHMI 런타임 통합) ──────────────────────────────── */
+/* referencs/whmi-main/web/index.html의 인라인 <style>을 이식.
+   레이아웃(상태줄/무대)은 이 앱의 page-title-row/panel 컨벤션에 맞춰 다시 짰고,
+   위젯/대화상자 스타일(.w-*, .dlg-*)은 whmi-widgets.js/whmi-runtime.js가 그리는
+   DOM 구조에 종속되므로 원본 그대로 가져왔다. */
+
+.hmi-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: calc(100vh - var(--topbar-h) - 60px);
+}
+
+.hmi-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #8fa5bc;
+}
+
+.hmi-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #666;
+  flex-shrink: 0;
+}
+
+.hmi-status-dot.ok  { background: #2ecc71; }
+.hmi-status-dot.err { background: #e5534b; }
+
+.hmi-page #pageContent {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hmi-stage-panel {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.hmi-stage {
+  width: 100%;
+  height: 100%;
+}
+
+.whmi-screen { width: 100%; height: 100%; display: block; user-select: none; }
+.whmi-screen text { font-family: inherit; }
+
+/* ── 위젯 공통 (whmi-widgets.js가 그리는 요소에 바인딩) ─────────── */
+.w .digits { font-family: "Consolas", "D2Coding", ui-monospace, monospace; font-weight: 700; fill: #e6e9ef; }
+.w .unit { fill: #8a93a3; }
+.w .scale { font-size: 11px; fill: #8a93a3; }
+.w .outlined { font-weight: 700; fill: #fff; stroke: #0b0f14; stroke-width: 4px; paint-order: stroke; }
+.w .level { transition: transform .6s ease, fill .3s; }
+.w .knob { transition: transform .2s ease; }
+.w.q-bad { opacity: .45; }
+/* normal(폴링 지연) — 값은 그대로 두고 연한 호박색 글로우로만 경고(흐리게 하지 않음) */
+.w.q-normal { filter: drop-shadow(0 0 4px rgba(224, 160, 48, 0.6)); }
+.w-button, .w-switch, .w-input, .w-screenlink { cursor: pointer; }
+.w-button:active rect { filter: brightness(1.35); }
+.w.readonly { cursor: not-allowed; }
+.lamp.blink { animation: hmi-blink 1s steps(1) infinite; }
+@keyframes hmi-blink { 50% { opacity: .25; } }
+.unknown { fill: none; stroke: #e5534b; stroke-dasharray: 4 3; }
+.unknown-text { fill: #e5534b; font-size: 12px; }
+
+/* ── 대화상자 (확인 / 값 입력, whmi-runtime.js가 body에 직접 붙임) ─── */
+.dlg-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 1000; }
+.dlg-backdrop[hidden] { display: none; }
+.dlg { background: #1b212b; border: 1px solid #2e3846; border-radius: 10px; padding: 20px; min-width: 280px; max-width: calc(100vw - 32px); box-sizing: border-box; color: #e6e9ef; font-family: inherit; }
+.dlg p { margin: 0 0 14px; font-size: 16px; }
+.dlg input { width: 100%; box-sizing: border-box; font-size: 22px; padding: 8px; background: #0b0f14; color: #e6e9ef; border: 1px solid #3fa7ff; border-radius: 6px; }
+.dlg-hint { color: #8a93a3; font-size: 12px; margin-top: 6px; }
+.dlg-err { color: #e5534b; font-size: 13px; min-height: 18px; margin-top: 4px; }
+.dlg-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.dlg button { font: inherit; padding: 8px 18px; border-radius: 6px; border: 1px solid #2e3846; background: #2a313c; color: #e6e9ef; cursor: pointer; }
+.dlg button.primary { background: #2d6cdf; border-color: #2d6cdf; }

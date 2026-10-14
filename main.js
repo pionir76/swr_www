@@ -288,12 +288,6 @@ window.addEventListener("hashchange", (e) => {
 document.addEventListener("DOMContentLoaded", async () => {
   await I18n.init();
   I18n.applyI18n(document);
-  const langSelect = $("#langSelect");
-  if (langSelect) langSelect.value = I18n.lang;
-  langSelect?.addEventListener("change", async (e) => {
-    const changed = await I18n.setLanguage(e.target.value);
-    if (changed) loadPage(getCurrentPage());
-  });
 
   setInterval(tickClock, 1000);
   tickClock();

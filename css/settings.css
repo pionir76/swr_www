@@ -310,6 +310,7 @@
   gap: 14px;
 }
 
+.maintenance-right-col .maintenance-lang-card { flex: 0 0 auto; }
 .maintenance-right-col .maintenance-param-card { flex: 0 0 auto; }
 .maintenance-right-col .maintenance-firmware-card { flex: 1; }
 
@@ -792,7 +793,8 @@
   gap: 10px;
 }
 
-.ntp-row .input {
+.ntp-row .input,
+.ntp-row .select {
   min-width: 0;
 }
 
@@ -880,6 +882,10 @@
   color: #ffb020;
   font-size: 12px;
   font-weight: 800;
+}
+
+.maintenance-lang-card .ntp-row {
+  margin-bottom: 10px;
 }
 
 /* Parameter backup / restore */

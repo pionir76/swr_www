@@ -1,0 +1,18 @@
+{
+  "format": "whmi.tags",
+  "version": "0.1",
+  "tags": [
+    { "id": "TK1_LEVEL",  "name": "1번 탱크 수위",   "device": "PLC-01",   "type": "number", "unit": "%",    "min": 0,   "max": 100,  "decimals": 1, "access": "r" },
+    { "id": "TK2_LEVEL",  "name": "2번 탱크 수위",   "device": "PLC-01",   "type": "number", "unit": "m",    "min": 0,   "max": 5,    "decimals": 2, "access": "r" },
+    { "id": "TK1_TEMP",   "name": "1번 탱크 온도",   "device": "TEMP-01",  "type": "number", "unit": "℃",   "min": -20, "max": 120,  "decimals": 1, "access": "r" },
+    { "id": "LINE_PRESS", "name": "토출 라인 압력",  "device": "PRESS-01", "type": "number", "unit": "bar",  "min": 0,   "max": 10,   "decimals": 2, "access": "r" },
+    { "id": "FLOW_RATE",  "name": "토출 유량",       "device": "FLOW-01",  "type": "number", "unit": "m³/h", "min": 0,   "max": 250,  "decimals": 1, "access": "r" },
+    { "id": "MOTOR_RPM",  "name": "P1 모터 회전수",  "device": "INV-01",   "type": "number", "unit": "rpm",  "min": 0,   "max": 1800, "decimals": 0, "access": "r" },
+    { "id": "LEVEL_SP",   "name": "수위 설정값",     "device": "PLC-01",   "type": "number", "unit": "%",    "min": 10,  "max": 95,   "decimals": 1, "access": "rw" },
+    { "id": "ALARM_HI",   "name": "고수위 경보",     "device": "PLC-01",   "type": "bool",   "access": "r" },
+    { "id": "PUMP1_RUN",  "name": "P1 운전 상태",    "device": "PLC-01",   "type": "bool",   "access": "r" },
+    { "id": "PUMP1_CMD",  "name": "P1 운전 지령",    "device": "PLC-01",   "type": "bool",   "access": "rw" },
+    { "id": "PUMP2_RUN",  "name": "P2 운전 상태",    "device": "PLC-01",   "type": "bool",   "access": "r" },
+    { "id": "PUMP2_CMD",  "name": "P2 운전 지령",    "device": "PLC-01",   "type": "bool",   "access": "rw" }
+  ]
+}

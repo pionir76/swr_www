@@ -200,7 +200,7 @@ const PageLoader = (() => {
   function showError(msg, retryFn) {
     if (!overlay) return;
     loadEl.hidden     = true;
-    msgEl.textContent = msg ?? '서버에 연결할 수 없습니다.';
+    msgEl.textContent = msg ?? I18n.t('common.connectionFailedDesc');
     _retryFn          = retryFn ?? null;
     retryBtn.hidden   = !retryFn;
     errorEl.hidden    = false;

@@ -80,12 +80,12 @@
             <input class="input" id="dfSlave" value="1" />
           </div>
 
-          <div class="form-field">
+          <div class="form-field" id="dfIpField">
             <label>IP 주소</label>
             <input class="input" id="dfIp" placeholder="TCP 장비일 때 사용" />
           </div>
 
-          <div class="form-field">
+          <div class="form-field" id="dfPortField">
             <label>TCP 포트</label>
             <input class="input" id="dfPort" value="502" />
           </div>
@@ -96,8 +96,15 @@
           </div>
 
           <div class="form-field">
-            <label>Polling Interval (ms)</label>
+            <div class="poll-mode-row">
+              <label>Polling Interval (ms)</label>
+              <span class="poll-mode-switch-wrap">
+                <span class="poll-mode-tag">AUTO</span>
+                <label class="switch sm"><input type="checkbox" id="dfPollAutoToggle" checked><span></span></label>
+              </span>
+            </div>
             <input class="input" id="dfInterval" value="1000" />
+            <p class="poll-mode-hint" id="dfIntervalHint"></p>
           </div>
 
           <div class="form-field">
@@ -115,6 +122,10 @@
         </div>
 
         <div class="device-meta-card">
+          <div class="meta-row">
+            <span>실제 적용 주기</span>
+            <b class="muted-text" id="dfEffectiveInterval">-</b>
+          </div>
           <div class="meta-row">
             <span>최근 통신 시각</span>
             <b id="dfLastComm">-</b>
@@ -186,12 +197,12 @@
         <input class="input" id="ndSlave" value="1" />
       </div>
 
-      <div class="form-field">
+      <div class="form-field" id="ndIpField">
         <label>IP 주소</label>
         <input class="input" id="ndIp" placeholder="TCP 장비일 때 사용" />
       </div>
 
-      <div class="form-field">
+      <div class="form-field" id="ndPortField">
         <label>TCP 포트</label>
         <input class="input" id="ndPort" value="502" />
       </div>
@@ -202,8 +213,15 @@
       </div>
 
       <div class="form-field">
-        <label>Polling Interval (ms)</label>
+        <div class="poll-mode-row">
+          <label>Polling Interval (ms)</label>
+          <span class="poll-mode-switch-wrap">
+            <span class="poll-mode-tag">AUTO</span>
+            <label class="switch sm"><input type="checkbox" id="ndPollAutoToggle" checked><span></span></label>
+          </span>
+        </div>
         <input class="input" id="ndInterval" value="5000" />
+        <p class="poll-mode-hint" id="ndIntervalHint"></p>
       </div>
 
       <div class="form-field">

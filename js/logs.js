@@ -77,7 +77,7 @@
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!logs.length) {
-      tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#5a6b7e;padding:36px 0">로그 없음</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#5a6b7e;padding:36px 0">${I18n.t('logs.emptyMessage')}</td></tr>`;
       return;
     }
     const frag = document.createDocumentFragment();
@@ -101,11 +101,17 @@
     const end        = start - 1 + logs.length;
 
     if (countLabel) {
-      countLabel.textContent = serverTotal ? `(${serverTotal.toLocaleString()}건)` : '';
+      countLabel.textContent = serverTotal
+        ? I18n.t('logs.countLabel', { count: serverTotal.toLocaleString() })
+        : '';
     }
     if (pageInfo) {
       pageInfo.textContent = serverTotal
-        ? `${start.toLocaleString()}–${end.toLocaleString()} / 전체 ${serverTotal.toLocaleString()}건`
+        ? I18n.t('logs.pageInfoText', {
+            start: start.toLocaleString(),
+            end: end.toLocaleString(),
+            total: serverTotal.toLocaleString(),
+          })
         : '';
     }
     renderPagination(totalPages);

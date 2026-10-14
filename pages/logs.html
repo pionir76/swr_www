@@ -1,8 +1,8 @@
 <section class="page logs-page">
   <div class="page-title-row">
     <div>
-      <h1>로그</h1>
-      <p>시스템 이벤트 및 통신 오류 기록을 조회합니다.</p>
+      <h1 data-i18n="logs.pageTitle">로그</h1>
+      <p data-i18n="logs.pageDesc">시스템 이벤트 및 통신 오류 기록을 조회합니다.</p>
     </div>
   </div>
 
@@ -12,25 +12,25 @@
     <article class="panel logs-filter-panel">
       <div class="logs-filter-grid">
         <div class="logs-field-group">
-          <label class="logs-field-label">레벨</label>
+          <label class="logs-field-label" data-i18n="logs.levelLabel">레벨</label>
           <select class="select" id="logLevelSel">
-            <option value="">전체</option>
+            <option value="" data-i18n="logs.levelAll">전체</option>
             <option value="INFO">INFO</option>
             <option value="WARN">WARN</option>
             <option value="ERROR">ERROR</option>
           </select>
         </div>
         <div class="logs-field-group">
-          <label class="logs-field-label">시작일</label>
+          <label class="logs-field-label" data-i18n="logs.fromDateLabel">시작일</label>
           <input type="date" class="input" id="logFromDate">
         </div>
         <div class="logs-field-group">
-          <label class="logs-field-label">종료일</label>
+          <label class="logs-field-label" data-i18n="logs.toDateLabel">종료일</label>
           <input type="date" class="input" id="logToDate">
         </div>
         <div class="logs-field-group logs-field-btns">
-          <button class="btn primary" id="logSearchBtn">조회</button>
-          <button class="btn ghost"   id="logResetBtn">초기화</button>
+          <button class="btn primary" id="logSearchBtn" data-i18n="logs.searchBtn">조회</button>
+          <button class="btn ghost"   id="logResetBtn" data-i18n="logs.resetBtn">초기화</button>
         </div>
       </div>
     </article>
@@ -40,7 +40,7 @@
       <article class="logs-kpi-card">
         <div class="logs-kpi-icon total">☷</div>
         <div>
-          <span class="logs-kpi-label">전체</span>
+          <span class="logs-kpi-label" data-i18n="logs.kpiTotalLabel">전체</span>
           <div class="logs-kpi-value" id="logKpiTotal">—</div>
         </div>
       </article>
@@ -70,16 +70,16 @@
     <!-- 로그 테이블 -->
     <article class="panel logs-table-panel">
       <div class="panel-header">
-        <h2><span class="header-icon">☷</span>로그 목록 <small id="logCountLabel"></small></h2>
+        <h2><span class="header-icon">☷</span><span data-i18n="logs.tableTitle">로그 목록</span> <small id="logCountLabel"></small></h2>
       </div>
 
       <div class="logs-table-wrap">
         <table class="logs-table">
           <thead>
             <tr>
-              <th class="col-time">시간</th>
-              <th class="col-level">레벨</th>
-              <th>메시지</th>
+              <th class="col-time" data-i18n="logs.colTime">시간</th>
+              <th class="col-level" data-i18n="logs.colLevel">레벨</th>
+              <th data-i18n="logs.colMessage">메시지</th>
             </tr>
           </thead>
           <tbody id="logTableBody"></tbody>

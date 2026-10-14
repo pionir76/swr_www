@@ -1,0 +1,16 @@
+{
+  "format": "whmi.project",
+  "version": "0.1",
+  "name": "1공장 용수 설비",
+  "tags": "tags.json",
+  "screens": [
+    { "id": "main", "file": "screens/main.json" }
+  ],
+  "startScreen": "main",
+  "dataSource": {
+    "type": "http",
+    "readUrl": "/api/values",
+    "writeUrl": "/api/write",
+    "pollMs": 1000
+  }
+}
