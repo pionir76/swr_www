@@ -16,7 +16,28 @@
   const WHMI = (window.WHMI = {
     svg,
     register(type, impl) { registry[type] = impl; },
+    // 편집기(whmi-editor.js)용 — 등록된 위젯 타입 목록과 구현 조회
+    types() { return Object.keys(registry); },
+    impl(type) { return registry[type]; },
   });
+
+  // 위젯 하나를 parent 아래에 그린다 — 실행 런타임과 편집기 미리보기가 같은 코드로 그린다.
+  // 반환: { g, p, inst }. 알 수 없는 타입이면 점선 상자로 대체(inst는 빈 객체).
+  function drawWidget(parent, w, ctx, before) {
+    const impl = registry[w.type];
+    const g = svg('g', { transform: `translate(${w.x},${w.y})`, class: `w w-${w.type}`, 'data-id': w.id });
+    parent.insertBefore(g, before || null);
+    if (!impl) {
+      console.warn(`[whmi] 알 수 없는 위젯 타입: ${w.type} (${w.id})`);
+      svg('rect', { width: w.w, height: w.h, class: 'unknown' }, g);
+      svg('text', { x: 4, y: 16, class: 'unknown-text' }, g).textContent = `? ${w.type}`;
+      return { g, p: {}, inst: {} };
+    }
+    const p = Object.assign({}, impl.defaults, w.props);
+    const inst = impl.create(g, w, p, ctx) || {};
+    return { g, p, inst };
+  }
+  WHMI.drawWidget = drawWidget;
 
   async function loadJson(url) {
     const res = await fetch(url, { cache: 'no-store' });
@@ -81,8 +102,10 @@
       if (!this.root) {
         this.root = document.createElement('div');
         this.root.className = 'dlg-backdrop';
-        document.body.appendChild(this.root);
       }
+      // 전체 화면 중엔 전체 화면 요소 밖(body)에 붙이면 보이지 않으므로 그 안에 띄운다
+      const host = document.fullscreenElement || document.webkitFullscreenElement || document.body;
+      if (this.root.parentNode !== host) host.appendChild(this.root);
       this.root.innerHTML = `<div class="dlg">${html}</div>`;
       this.root.hidden = false;
       return this.root.querySelector('.dlg');
@@ -140,6 +163,9 @@
     });
   }
 
+  WHMI.dialog = { open: (html) => dlg.open(html), close: () => dlg.close(), confirm: confirmDialog };
+  WHMI.esc = esc;
+
   // ---- 화면 런타임 ---------------------------------------------------------
   class ScreenRuntime {
     constructor(container, screen, tags, source, status, nav) {
@@ -179,21 +205,13 @@
 
       // 배열 순서 = 그리기 순서(z-order)
       for (const w of this.screen.widgets) {
-        const impl = registry[w.type];
-        const g = svg('g', { transform: `translate(${w.x},${w.y})`, class: `w w-${w.type}`, 'data-id': w.id }, root);
-        if (!impl) {
-          console.warn(`[whmi] 알 수 없는 위젯 타입: ${w.type} (${w.id})`);
-          svg('rect', { width: w.w, height: w.h, class: 'unknown' }, g);
-          svg('text', { x: 4, y: 16, class: 'unknown-text' }, g).textContent = `? ${w.type}`;
-          continue;
-        }
+        if (!registry[w.type]) { drawWidget(root, w, ctx); continue; }
         if (w.tag && !this.tags[w.tag]) console.warn(`[whmi] 정의되지 않은 태그: ${w.tag} (${w.id})`);
         // enableWhen: { tag, equals } — 다른 태그 값이 조건과 같을 때만 쓰기 가능하게 한다
         // (예: 수동출력 입력은 제어모드가 수동일 때만). 조건 태그에 바인딩된 위젯이
         // 따로 없어도 값을 받아야 하므로 폴링 대상에 추가해둔다.
         if (w.enableWhen && w.enableWhen.tag) this.extraPollTags.add(w.enableWhen.tag);
-        const p = Object.assign({}, impl.defaults, w.props);
-        const inst = impl.create(g, w, p, ctx) || {};
+        const { g, p, inst } = drawWidget(root, w, ctx);
         if (w.tag && inst.update) {
           if (!this.bindings.has(w.tag)) this.bindings.set(w.tag, []);
           this.bindings.get(w.tag).push({ w, p, inst, g });
@@ -290,7 +308,8 @@
   }
 
   // ---- 부트스트랩 ----------------------------------------------------------
-  WHMI.boot = async function (container, statusFn) {
+  // opts.screen: 처음 띄울 화면 id(디자인 모드에서 돌아올 때 편집하던 화면으로)
+  WHMI.boot = async function (container, statusFn, opts = {}) {
     const params = new URLSearchParams(location.search);
     // swr_web SPA는 해시 라우팅이라 ?project= 쿼리스트링을 쓰기 어려우므로, 호스트 페이지가
     // window.WHMI_DEFAULT_PROJECT로 기본 경로를 지정할 수 있게 한다(없으면 원래 기본값 유지).
@@ -315,13 +334,33 @@
 
     const source = isSwrHmi ? new SwrHmiSource(project.dataSource) : new HttpSource(project.dataSource || {});
 
+    // screensSource: "api"면 화면 목록/시작 화면/화면 내용을 디바이스에 저장된 것에서 읽는다
+    // (GET /api/hmi/project, /api/hmi/screens/{id}). 생략 시 project.json의 screens[].file
+    // 정적 파일(WHMI 원본 데모 방식).
+    const fromApi = project.screensSource === 'api';
+    if (fromApi) {
+      const res = await apiFetch('/api/hmi/project');
+      if (!res.ok) throw new Error(`/api/hmi/project: HTTP ${res.status}`);
+      const p = await res.json();
+      project.name = p.name;
+      project.startScreen = p.startScreen;
+      project.screens = p.screens;
+      project.revision = p.revision;
+    }
+
     // 화면 JSON은 한 번 불러오면 캐시 — 같은 화면으로 돌아올 때 재요청하지 않는다.
     const screenCache = {};
     async function loadScreen(screenId) {
       if (!screenCache[screenId]) {
-        const ref = project.screens.find((s) => s.id === screenId) || project.screens[0];
-        if (!ref) throw new Error(`알 수 없는 화면: ${screenId}`);
-        screenCache[screenId] = await loadJson(base + ref.file);
+        if (fromApi) {
+          const res = await apiFetch(`/api/hmi/screens/${encodeURIComponent(screenId)}`);
+          if (!res.ok) throw new Error(`화면 "${screenId}"을(를) 불러올 수 없습니다 (HTTP ${res.status})`);
+          screenCache[screenId] = (await res.json()).content;
+        } else {
+          const ref = project.screens.find((s) => s.id === screenId) || project.screens[0];
+          if (!ref) throw new Error(`알 수 없는 화면: ${screenId}`);
+          screenCache[screenId] = await loadJson(base + ref.file);
+        }
       }
       return screenCache[screenId];
     }
@@ -331,7 +370,14 @@
     let rt = null;
     const nav = {
       goto: async (screenId) => {
-        const screen = await loadScreen(screenId);
+        let screen;
+        try {
+          screen = await loadScreen(screenId);
+        } catch (e) {
+          if (!rt) throw e;               // 첫 화면이면 페이지 오류로 처리
+          statusFn('err', e.message);     // 화면 전환 중이면 현재 화면은 그대로 두고 알림만
+          return rt;
+        }
         if (rt) rt.destroy();
         document.title = screen.title || project.name;
         rt = new ScreenRuntime(container, screen, tags, source, statusFn, nav);
@@ -340,12 +386,22 @@
       },
     };
 
-    const screenId = params.get('screen') || project.startScreen;
-    await nav.goto(screenId);
+    const empty = !project.screens || project.screens.length === 0;
+    if (empty) {
+      // 등록된 화면이 없음 — 편집기에서 화면을 만들기 전 상태
+      container.innerHTML = '<div class="whmi-empty">등록된 화면이 없습니다.</div>';
+      statusFn('ok', '화면 없음');
+    } else {
+      const wanted = opts.screen && project.screens.some((s) => s.id === opts.screen) ? opts.screen : null;
+      const screenId = wanted || params.get('screen') || project.startScreen || project.screens[0].id;
+      await nav.goto(screenId);
+    }
 
     return {
       project,
-      get screen() { return rt.screen; },
+      tags,
+      empty,
+      get screen() { return rt && rt.screen; },
       get runtime() { return rt; },
       goto: nav.goto,
     };

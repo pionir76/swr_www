@@ -1,12 +1,7 @@
 {
   "format": "whmi.project",
-  "version": "0.1",
-  "name": "냉동 설비 통합 모니터링",
-  "screens": [
-    { "id": "main", "file": "screens/main.json" },
-    { "id": "chiller", "file": "screens/chiller.json" }
-  ],
-  "startScreen": "main",
+  "version": "0.2",
+  "screensSource": "api",
   "dataSource": {
     "type": "swr-hmi",
     "pollMs": 1000

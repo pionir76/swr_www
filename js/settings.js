@@ -401,7 +401,8 @@
 
     const warningsEl = $('#restoreWarnings');
     if (warningsEl) {
-      const warns = data.warnings ?? [];
+      // 'HMI만 복원 + 레지스터 미복원' 경고는 백엔드가 항상 내려준다 — 그 조합일 때만 아래 옵션 영역에서 표시
+      const warns = (data.warnings ?? []).filter((w) => !/without registers/i.test(w));
       if (warns.length) {
         warningsEl.innerHTML = warns.map((w) => `<div>⚠ ${w}</div>`).join('');
         warningsEl.hidden = false;
@@ -418,12 +419,13 @@
         { key: 'registers', label: '레지스터 목록', defaultOn: true,  showCount: true },
         { key: 'users',     label: '사용자 계정',   defaultOn: true,  showCount: true },
         { key: 'network',   label: '네트워크 설정', defaultOn: false, warn: 'IP 충돌 가능' },
+        { key: 'hmi',       label: 'HMI 화면·태그', defaultOn: true,  showCount: true, countUnit: '개 화면', warn: '기존 HMI 전체 교체' },
       ];
-      optEl.innerHTML = ITEMS.map(({ key, label, defaultOn, showCount, warn }) => {
+      optEl.innerHTML = ITEMS.map(({ key, label, defaultOn, showCount, countUnit = '개', warn }) => {
         const item = data[key];
         if (!item?.available) return '';
         const countBadge = showCount && item.count
-          ? `<span class="restore-option-count">${item.count.toLocaleString()}개</span>` : '';
+          ? `<span class="restore-option-count">${item.count.toLocaleString()}${countUnit}</span>` : '';
         const warnBadge = warn
           ? `<span class="restore-option-warn">⚠ ${warn}</span>` : '';
         return `
@@ -434,7 +436,16 @@
             </label>
             ${countBadge}${warnBadge}
           </div>`;
-      }).join('');
+      }).join('') + `
+        <div class="restore-warnings" id="restoreHmiWarn" hidden>
+          ⚠ 레지스터를 복원하지 않고 HMI만 복원하면, 현재 장비에 없는 레지스터를 가리키는 HMI 태그는 삭제됩니다.
+        </div>`;
+      const updateHmiWarn = () => {
+        const checked = (k) => !!$(`[data-opt="${k}"]`, optEl)?.checked;
+        $('#restoreHmiWarn', optEl).hidden = !(checked('hmi') && !checked('registers'));
+      };
+      optEl.onchange = updateHmiWarn;
+      updateHmiWarn();
     }
   }
 

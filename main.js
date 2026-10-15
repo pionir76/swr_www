@@ -274,12 +274,29 @@ function updateActiveMenu(pageName) {
   });
 }
 
-window.addEventListener("hashchange", (e) => {
+// ── 페이지 이탈 가드 ──────────────────────────────────────────────────────────
+// 저장 안 한 편집이 있는 페이지(HMI 편집기)가 등록한다. guard()는 Promise<boolean> —
+// false면 이동을 취소하고 주소를 원래대로 돌린다. 페이지가 바뀌면(spa:beforeload) 자동 해제.
+let leaveGuard = null;
+window.setLeaveGuard = (fn) => { leaveGuard = fn || null; };
+window.addEventListener("spa:beforeload", () => { leaveGuard = null; });
+
+window.addEventListener("hashchange", async (e) => {
   const prev = new URL(e.oldURL).hash.replace("#", "");
   const next = getCurrentPage();
 
   // settings 내부 탭 간 이동은 settings.js가 show/hide로 처리 — 페이지 재로드 생략
   if (next === "settings" && prev.startsWith("settings")) return;
+
+  if (leaveGuard) {
+    const guard = leaveGuard;
+    // 일단 주소를 되돌려 두고(hashchange 없이) 확인 후 다시 이동
+    history.replaceState(null, "", e.oldURL);
+    if (!(await guard())) return;
+    leaveGuard = null;
+    window.location.hash = `#${next}`;
+    return;
+  }
   loadPage(next);
 });
 

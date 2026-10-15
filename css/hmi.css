@@ -36,8 +36,10 @@
   display: flex;
   flex-direction: column;
 }
+.hmi-page #pageContent[hidden] { display: none; }
 
 .hmi-stage-panel {
+  position: relative;
   flex: 1;
   min-height: 0;
   padding: 0;
@@ -48,6 +50,42 @@
   width: 100%;
   height: 100%;
 }
+
+/* ── 실행 모드 전체 화면 ─────────────────────────────────────── */
+.hmi-fs-btn {
+  margin-left: 8px;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.hmi-stage-panel:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+  background: #0e1116;
+}
+
+.hmi-fs-exit {
+  display: none;
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.45);
+  color: #e6e9ef;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+
+.hmi-fs-exit:hover { opacity: 1; }
+.hmi-stage-panel:fullscreen .hmi-fs-exit { display: block; }
 
 .whmi-screen { width: 100%; height: 100%; display: block; user-select: none; }
 .whmi-screen text { font-family: inherit; }
@@ -96,7 +134,238 @@
 .dlg p { margin: 0 0 14px; font-size: 16px; }
 .dlg input { width: 100%; box-sizing: border-box; font-size: 22px; padding: 8px; background: #0b0f14; color: #e6e9ef; border: 1px solid #3fa7ff; border-radius: 6px; }
 .dlg-hint { color: #8a93a3; font-size: 12px; margin-top: 6px; }
+.dlg-detail { white-space: pre-line; margin: -6px 0 12px; line-height: 1.5; max-width: 460px; }
 .dlg-err { color: #e5534b; font-size: 13px; min-height: 18px; margin-top: 4px; }
 .dlg-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .dlg button { font: inherit; padding: 8px 18px; border-radius: 6px; border: 1px solid #2e3846; background: #2a313c; color: #e6e9ef; cursor: pointer; }
 .dlg button.primary { background: #2d6cdf; border-color: #2d6cdf; }
+
+/* 등록된 화면이 없을 때(편집기에서 화면을 만들기 전) */
+.whmi-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #8a93a3;
+  font-size: 15px;
+}
+
+/* ── 디자인 모드(편집기, whmi-editor.js) ─────────────────────────── */
+.hmi-page.designing .hmi-status .btn { display: none; }
+
+.hmi-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0e1116;
+  border: 1px solid #2e3846;
+  border-radius: 10px;
+  overflow: hidden;
+  color: #e6e9ef;
+  font-size: 13px;
+}
+.hmi-editor[hidden] { display: none; }
+.hmi-editor:fullscreen { width: 100vw; height: 100vh; border: 0; border-radius: 0; }
+
+.ed-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #2e3846;
+  background: #161b23;
+  flex-shrink: 0;
+  flex-wrap: wrap;   /* 작은 패널에서는 두 줄로 */
+}
+.ed-title { font-weight: 800; color: #3fa7ff; margin-right: 6px; }
+.ed-spacer { flex: 1; }
+/* 메시지는 도구줄에 남는 공간만 쓴다(길어도 줄바꿈을 일으키지 않고 말줄임) */
+.ed-msg { flex: 1 1 0; min-width: 0; text-align: right; color: #8a93a3; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-msg.is-err { color: #e5534b; }
+.ed-msg.is-ok  { color: #2ecc71; }
+.ed-screen-sel,
+.ed-grid-size,
+.ed-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid #2e3846;
+  background: #222a35;
+  color: #e6e9ef;
+  font: inherit;
+  cursor: pointer;
+}
+.ed-btn:hover { background: #2a3442; }
+.ed-btn:disabled { opacity: .4; cursor: default; }
+.ed-btn.primary { background: #2d6cdf; border-color: #2d6cdf; }
+.ed-btn.save:not(:disabled) { background: #2b7a4b; border-color: #2b7a4b; font-weight: 700; }
+
+.ed-body { flex: 1; min-height: 0; display: flex; }
+
+.ed-palette,
+.ed-inspector {
+  flex-shrink: 0;
+  background: #161b23;
+  overflow-y: auto;
+}
+.ed-palette   { width: 140px; border-right: 1px solid #2e3846; }
+.ed-inspector { width: 240px; border-left: 1px solid #2e3846; }
+.ed-pane-title {
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  color: #8a93a3;
+  border-bottom: 1px solid #222a35;
+}
+.ed-palette-list { list-style: none; margin: 0; padding: 4px; }
+.ed-palette-item {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: grab;
+  user-select: none;
+}
+.ed-palette-item:hover { background: #222a35; }
+.ed-palette-item small { color: #66707f; font-size: 10px; }
+
+.ed-canvas {
+  flex: 1;
+  min-width: 0;
+  padding: 16px;
+  background: #0a0d12;
+}
+.ed-svg { overflow: visible; touch-action: none; }
+/* 편집 중엔 위젯 자체 동작(버튼 클릭 등)을 막는다 — 선택은 overlay가 담당 */
+.ed-widgets { pointer-events: none; }
+.ed-bounds { fill: none; stroke: #3a4555; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
+
+.ed-insp-body { padding: 10px; }
+.ed-insp-section { font-weight: 800; margin-bottom: 6px; }
+.ed-kv { display: grid; grid-template-columns: 70px 1fr; gap: 4px 8px; margin: 0 0 12px; }
+.ed-kv dt { color: #8a93a3; }
+.ed-kv dd { margin: 0; word-break: break-all; }
+.ed-hint { color: #66707f; font-size: 12px; }
+
+.ed-sep { width: 1px; height: 20px; background: #2e3846; margin: 0 4px; }
+.ed-check { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+.ed-grid-size { padding: 0 4px; }
+.ed-pos { color: #66707f; font-size: 12px; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
+.ed-dirty { color: #ffb020; font-size: 12px; font-weight: 700; }
+
+/* 격자 / 선택 표시 — 확대/축소와 무관하게 1px 선 */
+.ed-grid-line { fill: none; stroke: rgba(255, 255, 255, 0.06); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ed-grid-line.major { stroke: rgba(255, 255, 255, 0.14); }
+.ed-sel { fill: none; stroke: #3fa7ff; stroke-width: 1.5; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; pointer-events: none; }
+.ed-sel.primary { stroke-dasharray: none; stroke-width: 2; }
+.ed-handle { fill: #fff; stroke: #2d6cdf; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ed-marquee { fill: rgba(63, 167, 255, 0.10); stroke: #3fa7ff; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
+
+/* 위젯 목록에서 끌어올 때 보이는 상자(실제 놓일 크기) */
+.ed-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed #3fa7ff;
+  border-radius: 4px;
+  background: rgba(63, 167, 255, 0.12);
+  color: #cfe6ff;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* 속성 창 — 정렬 도구 */
+.ed-insp-sub { margin: 10px 0 4px; font-size: 12px; font-weight: 700; color: #c4ccd8; }
+.ed-insp-sub:first-child { margin-top: 0; }
+.ed-insp-sub small { font-weight: 400; color: #66707f; margin-left: 4px; }
+.ed-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.ed-tool {
+  width: 30px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid #2e3846;
+  background: #222a35;
+  color: #c4ccd8;
+  cursor: pointer;
+}
+.ed-tool:hover { background: #2a3442; color: #fff; }
+.ed-tool:disabled { opacity: .35; cursor: default; }
+.ed-insp-section { margin-top: 12px; }
+.ed-insp-section:first-child { margin-top: 0; }
+
+/* 속성 창 — 위젯 필드 / JSON 편집 */
+.ed-type { font-weight: 400; color: #66707f; font-size: 11px; }
+.ed-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+.ed-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ed-field.wide { grid-column: 1 / -1; }
+.ed-field span { font-size: 11px; color: #8a93a3; }
+.ed-field input,
+.ed-field select,
+.ed-json {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid #2e3846;
+  background: #0b0f14;
+  color: #e6e9ef;
+  font: inherit;
+  font-size: 12px;
+}
+.ed-field input:focus,
+.ed-field select:focus,
+.ed-json:focus { outline: none; border-color: #3fa7ff; }
+.ed-json {
+  display: block;
+  resize: vertical;
+  font-family: "Consolas", "D2Coding", ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  tab-size: 2;
+  white-space: pre;
+}
+.ed-form-err,
+.ed-json-err { color: #e5534b; font-size: 12px; min-height: 16px; margin-top: 3px; word-break: break-all; }
+.ed-json-btns { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* 화면 설정(속성 창) */
+.ed-form .wide { grid-column: 1 / -1; }
+.ed-color { display: flex; gap: 6px; }
+.ed-color input[type="color"] { width: 36px; padding: 0 2px; flex-shrink: 0; }
+.ed-warn { color: #ffb020; font-size: 12px; margin: 6px 0; }
+
+/* 편집기 대화상자(새 화면 / 화면 관리) — 기본 .dlg input(큰 숫자 입력용)보다 작게 */
+.dlg .ed-dlg { width: 380px; max-width: 100%; }
+.dlg .ed-dlg input,
+.dlg .ed-dlg select {
+  font-size: 14px;
+  padding: 6px 8px;
+  width: 100%;
+  box-sizing: border-box;
+  background: #0b0f14;
+  color: #e6e9ef;
+  border: 1px solid #2e3846;
+  border-radius: 6px;
+}
+.dlg .ed-dlg input:focus,
+.dlg .ed-dlg select:focus { outline: none; border-color: #3fa7ff; }
+.ed-dlg-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; font-size: 13px; color: #c4ccd8; }
+.ed-dlg-field small { color: #66707f; font-size: 11px; }
+.ed-dlg-size { display: flex; align-items: center; gap: 8px; margin: -4px 0 10px; color: #8a93a3; }
+.ed-scr-list { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow-y: auto; margin-bottom: 8px; }
+.ed-scr-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; background: #161b23; }
+.ed-scr-name { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-scr-name small { color: #66707f; }
+.ed-scr-name em { color: #3fa7ff; font-style: normal; font-size: 11px; }
+.dlg .ed-scr-row button { padding: 3px 8px; font-size: 12px; }
+.dlg .ed-scr-row button:disabled { opacity: .3; cursor: default; }
+.dlg .ed-scr-star { color: #4a5566; background: transparent; border-color: transparent; font-size: 16px; padding: 0 4px; }
+.dlg .ed-scr-star.on { color: #ffc940; }
+.dlg .ed-scr-del.confirm { background: #a33a35; border-color: #a33a35; color: #fff; }
