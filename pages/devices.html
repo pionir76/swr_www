@@ -104,7 +104,6 @@
               </span>
             </div>
             <input class="input" id="dfInterval" value="1000" />
-            <p class="poll-mode-hint" id="dfIntervalHint"></p>
           </div>
 
           <div class="form-field">
@@ -118,6 +117,14 @@
           <div class="form-field">
             <label>Retry Count</label>
             <input class="input" id="dfRetry" value="3" />
+          </div>
+
+          <div class="form-field">
+            <label>통신 활성화</label>
+            <select class="select" id="dfEnabled">
+              <option value="true" selected>활성</option>
+              <option value="false">비활성</option>
+            </select>
           </div>
         </div>
 
@@ -221,7 +228,6 @@
           </span>
         </div>
         <input class="input" id="ndInterval" value="5000" />
-        <p class="poll-mode-hint" id="ndIntervalHint"></p>
       </div>
 
       <div class="form-field">
@@ -235,6 +241,14 @@
       <div class="form-field">
         <label>Retry Count</label>
         <input class="input" id="ndRetry" value="3" />
+      </div>
+
+      <div class="form-field">
+        <label>통신 활성화</label>
+        <select class="select" id="ndEnabled">
+          <option value="true" selected>활성</option>
+          <option value="false">비활성</option>
+        </select>
       </div>
 
       <p class="form-error" id="ndFormMsg" hidden></p>

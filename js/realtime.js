@@ -5,6 +5,7 @@
   let isFetching    = false;
   let destroyed     = false;
   let deviceMap     = {};
+  let disabledDevs  = new Set();   // 비활성 장비 id
   let lastRegs      = [];
   let selectedRegId = null;
   let currentPage   = 1;
@@ -22,6 +23,7 @@
   const filterType     = $('#filterType');
   const searchInput    = $('#searchInput');
   const filterResetBtn  = $('#filterResetBtn');
+  const hideDisabledCb  = $('#hideDisabledToggle');
   const pageSizeSelect  = $('#pageSizeSelect');
   const pageInfoEl      = $('#pageInfoEl');
   const paginationEl    = $('#paginationEl');
@@ -34,17 +36,21 @@
       if (!res.ok) return;
       const data = await res.json();
       deviceMap = {};
+      disabledDevs = new Set();
       (data.devices ?? []).forEach((d) => {
         deviceMap[d.id] = d.displayName || d.name || `#${d.id}`;
+        if (d.enabled === false) disabledDevs.add(d.id);
       });
       if (filterDevice) {
+        const keep = filterDevice.value;
         filterDevice.innerHTML = '<option value="">전체</option>';
         Object.entries(deviceMap).forEach(([id, name]) => {
           const opt = document.createElement('option');
           opt.value = id;
-          opt.textContent = name;
+          opt.textContent = disabledDevs.has(Number(id)) ? `${name} (비활성)` : name;
           filterDevice.appendChild(opt);
         });
+        filterDevice.value = keep;
       }
     } catch (_) { /* 장비 목록 실패는 무시 */ }
   }
@@ -75,7 +81,9 @@
   }
 
   // ── 상태 판별 ────────────────────────────────────────────────────
+  // 비활성 장비(사용자가 끈 장비)는 값 유무와 상관없이 'disabled' — 통신 오류와 구분
   function getStatus(r) {
+    if (r.quality === 'disabled') return 'disabled';
     if (!r.isValid)   return 'bad';
     if (r.outOfRange) return 'warn';
     if (r.quality === 'bad' || r.quality === 'normal') return 'stale';
@@ -83,10 +91,10 @@
   }
 
   const STATUS_LABEL = {
-    good: '정상', bad: '통신 오류', warn: '범위 초과', stale: '미갱신',
+    good: '정상', bad: '통신 오류', warn: '범위 초과', stale: '미갱신', disabled: '비활성',
   };
 
-  const QUALITY_CLASS = { good: 'q-good', normal: 'q-normal', bad: 'q-bad' };
+  const QUALITY_CLASS = { good: 'q-good', normal: 'q-normal', bad: 'q-bad', disabled: 'q-disabled' };
 
   const SOURCE_TYPE_LABEL = {
     holding_register: 'Holding Register',
@@ -136,7 +144,11 @@
     const valEl = $('#dtlValue');
     if (valEl) {
       valEl.className = '';
-      if (!r.isValid) {
+      if (r.quality === 'disabled') {
+        // 비활성: 마지막 값을 흐리게(받은 값이 없으면 --)
+        valEl.className = 'disabled-value';
+        valEl.textContent = r.isValid ? `${fmtValue(r.scaledValue, r)} ${r.unit || ''}`.trim() : '--';
+      } else if (!r.isValid) {
         valEl.className = 'error-value';
         valEl.textContent = '--';
       } else if (r.outOfRange) {
@@ -210,13 +222,14 @@
   // ── Summary Cards ────────────────────────────────────────────────
   function updateSummary(registers) {
     const total = registers.length;
-    let good = 0, bad = 0, warn = 0, stale = 0;
+    let good = 0, bad = 0, warn = 0, stale = 0, disabled = 0;
     for (const r of registers) {
       const s = getStatus(r);
       if (s === 'good')       good++;
       else if (s === 'bad')   bad++;
       else if (s === 'warn')  warn++;
       else if (s === 'stale') stale++;
+      else if (s === 'disabled') disabled++;
     }
     const pct = (n) => total ? `${(n / total * 100).toFixed(1)}%` : '';
 
@@ -230,6 +243,8 @@
     set('sumWarnPct',  pct(warn));
     set('sumStale',    stale.toLocaleString());
     set('sumStalePct', pct(stale));
+    set('sumDisabled',    disabled.toLocaleString());
+    set('sumDisabledPct', pct(disabled));
   }
 
   // ── 페이지네이션 ─────────────────────────────────────────────────
@@ -280,7 +295,9 @@
     const typeFilter   = filterType?.value   ?? '';
     const query        = (searchInput?.value ?? '').trim().toLowerCase();
 
+    const hideDisabled = !!hideDisabledCb?.checked;
     const filtered = registers.filter((r) => {
+      if (hideDisabled && r.quality === 'disabled')         return false;
       if (devFilter    && String(r.deviceId) !== devFilter) return false;
       if (statusFilter && getStatus(r) !== statusFilter)    return false;
       if (typeFilter   && r.sourceType !== typeFilter)      return false;
@@ -309,13 +326,15 @@
     tbody.innerHTML = '';
     paged.forEach((r) => {
       const status   = getStatus(r);
-      const devName  = deviceMap[r.deviceId] ?? `#${r.deviceId}`;
+      const devName  = (deviceMap[r.deviceId] ?? `#${r.deviceId}`) + (status === 'disabled' ? ' (비활성)' : '');
       const qClass   = QUALITY_CLASS[r.quality] ?? 'q-bad';
       const modeText = r.readOnly ? 'READ ONLY' : 'READ WRITE';
       const modeCls  = r.readOnly ? 'readonly' : 'readwrite';
 
       let valueCell;
-      if (!r.isValid) {
+      if (status === 'disabled') {
+        valueCell = `<span class="disabled-value" title="비활성 장비 — 마지막 값">${r.isValid ? fmtValue(r.scaledValue, r) : '--'}</span>`;
+      } else if (!r.isValid) {
         valueCell = `<span class="error-value">--</span>`;
       } else if (r.outOfRange) {
         valueCell = `<span class="warning-value">${fmtValue(r.scaledValue, r)}</span>`;
@@ -326,6 +345,7 @@
       const tr = document.createElement('tr');
       tr.dataset.regId = r.id;
       if (r.id === selectedRegId) tr.classList.add('selected-row');
+      if (status === 'disabled') tr.classList.add('row-disabled');
 
       tr.innerHTML = `
         <td><span class="status-label ${status}"><i></i>${STATUS_LABEL[status]}</span></td>
@@ -348,7 +368,7 @@
         showDetail(r);
       });
 
-      if (!r.readOnly) {
+      if (!r.readOnly && status !== 'disabled') {
         tr.querySelector('.mode-badge.readwrite')?.addEventListener('click', (e) => {
           e.stopPropagation();
           openWriteModal(r);
@@ -521,7 +541,9 @@
       hideBusy();
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        showWmError(data.error || `Error (HTTP ${res.status})`);
+        showWmError(data.error === 'device disabled'
+          ? '장비가 비활성 상태라 쓸 수 없습니다. 장비 관리에서 활성화하세요.'
+          : (data.error || `Error (HTTP ${res.status})`));
         wmSubmitBtn.disabled = false;
         return;
       }
@@ -559,6 +581,7 @@
   filterStatus?.addEventListener('change', () => { resetPage(); renderTable(lastRegs); });
   filterType?.addEventListener('change',   () => { resetPage(); renderTable(lastRegs); });
   searchInput?.addEventListener('input',   () => { resetPage(); renderTable(lastRegs); });
+  hideDisabledCb?.addEventListener('change', () => { resetPage(); renderTable(lastRegs); });
 
   pageSizeSelect?.addEventListener('change', () => {
     pageSize = Number(pageSizeSelect.value) || 20;
@@ -571,6 +594,7 @@
     if (filterStatus) filterStatus.value = '';
     if (filterType)   filterType.value   = '';
     if (searchInput)  searchInput.value  = '';
+    if (hideDisabledCb) hideDisabledCb.checked = false;
     resetPage();
     renderTable(lastRegs);
   });

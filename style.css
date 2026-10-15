@@ -488,6 +488,12 @@ tbody tr:hover {
   background: rgba(255, 93, 98, 0.18);
 }
 
+/* 장비 비활성(사용자가 일부러 끈 상태) — 경보색이 아닌 회색 */
+.badge.disabled {
+  color: #b3c0d1;
+  background: rgba(148, 163, 184, 0.16);
+}
+
 .btn {
   width: 120px;
   height: 38px;

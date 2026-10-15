@@ -78,6 +78,15 @@
         <em id="sumStalePct"></em>
       </div>
     </article>
+
+    <article class="summary-card">
+      <div class="summary-icon disabled">OFF</div>
+      <div>
+        <span>비활성</span>
+        <strong id="sumDisabled">—</strong>
+        <em id="sumDisabledPct"></em>
+      </div>
+    </article>
   </section>
 
   <!-- Filter -->
@@ -98,6 +107,7 @@
           <option value="bad">통신 오류</option>
           <option value="warn">범위 초과</option>
           <option value="stale">미갱신</option>
+          <option value="disabled">비활성</option>
         </select>
       </div>
 
@@ -130,6 +140,7 @@
     <article class="panel realtime-table-panel">
       <div class="panel-header">
         <h2>통합 레지스터 목록 <small id="realtimeTotalCount">—</small></h2>
+        <label class="hide-disabled-check"><input type="checkbox" id="hideDisabledToggle"> 비활성 장비 숨기기</label>
       </div>
 
       <div class="realtime-table-wrap">

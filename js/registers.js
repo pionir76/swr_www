@@ -237,7 +237,7 @@
       }
 
       deviceSelect.innerHTML = devices
-        .map((d) => `<option value="${d.id}">${escHtml(d.displayName)} (${escHtml(d.deviceCode)})</option>`)
+        .map((d) => `<option value="${d.id}">${escHtml(d.displayName)} (${escHtml(d.deviceCode)})${d.enabled === false ? " — 비활성" : ""}</option>`)
         .join("");
 
       await loadRegisters(devices[0].id);

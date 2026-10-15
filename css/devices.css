@@ -109,16 +109,7 @@
   transform: translateX(14px);
 }
 
-.poll-mode-hint {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: #8fa5bc;
-}
 
-.poll-mode-hint.warn {
-  color: #ffb020;
-  font-weight: 700;
-}
 
 #ndCancelBtn {
   width: 120px;
@@ -153,3 +144,14 @@
     flex: 1;
   }
 }
+
+/* ── 장비 활성/비활성 ─────────────────────────────────────────── */
+.device-list-panel th,
+.device-list-panel td { white-space: nowrap; padding: 0 12px; }
+/* 장비명·IP는 길면 단어 단위로만 줄바꿈(글자 단위로 쪼개지지 않게 최소 폭) */
+.device-list-panel td:nth-child(3) { white-space: normal; min-width: 96px; }
+.device-list-panel td:nth-child(6) { white-space: normal; min-width: 100px; }
+/* 상태 배지는 문구 길이와 상관없이 같은 폭 */
+.device-list-panel .state-col .badge { width: 62px; min-width: 0; padding: 0; }
+/* 비활성 장비 행 — 체크박스·상태 칸은 그대로 두고 나머지만 흐리게 */
+.device-row.disabled-row td:not(:first-child):not(.state-col) { opacity: 0.5; }

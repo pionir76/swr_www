@@ -41,10 +41,10 @@
   const dfPortField  = $("#dfPortField");
   const dfTimeout    = $("#dfTimeout");
   const dfInterval   = $("#dfInterval");
-  const dfIntervalHint = $("#dfIntervalHint");
   const dfPollAutoToggle = $("#dfPollAutoToggle");
   const dfByteOrder  = $("#dfByteOrder");
   const dfRetry      = $("#dfRetry");
+  const dfEnabled    = $("#dfEnabled");
   const dfEffectiveInterval = $("#dfEffectiveInterval");
   const dfLastComm   = $("#dfLastComm");
   const dfCommState  = $("#dfCommState");
@@ -72,10 +72,10 @@
   const ndPortField = $("#ndPortField");
   const ndTimeout   = $("#ndTimeout");
   const ndInterval  = $("#ndInterval");
-  const ndIntervalHint = $("#ndIntervalHint");
   const ndPollAutoToggle = $("#ndPollAutoToggle");
   const ndByteOrder = $("#ndByteOrder");
   const ndRetry     = $("#ndRetry");
+  const ndEnabled   = $("#ndEnabled");
   const ndFormMsg   = $("#ndFormMsg");
   const ndCancelBtn = $("#ndCancelBtn");
   const ndSubmitBtn = $("#ndSubmitBtn");
@@ -140,8 +140,10 @@
 
   // ── 폴링 모드(자동/수동) 공통 로직 ──────────────────────────────────────
   // 스위치 ON = 자동(시스템 설정의 NTP 자동 동기화 토글과 동일한 관례). 자동일 때는
-  // intervalMs 입력을 "-"로 바꾸고 비활성화한다 — 백엔드가 버스 공유 상태를 보고
+  // intervalMs 입력을 "AUTO"로 바꾸고 비활성화한다 — 백엔드가 버스 공유 상태를 보고
   // 자체 조정하므로(referencs/api-spec.md §4), 사용자가 입력해도 무시된다.
+
+  const AUTO_TEXT = "AUTO";   // 자동 모드일 때 주기 입력란에 보이는 문구
 
   function getPollMode(toggle) {
     return toggle.checked ? "auto" : "manual";
@@ -154,35 +156,29 @@
       intervalInput.value = intervalMs ?? 1000;
     } else {
       intervalInput.dataset.lastValue = intervalMs ?? 1000;
-      intervalInput.value = "-";
+      intervalInput.value = AUTO_TEXT;
     }
   }
 
-  function applyPollModeUI(mode, intervalInput, hintEl) {
+  function applyPollModeUI(mode, intervalInput) {
     intervalInput.disabled = mode !== "manual";
-    if (hintEl) {
-      hintEl.textContent = mode !== "manual"
-        ? "자동 모드 — 같은 버스를 쓰는 다른 장비와의 공유 상태를 보고 시스템이 주기를 조정합니다."
-        : "";
-      hintEl.classList.remove("warn");
-    }
   }
 
   // 사용자가 편집 중 스위치를 직접 눌렀을 때 — 입력 중이던 값을 보존했다가 되돌려준다.
-  function onPollToggleChange(toggle, intervalInput, hintEl) {
+  function onPollToggleChange(toggle, intervalInput) {
     const mode = getPollMode(toggle);
     if (mode === "auto") {
-      if (intervalInput.value !== "-") intervalInput.dataset.lastValue = intervalInput.value;
-      intervalInput.value = "-";
+      if (intervalInput.value !== AUTO_TEXT) intervalInput.dataset.lastValue = intervalInput.value;
+      intervalInput.value = AUTO_TEXT;
     } else {
-      intervalInput.value = (intervalInput.dataset.lastValue && intervalInput.dataset.lastValue !== "-")
+      intervalInput.value = (intervalInput.dataset.lastValue && intervalInput.dataset.lastValue !== AUTO_TEXT)
         ? intervalInput.dataset.lastValue : "1000";
     }
-    applyPollModeUI(mode, intervalInput, hintEl);
+    applyPollModeUI(mode, intervalInput);
   }
 
-  dfPollAutoToggle.addEventListener("change", () => onPollToggleChange(dfPollAutoToggle, dfInterval, dfIntervalHint));
-  ndPollAutoToggle.addEventListener("change", () => onPollToggleChange(ndPollAutoToggle, ndInterval, ndIntervalHint));
+  dfPollAutoToggle.addEventListener("change", () => onPollToggleChange(dfPollAutoToggle, dfInterval));
+  ndPollAutoToggle.addEventListener("change", () => onPollToggleChange(ndPollAutoToggle, ndInterval));
 
   // ── 공통 유틸 ───────────────────────────────────────────────────────────
 
@@ -198,7 +194,10 @@
     return new Date(ms).toLocaleString("ko-KR", { hour12: false });
   }
 
+  const isEnabled = (d) => d.enabled !== false;
+
   function stateBadge(state) {
+    if (state === "disabled") return `<span class="badge disabled">비활성</span>`;
     if (state === "ok")    return `<span class="badge ok">정상</span>`;
     if (state === "warn")  return `<span class="badge warn">경고</span>`;
     if (state === "error") return `<span class="badge error">오류</span>`;
@@ -237,9 +236,10 @@
       const addr      = d.connType === "tcp" ? `${escHtml(d.ipAddress)} : ${d.tcpPort}` : "-";
       const selected  = d.id === selectedDeviceId ? " selected-row" : "";
       const checked   = selectedIds.has(d.id) ? "checked" : "";
+      const disabled  = isEnabled(d) ? "" : " disabled-row";
 
       return `
-        <tr data-id="${d.id}" class="device-row clickable${selected}">
+        <tr data-id="${d.id}" class="device-row clickable${selected}${disabled}">
           <td><input type="checkbox" data-id="${d.id}" ${checked} /></td>
           <td>${escHtml(d.deviceCode)}</td>
           <td>${escHtml(d.displayName)}</td>
@@ -247,7 +247,7 @@
           <td>${escHtml(protoLabel)}</td>
           <td>${addr}</td>
           <td>${d.slaveId}</td>
-          <td>${stateBadge(s?.state)}</td>
+          <td class="state-col">${stateBadge(s?.state)}</td>
         </tr>
       `;
     }).join("");
@@ -302,24 +302,13 @@
       dfEffectiveInterval.textContent = status?.effectiveIntervalMs != null ? `${status.effectiveIntervalMs} ms` : "-";
     }
 
-    // 수동 모드인데 실제 적용 주기가 설정값보다 20% 이상 길면 경고 — 버스 공유로
-    // 설정한 주기를 못 맞추고 있다는 뜻(지난 스포란/압축기 사례와 동일한 신호).
-    if (dfIntervalHint && (device?.pollMode ?? "auto") === "manual") {
-      const set = device?.intervalMs;
-      const eff = status?.effectiveIntervalMs;
-      if (set && eff && eff > set * 1.2) {
-        dfIntervalHint.textContent = `⚠ 실제 적용 주기(${eff}ms)가 설정값(${set}ms)보다 깁니다 — 같은 버스의 다른 장비와 충돌 중일 수 있습니다.`;
-        dfIntervalHint.classList.add("warn");
-      } else {
-        dfIntervalHint.textContent = "";
-        dfIntervalHint.classList.remove("warn");
-      }
-    }
-
     dfLastComm.textContent = fmtTime(status?.lastPollTimestamp);
 
     dfCommState.className = "";
-    if (status?.state === "ok") {
+    if (status?.state === "disabled" || (device && !isEnabled(device))) {
+      dfCommState.textContent = "비활성";
+      dfCommState.className = "muted-text";
+    } else if (status?.state === "ok") {
       dfCommState.textContent = "정상";
       dfCommState.className = "green-text";
     } else if (status?.state === "warn") {
@@ -355,9 +344,10 @@
     dfTimeout.value  = device.timeoutMs ?? 1000;
     dfPollAutoToggle.checked = (device.pollMode ?? "auto") !== "manual";
     setIntervalValueForMode(device.pollMode ?? "auto", dfInterval, device.intervalMs);
-    applyPollModeUI(device.pollMode ?? "auto", dfInterval, dfIntervalHint);
+    applyPollModeUI(device.pollMode ?? "auto", dfInterval);
     dfByteOrder.value = device.byteOrder ?? "big";
     dfRetry.value    = device.retryCount ?? 3;
+    dfEnabled.value = isEnabled(device) ? "true" : "false";
 
     selectedChip.textContent = `선택: ${device.deviceCode}`;
     fillMeta(device, status);
@@ -374,9 +364,10 @@
     updateConnFieldsVisibility("serial", dfIpField, dfPortField);
     dfPollAutoToggle.checked = true;
     setIntervalValueForMode("auto", dfInterval, 1000);
-    applyPollModeUI("auto", dfInterval, dfIntervalHint);
+    applyPollModeUI("auto", dfInterval);
     if (dfEffectiveInterval) dfEffectiveInterval.textContent = "-";
     dfByteOrder.value = "big";
+    dfEnabled.value = "true";
     dfLastComm.textContent  = "-";
     dfCommState.textContent = "-";
     dfCommState.className   = "muted-text";
@@ -419,9 +410,10 @@
       slaveId:     parseInt(dfSlave.value) || 1,
       byteOrder:   dfByteOrder.value,
       timeoutMs:   parseInt(dfTimeout.value) || 1000,
-      intervalMs:  parseInt(dfInterval.value !== "-" ? dfInterval.value : dfInterval.dataset.lastValue) || 5000,
+      intervalMs:  parseInt(dfInterval.value !== AUTO_TEXT ? dfInterval.value : dfInterval.dataset.lastValue) || 5000,
       retryCount:  parseInt(dfRetry.value) || 0,
       pollMode:    getPollMode(dfPollAutoToggle),
+      enabled:     dfEnabled.value === "true",
     };
     if (connTypeSelect.value === "tcp") {
       body.ipAddress = dfIp.value.trim();
@@ -617,9 +609,10 @@
     ndTimeout.value = "1000";
     ndPollAutoToggle.checked = true;
     setIntervalValueForMode("auto", ndInterval, 5000);
-    applyPollModeUI("auto", ndInterval, ndIntervalHint);
+    applyPollModeUI("auto", ndInterval);
     ndByteOrder.value = "big";
     ndRetry.value = "3";
+    if (ndEnabled) ndEnabled.value = "true";
 
     hideNdFormMsg();
   }
@@ -654,9 +647,10 @@
       slaveId:     parseInt(ndSlave.value) || 1,
       byteOrder:   ndByteOrder.value,
       timeoutMs:   parseInt(ndTimeout.value) || 1000,
-      intervalMs:  parseInt(ndInterval.value !== "-" ? ndInterval.value : ndInterval.dataset.lastValue) || 5000,
+      intervalMs:  parseInt(ndInterval.value !== AUTO_TEXT ? ndInterval.value : ndInterval.dataset.lastValue) || 5000,
       retryCount:  parseInt(ndRetry.value) || 0,
       pollMode:    getPollMode(ndPollAutoToggle),
+      enabled:     ndEnabled ? ndEnabled.value === "true" : true,
     };
     if (ndConnType.value === "tcp") {
       body.ipAddress = ndIp.value.trim();

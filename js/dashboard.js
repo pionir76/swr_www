@@ -56,6 +56,7 @@
 
   function deviceBadgeHtml(d) {
     const state = d.state ?? 'unknown';
+    if (state === 'disabled') return `<span class="badge disabled">비활성</span>`;
     const cls   = state === 'ok' ? 'ok' : state === 'error' ? 'error' : 'warn';
     const txt   = state === 'ok' ? '정상' : state === 'error' ? '오류' : '알 수 없음';
     const errBadge = (d.consecutiveErrors > 0)
@@ -135,13 +136,16 @@
     const ok    = kpi.okDevices      ?? 0;
     const err   = kpi.errorDevices   ?? 0;
     const unk   = kpi.unknownDevices ?? 0;
+    const off   = kpi.disabledDevices ?? 0;
 
     if (kpiTotal)    kpiTotal.textContent    = total;
     if (kpiOk)       kpiOk.textContent       = ok;
     if (kpiOkPct)    kpiOkPct.textContent    = total ? `${Math.round(ok  / total * 100)}%` : '—';
     if (kpiError)    kpiError.textContent    = err;
     if (kpiErrorPct) kpiErrorPct.textContent = total ? `${Math.round(err / total * 100)}%` : '—';
-    if (kpiUnknown)  kpiUnknown.textContent  = unk > 0 ? `알 수 없음 ${unk}대` : ' ';
+    // 정상·오류 개수에서 빠진 장비(알 수 없음 / 비활성)를 보조 문구로
+    const extra = [unk > 0 ? `알 수 없음 ${unk}대` : '', off > 0 ? `비활성 ${off}대` : ''].filter(Boolean).join(' · ');
+    if (kpiUnknown)  kpiUnknown.textContent  = extra || ' ';
   }
 
   // ── Polling Status (KPI 전용) ─────────────────────────────────────────────────
@@ -163,6 +167,7 @@
       const dur = (d.lastPollDurationMs != null && d.lastPollDurationMs >= 0)
         ? `${d.lastPollDurationMs}` : '—';
       const tr = document.createElement('tr');
+      if (d.state === 'disabled') tr.className = 'row-disabled';
       tr.innerHTML = `
         <td>${d.name || '—'}</td>
         <td>${d.deviceCode || '—'}</td>
@@ -184,6 +189,7 @@
       const dur = (d.lastPollDurationMs != null && d.lastPollDurationMs >= 0)
         ? `${d.lastPollDurationMs}ms` : '—';
       const tr = document.createElement('tr');
+      if (d.state === 'disabled') tr.className = 'row-disabled';
       tr.innerHTML = `
         <td>${d.name || '—'}</td>
         <td>${d.deviceCode || '—'}</td>
@@ -204,11 +210,13 @@
     if (!regs.length) { tbody.innerHTML = emptyRow(6, '레지스터 없음'); return; }
 
     regs.forEach((r) => {
-      const qualCls   = r.quality === 'good'   ? 'state-ok'
-                      : r.quality === 'normal' ? 'amber-text' : 'red-text';
+      const qualCls   = r.quality === 'good'     ? 'state-ok'
+                      : r.quality === 'normal'   ? 'amber-text'
+                      : r.quality === 'disabled' ? 'muted-text' : 'red-text';
       const devCode   = deviceCodeMap?.[r.deviceId] ?? '—';
       const val       = RegFmt.value(r.scaledValue, r);
       const tr        = document.createElement('tr');
+      if (r.quality === 'disabled') { tr.className = 'row-disabled'; tr.title = '비활성 장비 — 마지막 값'; }
       tr.innerHTML = `
         <td class="mono">${devCode}</td>
         <td>${r.displayName || r.tagName || '—'}</td>

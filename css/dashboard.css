@@ -648,3 +648,6 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* 비활성 장비(사용자가 끈 장비) 행 */
+tr.row-disabled td { opacity: 0.55; }

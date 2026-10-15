@@ -5,7 +5,7 @@
   if (!validTabs.includes(currentTab)) currentTab = 'settings';
 
   let cachedConfig    = null;
-  let _trendRegMap    = {};    // regId → register object (from /api/registers/realtime)
+  let _trendRegMap    = {};    // regId(통합주소) → register object (장비별 레지스터 설정 목록에서 구성)
   let _trendCfgChMap  = {};    // regId → TrendChannelConfig (from /api/trend/config)
 
   // 트렌드 채널 페이지네이션 — 전체 레지스터는 한 번에 불러오되(서버 페이징 없음)
@@ -1098,17 +1098,38 @@
     if (!tbodyEl) return;
 
     try {
-      const [regRes, devRes, cfgRes] = await Promise.all([
-        apiFetch('/api/registers/realtime'),
+      // 레지스터 목록은 실시간 목록(/api/registers/realtime)이 아니라 장비별 레지스터 설정에서
+      // 만든다 — 실시간 목록은 폴링을 한 번도 시작하지 않으면 비어 있어, 그 상태로 저장하면
+      // 채널이 사라질 수 있다(백엔드 권고, api-changelog 2026-10-15 2차).
+      const [devRes, cfgRes] = await Promise.all([
         apiFetch('/api/devices'),
         apiFetch('/api/trend/config'),
       ]);
 
-      if (!regRes.ok || !devRes.ok || !cfgRes.ok) throw new Error('로드 실패');
+      if (!devRes.ok || !cfgRes.ok) throw new Error('로드 실패');
 
-      const regData = await regRes.json();
       const devData = await devRes.json();
       const cfg     = await cfgRes.json();
+      const devList = devData.devices ?? [];
+      const regLists = await Promise.all(devList.map((d) =>
+        apiFetch(`/api/devices/${d.id}/registers`)
+          .then((r) => { if (!r.ok) throw new Error('로드 실패'); return r.json(); })));
+      // 실시간 목록과 같은 모양으로 맞춘다(id = 통합주소)
+      const regData = {
+        registers: regLists.flatMap((rl, i) => (rl.registers ?? [])
+          .filter((r) => r.unifiedAddress != null)
+          .map((r) => ({
+            id: r.unifiedAddress,
+            registerId: r.id,
+            deviceId: devList[i].id,
+            localAddress: r.localAddress,
+            displayName: r.displayName,
+            tagName: r.tagName,
+            unit: r.unit,
+            scale: r.scale,
+            isSigned: r.isSigned,
+          }))),
+      };
 
       // 디바이스 맵 (id → device)
       const devMap = {};
@@ -1174,7 +1195,7 @@
 
       const addrStr  = `4${String(unifiedAddr).padStart(4, '0')}`;
       const dev      = _trendDevMap[r.deviceId] ?? {};
-      const devName  = dev.displayName || dev.name || `장치 ${r.deviceId}`;
+      const devName  = (dev.displayName || dev.name || `장치 ${r.deviceId}`) + (dev.enabled === false ? ' (비활성)' : '');
       const regName  = r.displayName || r.tagName || '—';
 
       const defaultTag = `CH_${String(slotIndexByRegId.get(unifiedAddr) ?? 0).padStart(2, '0')}`;
