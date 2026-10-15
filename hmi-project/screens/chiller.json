@@ -22,7 +22,7 @@
     { "id": "num_sp_now", "type": "numeric", "x": 40, "y": 214, "w": 200, "h": 44, "tag": "CHILLER_SP_NOW" },
 
     { "id": "nm_mv1", "type": "numeric", "x": 40, "y": 268, "w": 180, "h": 48, "tag": "CHILLER_MV",
-      "props": { "preset": "led", "caption": "MV · LED", "fontSize": 22 } },
+      "props": { "preset": "led", "caption": "MV · LED (기울임)", "fontSize": 22, "italic": true } },
     { "id": "nm_mv2", "type": "numeric", "x": 230, "y": 268, "w": 180, "h": 48, "tag": "CHILLER_MV",
       "props": { "preset": "lcd", "caption": "MV · LCD", "fontSize": 22 } },
     { "id": "nm_mv3", "type": "numeric", "x": 40, "y": 324, "w": 180, "h": 48, "tag": "CHILLER_MV",

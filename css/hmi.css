@@ -79,6 +79,13 @@
   src: url('../assets/fonts/DSEG7Classic-Bold.woff2') format('woff2');
   font-display: block;
 }
+/* 같은 패밀리의 기울인 버전 — font-style: italic이면 브라우저 합성 기울임 대신 이 전용 글꼴을 씀 */
+@font-face {
+  font-family: 'DSEG7';
+  src: url('../assets/fonts/DSEG7Classic-BoldItalic.woff2') format('woff2');
+  font-style: italic;
+  font-display: block;
+}
 .unknown { fill: none; stroke: #e5534b; stroke-dasharray: 4 3; }
 .unknown-text { fill: #e5534b; font-size: 12px; }
 

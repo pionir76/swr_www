@@ -96,7 +96,10 @@
   // 7세그먼트 폰트 DSEG7(SIL OFL, assets/fonts) — 디바이스 웹서버에서 받으므로 OS 설치 불필요.
   // 소수점은 폭 0, '!'는 모든 세그먼트가 꺼진 한 자리(숫자와 같은 폭)라서, 잔상 "888.8"과
   // 실제 값을 '!'로 자릿수만 맞추면 어떤 정렬에서도 세그먼트 위치가 정확히 겹친다.
-  if (document.fonts && document.fonts.load) document.fonts.load('16px DSEG7').catch(() => {});
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('16px DSEG7').catch(() => {});
+    document.fonts.load('italic 16px DSEG7').catch(() => {});
+  }
 
   const FONT_FAMILY = { seg7: "'DSEG7', monospace", sans: "Pretendard, 'Malgun Gothic', sans-serif" };
 
@@ -108,6 +111,7 @@
   };
 
   //  font         "mono"(기본, 고정폭) | "seg7"(7세그먼트) | "sans"
+  //  italic       기울인 글꼴(seg7은 전용 BoldItalic 글꼴, 그 외는 브라우저 기울임)
   //  align        "end"(기본) | "start" | "center"
   //  ghost        꺼진 세그먼트 잔상(seg7 전용), ghostOpacity
   //  glow         숫자 발광
@@ -115,7 +119,7 @@
   //  unitPosition "right"(기본) | "below" | "none", unitColor
   //  radius/borderWidth, bevel(안쪽으로 파인 입체감), glass(위쪽 유리 반사)
   const BOX_DEFAULTS = {
-    preset: null, font: 'mono', align: 'end', fontSize: null, showUnit: true, unitPosition: 'right', unitColor: null,
+    preset: null, font: 'mono', italic: false, align: 'end', fontSize: null, showUnit: true, unitPosition: 'right', unitColor: null,
     ghost: false, ghostOpacity: 0.14, glow: false, caption: '', captionColor: '#8a93a3',
     radius: 4, borderWidth: 1, bevel: false, glass: false,
   };
@@ -170,6 +174,7 @@
       const t = svg('text', { y: w.h / 2, 'dominant-baseline': 'central', 'font-size': fs, class: 'digits' }, g);
       if (FONT_FAMILY[p.font]) t.style.fontFamily = FONT_FAMILY[p.font];  // CSS(.digits)보다 우선하도록 style로
       if (seg) t.style.fontWeight = 'normal';
+      if (p.italic) t.style.fontStyle = 'italic';
       return t;
     };
     const ghostT = seg && p.ghost ? digitText() : null;
