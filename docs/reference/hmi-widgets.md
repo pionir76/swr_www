@@ -68,11 +68,11 @@ CSS 클래스: 기존 `.w.q-bad`는 유지, `.w.q-normal`을 신설(테두리색
 
 | type | 용도 | props (기본값) |
 |---|---|---|
-| `numeric` | 디지털 숫자 표시기 | `color`(`#7cfc9a`), `bg`, `border`, `fontSize`(h×0.55), `ranges`, `showUnit`(true) |
+| `numeric` | 디지털 숫자 표시기 | `color`(`#7cfc9a`), `bg`, `border`, `fontSize`(h×0.55), `showUnit`(true), `ranges`/`rangeTarget`(text\|bg\|border, 구간 `blink:true`), `animMs`(0=끔), `flashOnChange`, `showTrend`, 공통 상자 옵션: `preset`(led\|lcd\|vfd), `font`(mono\|seg7\|sans), `align`(end\|start\|center), `ghost`/`ghostOpacity`(seg7 잔상), `glow`, `caption`/`captionColor`, `unitPosition`(right\|below\|none)/`unitColor`, `radius`(4), `borderWidth`, `bevel`, `glass` |
 | `lamp` | 상태 램프(불리언) | `onColor`(`#2ecc71`), `offColor`(`#3a4250`), `onValue`(생략 시 truthy 판정), `blink`(false), `text` |
 | `tank` | 탱크 수위 | `fillColor`(`#3fa7ff`), `bgColor`, `shellColor`, `ranges`, `showValue`(true), `showScale`(true), `ticks`(5) |
-| `bar` | 막대 게이지 | `orientation`(v\|h), `fillColor`, `bgColor`, `ranges` |
-| `gauge` | 원형(아크) 게이지 | `startAngle`(-135), `endAngle`(135), `arcColor`, `trackColor`, `ranges`, `title`, `thickness` |
+| `bar` | 막대 게이지 | `orientation`(v\|h), `fillColor`, `bgColor`, `border`, `radius`(3), `ranges`, `thickness`(생략 시 자동), `showScale`(false)/`ticks`(5)/`minorTicks`(0)/`tickLabels`(true), `showMinMax`(false), `scalePosition`(after\|before), `gradient`(`[{at: 값, color}]`, ranges보다 우선), `shade`(false), `showValue`(false), `valueAlign`(start\|center\|end\|follow, 기본 end), `origin`(생략 시 min부터 채움), `showRanges`(false), `markers`(`[{value, color?}]`), `tickColor`/`labelColor`/`fontSize`, `animMs`(400, 0=끔) |
+| `gauge` | 원형(아크) 게이지 | `startAngle`(-135), `endAngle`(135), `arcColor`, `trackColor`, `ranges`, `title`, `thickness`, `animMs`(400, 0=끔), `lineCap`(butt\|round) |
 
 공통: **색상 구간 `ranges`**: `[{ "from"?, "to"?, "color" }]` — 첫 번째로 일치하는 구간의 색 적용(numeric/tank/bar/gauge 공용). `outOfRange`(범위 초과) 같은 백엔드 판정은 별도 처리하지 않고 **ranges로 화면에서 직접 시각화**한다 — 품질(§2.2)과 역할을 겹치지 않게 분리.
 
@@ -82,7 +82,8 @@ CSS 클래스: 기존 `.w.q-bad`는 유지, `.w.q-normal`을 신설(테두리색
 |---|---|---|
 | `button` | 값 기록 버튼 | `text`, `action`(set\|toggle), `value`(true), `color`, `activeColor`, `confirm` |
 | `switch` | 토글 스위치 | `onValue`(true), `offValue`(false), `onText`/`offText`, `onColor`/`offColor`, `confirm` |
-| `input` | 숫자 입력 | `color`, `bg`, `border`, `confirm` — 클릭 시 입력 대화상자, 태그 min/max로 검증 |
+| `input` | 숫자 입력 | `color`, `bg`, `border`, `confirm` — 클릭 시 입력 대화상자, 태그 min/max로 검증. 공통 상자 옵션: `preset`(led\|lcd\|vfd), `font`(mono\|seg7\|sans), `align`(end\|start\|center), `ghost`/`ghostOpacity`(seg7 잔상), `glow`, `caption`/`captionColor`, `unitPosition`(right\|below\|none)/`unitColor`, `radius`(4), `borderWidth`, `bevel`, `glass` |
+| `selector` | 로터리 셀렉터 | `options`(`[{value, text}]`), `startAngle`(-45)/`endAngle`(45), `ringColor`, `knobColor`, `handleColor`, `labelColor`, `activeColor`, `fontSize`(14), `confirm`, `animMs`(300) — 라벨 클릭 시 그 위치로, 노브 클릭 시 다음 위치로 |
 
 - 태그가 `access:"rw"`가 아니면 자동으로 비활성(클릭 무시) — `access`는 매 폴링 갱신되므로, 운영 중 권한이 바뀌면(관리자가 태그를 r로 변경 등) 화면도 다음 폴링에 바로 반영됨
 - **순간 동작(누르고 있는 동안 1, 떼면 0) 미지원** — HTTP 지연/연결 끊김 시 값이 눌린 상태로 남을 위험 때문에 1차 범위에서 제외(WHMI §7 그대로 유지)

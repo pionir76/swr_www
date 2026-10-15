@@ -62,11 +62,23 @@
 .w.q-bad { opacity: .45; }
 /* normal(폴링 지연) — 값은 그대로 두고 연한 호박색 글로우로만 경고(흐리게 하지 않음) */
 .w.q-normal { filter: drop-shadow(0 0 4px rgba(224, 160, 48, 0.6)); }
-.w-button, .w-switch, .w-input, .w-screenlink { cursor: pointer; }
+.w-button, .w-switch, .w-input, .w-screenlink, .w-selector { cursor: pointer; }
 .w-button:active rect { filter: brightness(1.35); }
 .w.readonly { cursor: not-allowed; }
 .lamp.blink { animation: hmi-blink 1s steps(1) infinite; }
 @keyframes hmi-blink { 50% { opacity: .25; } }
+
+/* 숫자 상자(numeric) — 구간 깜빡임 / 값 변화 시 하이라이트 */
+.w .blink-on { animation: hmi-blink 1s steps(1) infinite; }
+.w .num-bg.flash { animation: hmi-flash .6s ease-out; }
+@keyframes hmi-flash { 0% { filter: brightness(2.6); } 100% { filter: brightness(1); } }
+
+/* 7세그먼트 폰트(DSEG7, SIL OFL — assets/fonts/DSEG-LICENSE.txt) */
+@font-face {
+  font-family: 'DSEG7';
+  src: url('../assets/fonts/DSEG7Classic-Bold.woff2') format('woff2');
+  font-display: block;
+}
 .unknown { fill: none; stroke: #e5534b; stroke-dasharray: 4 3; }
 .unknown-text { fill: #e5534b; font-size: 12px; }
 
