@@ -34,6 +34,7 @@
   const BASE_KEYS = ['id', 'type', 'x', 'y', 'w', 'h', 'tag'];
   const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;   // HMI 태그·화면 id와 같은 규칙
   const MAX_SCREEN_BYTES = 256 * 1024;      // 서버 화면 content 상한(413)
+  const ANIM_DEFAULT_MS = 400;              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
   const DRAFT_DELAY_MS = 400;               // 임시 저장(localStorage) 지연
   const TITLE_MAX = 64;                     // 화면 제목 최대 길이(서버 규칙)
   const SCREEN_MIN = 100, SCREEN_MAX = 7680; // 화면 크기(기준 해상도) 범위
@@ -116,6 +117,7 @@
       this.past = [];         // 실행 취소용 이전 상태(JSON 문자열)
       this.future = [];       // 다시 실행용
       this.clipboard = null;  // 복사한 위젯들(JSON 문자열) — 화면을 바꿔도 유지
+      this.groupOpen = { adv: false };   // 속성 창 그룹 접힘 상태(기본: 펼침, 고급 JSON만 접힘)
       this.grid = { show: true, snap: true, size: 10 };  // 보기와 맞춤은 따로 켜고 끈다
       this.buildDom();
       this.onKey = (e) => this.handleKey(e);
@@ -142,6 +144,7 @@
           </select>
           <button class="ed-btn" type="button" data-act="newScreen" title="새 화면 만들기">+ 새 화면</button>
           <button class="ed-btn" type="button" data-act="manage" title="화면 순서·시작 화면·삭제">화면 관리</button>
+          <button class="ed-btn" type="button" data-act="tags" title="HMI 태그 목록·만들기·수정">태그 관리</button>
           <span class="ed-sep"></span>
           <label class="ed-check" title="격자선 표시"><input type="checkbox" data-opt="gridShow" checked> 격자 보기</label>
           <label class="ed-check" title="이동·크기 조절 시 격자에 맞춤"><input type="checkbox" data-opt="gridSnap" checked> 격자 맞춤</label>
@@ -214,10 +217,22 @@
       this.inspector.addEventListener('change', (e) => {
         if (e.target.dataset.f) this.onFieldChange(e.target);
         else if (e.target.dataset.s) this.onScreenField(e.target);
+        else if (e.target.dataset.p) this.onPropChange(e.target);
+        else if (e.target.dataset.lc) this.onListChange(e.target.closest('[data-list]'));
+        else if (e.target.dataset.ew) this.onEnableChange(e.target.closest('.ed-pf'));
       });
       this.inspector.addEventListener('input', (e) => {
         if (e.target.classList.contains('ed-json')) this.jsonDirty = true;
+        // 색 선택기는 끄는 동안 바로 반영(연속 변경은 실행 취소 한 단계로 묶임)
+        else if (e.target.dataset.p && e.target.type === 'color') this.onPropChange(e.target, true);
+        else if (e.target.dataset.lc && e.target.type === 'color') this.onListChange(e.target.closest('[data-list]'), true);
       });
+      // 속성 그룹 접힘 상태는 위젯을 바꿔도 유지
+      this.inspector.addEventListener('toggle', (e) => {
+        const g = e.target.dataset && e.target.dataset.g;
+        // 속성 폼이 없어 고급(JSON)을 강제로 펼친 경우는 기억하지 않는다
+        if (g && !e.target.dataset.forced) this.groupOpen[g] = e.target.open;
+      }, true);
       this.inspector.addEventListener('keydown', (e) => {
         if (e.target.classList.contains('ed-json') && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
@@ -225,6 +240,12 @@
         }
       });
       this.inspector.addEventListener('click', (e) => {
+        const rs = e.target.closest('[data-reset]');
+        if (rs) { this.resetProp(rs.dataset.reset); return; }
+        const la = e.target.closest('[data-list-add]');
+        if (la) { this.addListRow(la.dataset.listAdd); return; }
+        const ld = e.target.closest('[data-list-del]');
+        if (ld) { this.delListRow(ld.closest('[data-list]').dataset.list, Number(ld.dataset.listDel)); return; }
         const j = e.target.closest('[data-json]');
         if (j) { j.dataset.json === 'apply' ? this.applyJson() : this.resetJson(); return; }
         const b = e.target.closest('.ed-tool');
@@ -239,6 +260,7 @@
       // 화면이 하나도 없어도 쓸 수 있는 동작
       if (act === 'newScreen') { this.newScreen(); return; }
       if (act === 'manage') { this.manageScreens(); return; }
+      if (act === 'tags') { window.WHMI.TagManager.open(this); return; }
       if (!this.doc) return;
       switch (act) {
         case 'save': this.save(); break;
@@ -1449,7 +1471,12 @@
       const f = el.dataset.f;
       this.formError('');
       if (f === 'id') { this.renameWidget(w, el.value.trim(), el); return; }
-      if (f === 'tag') { this.setTag(w, el.value); return; }
+      if (f === 'tag') {
+        // "+ 새 태그…": 선택은 되돌리고 태그 관리의 새 태그 폼을 연다(만들면 이 위젯에 연결)
+        if (el.value === '__new__') { el.value = w.tag || ''; window.WHMI.TagManager.open(this, { createFor: w.id }); return; }
+        this.setTag(w, el.value);
+        return;
+      }
       const v = Math.round(Number(el.value));
       if (el.value.trim() === '' || !Number.isFinite(v)) { el.value = w[f]; return; }
       const { w: W, h: H } = this.doc.size;
@@ -1553,6 +1580,301 @@
       this.flash('속성 적용됨');
     }
 
+    // ---- 속성 폼(whmi-schema.js) -------------------------------------------
+    propFields(w) {
+      const sc = window.WHMI.schema;
+      return (sc && sc.types[w.type]) || [];
+    }
+
+    // 위젯 기본값 — numeric/input은 고른 스타일(프리셋) 값이 기본값처럼 보이게 한다
+    propDefaults(w) {
+      const impl = window.WHMI.impl(w.type);
+      if (!impl) return {};
+      const preset = impl.presets && w.props && impl.presets[w.props.preset];
+      return Object.assign({}, impl.defaults, preset);
+    }
+
+    renderPropForm(w) {
+      const fields = this.propFields(w);
+      if (!fields.length) return '';
+      const groups = window.WHMI.schema.groups.filter(([g]) => fields.some((f) => f.group === g));
+      const screens = (this.project.screens || []).map((x) =>
+        `<option value="${esc(x.id)}">${esc(x.title || x.id)} (${esc(x.id)})</option>`).join('');
+      const input = (f) => {
+        const k = esc(f.key);
+        const lim = `${f.min != null ? ` min="${f.min}"` : ''}${f.max != null ? ` max="${f.max}"` : ''} step="${f.step || 1}"`;
+        switch (f.type) {
+          case 'num': case 'optnum': return `<input type="number" data-p="${k}"${lim}>`;
+          case 'color': case 'optcolor':
+            return `<span class="ed-color"><input type="color" data-p="${k}"><input type="text" data-p="${k}" data-pct spellcheck="false"></span>`;
+          case 'bool': return `<input type="checkbox" data-p="${k}">`;
+          case 'select': return `<select data-p="${k}">${f.options.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select>`;
+          case 'screen': return `<select data-p="${k}"><option value="">(선택 안 함)</option>${screens}</select>`;
+          case 'list':
+            return `<div class="ed-list" data-list="${k}"></div><button class="ed-list-add" type="button" data-list-add="${k}">+ 추가</button>`;
+          case 'enable': {
+            const tagOpts = Object.values(this.tags).sort((a, b) => a.id.localeCompare(b.id))
+              .map((t) => `<option value="${esc(t.id)}">${esc(t.id)}${t.name ? ` — ${esc(t.name)}` : ''}</option>`).join('');
+            return `<select data-ew="tag"><option value="">(조건 없음 — 항상 허용)</option>${tagOpts}</select>` +
+              `<input type="text" data-ew="equals" spellcheck="false" placeholder="이 값일 때 허용">`;
+          }
+          case 'anim':
+            return `<div class="ed-anim"><label><input type="checkbox" data-p="${k}" data-anim> 사용</label>` +
+              `<span class="ed-anim-ms"><input type="number" data-p="${k}"${lim}> ms</span></div>`;
+          default: return `<input type="text" data-p="${k}" spellcheck="false">`;
+        }
+      };
+      const field = (f) => f.type === 'bool'
+        ? `<div class="ed-pf ed-pf-bool" data-pk="${esc(f.key)}"><label>${input(f)} ${esc(f.label)}</label>${this.resetBtn(f)}</div>`
+        : `<div class="ed-pf" data-pk="${esc(f.key)}"><div class="ed-pf-head"><span>${esc(f.label)}</span>${this.resetBtn(f)}</div>${input(f)}</div>`;
+      return groups.map(([g, title]) => `
+        <details class="ed-group" data-g="${g}"${this.groupOpen[g] === false ? '' : ' open'}>
+          <summary>${esc(title)}</summary>
+          <div class="ed-group-body">${fields.filter((f) => f.group === g).map(field).join('')}</div>
+        </details>`).join('');
+    }
+
+    resetBtn(f) {
+      return `<button class="ed-reset" type="button" data-reset="${esc(f.key)}" title="기본값으로" hidden>↺</button>`;
+    }
+
+    // 표시용 값 — value 필드의 true/false/숫자/글자
+    fmtVal(v) {
+      return v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v);
+    }
+
+    // 위젯 속성 → 폼(입력 중인 칸은 건드리지 않음)
+    syncPropForm(w) {
+      const fields = this.propFields(w);
+      if (!fields.length) return;
+      const props = w.props || {};
+      const defs = this.propDefaults(w);
+      const eff = Object.assign({}, defs, props);
+      const active = document.activeElement;
+      for (const f of fields) {
+        const box = this.inspector.querySelector(`.ed-pf[data-pk="${f.key}"]`);
+        if (!box) continue;
+        const set = Object.prototype.hasOwnProperty.call(props, f.key);
+        const cur = set ? props[f.key] : undefined;
+        const def = defs[f.key];
+        box.hidden = !!(f.when && !f.when(eff));
+        box.querySelector('.ed-reset').hidden = !set;
+        box.classList.toggle('is-set', set);
+        if (f.type === 'enable') {
+          const ew = w.enableWhen || null;
+          const tagSel = box.querySelector('[data-ew="tag"]');
+          const eq = box.querySelector('[data-ew="equals"]');
+          box.querySelector('.ed-reset').hidden = !ew;
+          box.classList.toggle('is-set', !!ew);
+          if (tagSel !== active) {
+            if (ew && ![...tagSel.options].some((o) => o.value === ew.tag)) tagSel.add(new Option(`${ew.tag} (정의되지 않은 태그)`, ew.tag));
+            tagSel.value = ew ? ew.tag : '';
+          }
+          eq.disabled = !ew;
+          if (eq !== active) eq.value = ew ? this.fmtVal(ew.equals) : '';
+          continue;
+        }
+        if (f.type === 'anim') {
+          // 켜짐 = 시간 > 0. 꺼져 있으면 시간 칸은 비활성(흐리게)
+          const ms = set ? cur : def;
+          const on = ms > 0;
+          const cb = box.querySelector('[data-anim]');
+          const num = box.querySelector('input[type="number"]');
+          if (cb !== active) cb.checked = on;
+          num.disabled = !on;
+          box.querySelector('.ed-anim-ms').classList.toggle('is-off', !on);
+          if (num !== active) { num.value = set && on ? cur : ''; num.placeholder = def > 0 ? def : ANIM_DEFAULT_MS; }
+          continue;
+        }
+        if (f.type === 'list') {
+          // 입력 중인 목록은 다시 그리지 않음(포커스·커서 유지)
+          const listEl = box.querySelector('[data-list]');
+          if (!(listEl.contains(active) && active.tagName === 'INPUT')) listEl.innerHTML = this.listRowsHtml(f, (set ? cur : def) || []);
+          continue;
+        }
+        for (const el of box.querySelectorAll('[data-p]')) {
+          if (el === active) continue;
+          if (f.type === 'bool') el.checked = !!(set ? cur : def);
+          else if (el.type === 'color') el.value = (set ? cur : def) || '#000000';
+          else if (f.type === 'select') { const v = set ? cur : def; el.value = v == null ? '' : String(v); }
+          else if (f.type === 'screen') el.value = set ? cur : '';
+          else {
+            el.value = set ? this.fmtVal(cur) : '';
+            el.placeholder = f.placeholder || (def == null || def === '' ? (f.type === 'optnum' ? '자동' : '') : this.fmtVal(def));
+          }
+        }
+      }
+      // 그룹 안 필드가 모두 숨으면 그룹도 숨김
+      this.inspector.querySelectorAll('.ed-group[data-g]').forEach((g) => {
+        if (g.dataset.g === 'adv') return;
+        g.hidden = ![...g.querySelectorAll('.ed-pf')].some((b) => !b.hidden);
+      });
+    }
+
+    // ---- 쓰기 허용 조건(위젯 필드 enableWhen) -------------------------------------
+    onEnableChange(box) {
+      const w = this.selected()[0];
+      if (!w || !box) return;
+      const tag = box.querySelector('[data-ew="tag"]').value;
+      const raw = box.querySelector('[data-ew="equals"]').value.trim();
+      if (!tag) { this.setEnableWhen(w, null); return; }
+      // 태그를 처음 고르면 조건 값은 1(켜짐)로 시작 — 비워 두면 쓰기가 항상 막히므로
+      const prev = w.enableWhen && w.enableWhen.tag === tag ? w.enableWhen.equals : undefined;
+      const equals = raw === '' ? (prev !== undefined ? prev : 1) : this.parseValue(raw);
+      this.setEnableWhen(w, { tag, equals });
+    }
+
+    setEnableWhen(w, ew) {
+      if (ew) w.enableWhen = ew; else delete w.enableWhen;
+      this.canonical(w);
+      this.redrawOne(w);
+      this.drawSelection();
+      this.commit();
+    }
+
+    // ---- 목록 속성(구간 색 / 기준선 / 그라데이션 / 셀렉터 위치) ----------------------
+    listRowsHtml(f, rows) {
+      const cols = f.columns;
+      const tpl = `grid-template-columns:${cols.map((c) => (c.type === 'color' ? '34px' : c.type === 'bool' ? '30px' : '1fr')).join(' ')} 22px`;
+      const cell = (c, row) => {
+        const v = row[c.key];
+        const k = esc(c.key);
+        if (c.type === 'color') return `<input type="color" data-lc="${k}" value="${esc(v || '#000000')}">`;
+        if (c.type === 'bool') return `<input type="checkbox" data-lc="${k}"${v ? ' checked' : ''}>`;
+        if (c.type === 'num') return `<input type="number" step="any" data-lc="${k}" value="${v == null ? '' : v}"${c.required ? '' : ' placeholder="끝없음"'}>`;
+        return `<input type="text" data-lc="${k}" data-lt="${c.type}" spellcheck="false" value="${esc(this.fmtVal(v))}">`;
+      };
+      const head = rows.length
+        ? `<div class="ed-lrow ed-lhead" style="${tpl}">${cols.map((c) => `<span>${esc(c.label)}</span>`).join('')}<span></span></div>` : '';
+      return head + rows.map((row, i) => `<div class="ed-lrow" style="${tpl}">${cols.map((c) => cell(c, row)).join('')}` +
+        `<button class="ed-list-del" type="button" data-list-del="${i}" title="행 삭제">×</button></div>`).join('');
+    }
+
+    parseValue(raw) {
+      if (raw === 'true' || raw === 'false') return raw === 'true';
+      if (raw !== '' && Number.isFinite(Number(raw))) return Number(raw);
+      return raw;
+    }
+
+    // 화면의 행들을 다시 읽어 목록 전체를 저장
+    onListChange(listEl, live) {
+      const w = this.selected()[0];
+      if (!w || !listEl) return;
+      const f = this.propFields(w).find((x) => x.key === listEl.dataset.list);
+      if (!f) return;
+      const rows = [...listEl.querySelectorAll('.ed-lrow:not(.ed-lhead)')].map((r) => {
+        const o = {};
+        for (const c of f.columns) {
+          const el = r.querySelector(`[data-lc="${c.key}"]`);
+          const raw = el.value.trim();
+          if (c.type === 'num') { if (raw !== '' && Number.isFinite(Number(raw))) o[c.key] = Number(raw); }
+          else if (c.type === 'color') o[c.key] = el.value.toLowerCase();
+          else if (c.type === 'bool') { if (el.checked) o[c.key] = true; }
+          else if (c.type === 'value') { if (raw !== '') o[c.key] = this.parseValue(raw); }
+          else if (raw !== '') o[c.key] = el.value;
+        }
+        return o;
+      });
+      const missing = rows.some((o) => f.columns.some((c) => c.required && o[c.key] === undefined));
+      if (missing) { this.formError(`${f.label}: 비어 있으면 안 되는 칸이 있습니다.`); return; }
+      this.formError('');
+      this.setProp(w, f.key, rows.length ? rows : undefined, this.propDefaults(w)[f.key], live);
+    }
+
+    currentList(w, key) {
+      const props = w.props || {};
+      return clone(Object.prototype.hasOwnProperty.call(props, key) ? props[key] : this.propDefaults(w)[key]) || [];
+    }
+
+    addListRow(key) {
+      const w = this.selected()[0];
+      const f = w && this.propFields(w).find((x) => x.key === key);
+      if (!f) return;
+      const rows = this.currentList(w, key);
+      rows.push(f.newRow ? f.newRow(rows) : {});
+      this.setProp(w, key, rows, this.propDefaults(w)[key]);
+    }
+
+    delListRow(key, i) {
+      const w = this.selected()[0];
+      if (!w) return;
+      const rows = this.currentList(w, key);
+      rows.splice(i, 1);
+      this.setProp(w, key, rows.length ? rows : undefined, this.propDefaults(w)[key]);
+    }
+
+    // 폼 입력 → 속성. 기본값과 같으면 지워서 화면 JSON을 가볍게 유지한다.
+    // live: 색 선택기를 끄는 중(연속 변경을 실행 취소 한 단계로 묶음)
+    onPropChange(el, live) {
+      const w = this.selected()[0];
+      if (!w || this.sel.size !== 1) return;
+      const f = this.propFields(w).find((x) => x.key === el.dataset.p);
+      if (!f) return;
+      const def = this.propDefaults(w)[f.key];
+      const raw = typeof el.value === 'string' ? el.value.trim() : '';
+      let v;
+      this.formError('');
+      switch (f.type) {
+        case 'anim':
+          if (el.dataset.anim !== undefined) {
+            // 끄면 0. 켜면 위젯 기본 시간(기본이 0인 위젯은 ANIM_DEFAULT_MS)
+            v = el.checked ? (def > 0 ? undefined : ANIM_DEFAULT_MS) : 0;
+          } else if (raw === '') {
+            v = def > 0 ? undefined : ANIM_DEFAULT_MS;   // 비우면 기본 시간(켜진 상태 유지)
+          } else {
+            const n = Number(raw);
+            if (!Number.isFinite(n)) { this.syncPropForm(w); return; }
+            v = Math.min(f.max, Math.max(f.min, Math.round(n)));
+          }
+          break;
+        case 'bool': v = el.checked; break;
+        case 'select': v = el.value === '' ? undefined : typeof def === 'number' ? Number(el.value) : el.value; break;
+        case 'screen': v = raw || undefined; break;
+        case 'num': case 'optnum': {
+          if (raw === '') { v = undefined; break; }
+          const n = Number(raw);
+          if (!Number.isFinite(n)) { this.syncPropForm(w); return; }
+          v = Math.min(f.max ?? Infinity, Math.max(f.min ?? -Infinity, n));
+          el.value = v;
+          break;
+        }
+        case 'color': case 'optcolor':
+          if (raw === '') { v = undefined; break; }
+          if (!/^#[0-9a-fA-F]{6}$/.test(raw)) { this.formError(`${f.label}: #RRGGBB 형식이어야 합니다.`); this.syncPropForm(w); return; }
+          v = raw.toLowerCase();
+          break;
+        case 'value': v = raw === '' ? undefined : this.parseValue(raw); break;
+        default: v = raw === '' ? undefined : el.value;   // text / opttext
+      }
+      this.setProp(w, f.key, v, def, live);
+    }
+
+    resetProp(key) {
+      const w = this.selected()[0];
+      if (!w) return;
+      if (key === 'enableWhen') { this.setEnableWhen(w, null); return; }
+      this.setProp(w, key, undefined, this.propDefaults(w)[key]);
+    }
+
+    setProp(w, key, v, def, live) {
+      const props = Object.assign({}, w.props);
+      if (v === undefined || JSON.stringify(v) === JSON.stringify(def)) delete props[key];
+      else props[key] = v;
+      if (key === 'preset') {
+        // 스타일이 바뀌면 기본값이 달라지므로, 새 기본값과 같아진 속성은 정리한다
+        const impl = window.WHMI.impl(w.type);
+        const defs = Object.assign({}, impl && impl.defaults, impl && impl.presets && impl.presets[props.preset]);
+        for (const k of Object.keys(props)) if (k !== 'preset' && JSON.stringify(props[k]) === JSON.stringify(defs[k])) delete props[k];
+      }
+      if (Object.keys(props).length) w.props = props; else delete w.props;
+      this.canonical(w);
+      this.redrawOne(w);
+      this.drawSelection();
+      // 색 선택기를 끄는 동안의 연속 변경만 한 단계로 묶는다(끝나는 change 이벤트도 같은 단계)
+      const mk = `prop:${w.id}:${key}`;
+      this.commit(live || (this.lastMerge && this.lastMerge.key === mk) ? mk : undefined);
+    }
+
     // 같은 위젯이 계속 선택돼 있으면 입력란 값만 갱신 — 작성 중인 JSON이 날아가지 않게
     updateFields(w) {
       for (const f of ['id', 'x', 'y', 'w', 'h']) {
@@ -1567,6 +1889,7 @@
         sel.value = w.tag || '';
       }
       if (!this.jsonDirty) this.resetJson();
+      this.syncPropForm(w);
     }
 
     renderInspector() {
@@ -1597,16 +1920,21 @@
           <div class="ed-form">
             <label class="ed-field wide"><span>id</span><input type="text" data-f="id" spellcheck="false" autocomplete="off"></label>
             ${num('x')}${num('y')}${num('w')}${num('h')}
-            <label class="ed-field wide"><span>tag</span><select data-f="tag"><option value="">(없음)</option>${tagOpts}</select></label>
+            <label class="ed-field wide"><span>tag</span><select data-f="tag"><option value="">(없음)</option>${tagOpts}<option value="__new__">+ 새 태그…</option></select></label>
           </div>
           <div class="ed-form-err"></div>
-          <div class="ed-insp-sub">추가 속성 <small>JSON · Ctrl+Enter 적용</small></div>
-          <textarea class="ed-json" spellcheck="false" rows="14"></textarea>
-          <div class="ed-json-err"></div>
-          <div class="ed-json-btns">
-            <button class="ed-btn" type="button" data-json="reset">되돌리기</button>
-            <button class="ed-btn primary" type="button" data-json="apply">적용</button>
-          </div>`;
+          ${this.renderPropForm(w)}
+          <details class="ed-group" data-g="adv"${!this.propFields(w).length ? ' open data-forced="1"' : this.groupOpen.adv ? ' open' : ''}>
+            <summary>고급 (JSON)</summary>
+            <div class="ed-group-body">
+              <textarea class="ed-json" spellcheck="false" rows="12"></textarea>
+              <div class="ed-json-err"></div>
+              <div class="ed-json-btns">
+                <button class="ed-btn" type="button" data-json="reset">되돌리기</button>
+                <button class="ed-btn primary" type="button" data-json="apply">적용</button>
+              </div>
+            </div>
+          </details>`;
         this.updateFields(w);
         return;
       }

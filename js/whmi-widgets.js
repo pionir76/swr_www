@@ -116,10 +116,10 @@
   //  ghost        꺼진 세그먼트 잔상(seg7 전용), ghostOpacity
   //  glow         숫자 발광
   //  caption      상자 왼쪽 위 이름표, captionColor
-  //  unitPosition "right"(기본) | "below" | "none", unitColor
+  //  unitAlign    단위 세로 맞춤 "bottom"(기본) | "middle" | "top", unitColor
   //  radius/borderWidth, bevel(안쪽으로 파인 입체감), glass(위쪽 유리 반사)
   const BOX_DEFAULTS = {
-    preset: null, font: 'mono', italic: false, align: 'end', fontSize: null, showUnit: true, unitPosition: 'right', unitColor: null,
+    preset: null, font: 'mono', italic: false, align: 'end', fontSize: null, showUnit: true, unitAlign: 'bottom', unitColor: null,
     ghost: false, ghostOpacity: 0.14, glow: false, caption: '', captionColor: '#8a93a3',
     radius: 4, borderWidth: 1, bevel: false, glass: false,
   };
@@ -157,8 +157,27 @@
     return (info.min < 0 ? '8' : '') + '8'.repeat(intDigits) + (info.decimals > 0 ? `.${'8'.repeat(info.decimals)}` : '');
   }
 
+  // 글자 획의 실제 높이(기준선 위 ascent / 아래 descent) — 캔버스로 재므로 화면이 숨겨져 있어도 된다.
+  // SVG의 dominant-baseline은 글꼴 칸 기준이라, 숫자·단위를 획 기준으로 맞추려면 직접 재야 한다.
+  let measureCtx = null;
+  function inkMetrics(el, size, text) {
+    const cs = getComputedStyle(el);
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+    measureCtx.font = `${cs.fontStyle} ${cs.fontWeight} ${size}px ${cs.fontFamily}`;
+    const m = measureCtx.measureText(text);
+    return { asc: m.actualBoundingBoxAscent, desc: m.actualBoundingBoxDescent };
+  }
+
+  // 숫자와 단위를 한 <text> 안의 두 조각(<tspan>)으로 그린다 — 브라우저가 숫자 바로 뒤에 단위를
+  // 붙여 배치하므로 정렬(start/center/end)을 바꾸면 둘이 함께 움직이고, 폭을 잴 필요가 없다.
+  //  unitAlign  단위 세로 맞춤: "bottom"(기본, 숫자와 바닥선 같음) | "middle" | "top" — 숫자 획 기준
+  //  단위 글꼴은 숫자와 같다. 단 7세그먼트(DSEG7)는 숫자 전용이라 단위는 고정폭 글꼴로 쓴다.
+  const MONO_FAMILY = '"Consolas", "D2Coding", ui-monospace, monospace';
+  const fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+
   function valueBox(g, w, p, ctx) {
     const fs = p.fontSize || Math.round(w.h * 0.55);
+    const ufs = Math.round(fs * 0.45);
     const seg = p.font === 'seg7';
     const bg = svg('rect', { width: w.w, height: w.h, rx: p.radius, fill: p.bg, stroke: p.border, 'stroke-width': p.borderWidth, class: 'num-bg' }, g);
     if (p.bevel) svg('rect', { width: w.w, height: w.h, rx: p.radius, fill: `url(#${boxShade(ctx.defs, 'bevel')})`, 'pointer-events': 'none' }, g);
@@ -166,53 +185,69 @@
       svg('text', { x: 6, y: 4, 'dominant-baseline': 'hanging', 'font-size': Math.max(9, Math.round(fs * 0.28)), fill: p.captionColor }, g)
         .textContent = p.caption;
     }
-    const below = p.unitPosition === 'below';
-    const unitT = svg('text', { 'font-size': Math.round(fs * 0.45), class: 'unit', 'text-anchor': 'end',
-      ...(below ? { x: w.w - 6, y: w.h - 4 } : { x: w.w - 8, y: w.h / 2, 'dominant-baseline': 'central' }) }, g);
-    if (p.unitColor) unitT.style.fill = p.unitColor;
-    const digitText = () => {
-      const t = svg('text', { y: w.h / 2, 'dominant-baseline': 'central', 'font-size': fs, class: 'digits' }, g);
+    const [x, anchor] = p.align === 'start' ? [8, 'start'] : p.align === 'center' ? [w.w / 2, 'middle'] : [w.w - 8, 'end'];
+    // ghost: 잔상 숫자 + 보이지 않는 같은 단위(폭을 같게 맞춰 어떤 정렬에서도 숫자 위치가 겹치게)
+    const line = (ghost) => {
+      const t = svg('text', { x, 'text-anchor': anchor, 'font-size': fs, class: 'digits' }, g);
       if (FONT_FAMILY[p.font]) t.style.fontFamily = FONT_FAMILY[p.font];  // CSS(.digits)보다 우선하도록 style로
       if (seg) t.style.fontWeight = 'normal';
       if (p.italic) t.style.fontStyle = 'italic';
-      return t;
+      const num = svg('tspan', {}, t);
+      const unit = svg('tspan', { 'font-size': ufs, class: 'unit' }, t);
+      if (seg) { unit.style.fontFamily = MONO_FAMILY; unit.style.fontWeight = '700'; }
+      if (p.unitColor) unit.style.fill = p.unitColor;
+      if (ghost) unit.style.visibility = 'hidden';
+      return { t, num, unit };
     };
-    const ghostT = seg && p.ghost ? digitText() : null;
-    const valT = digitText();
-    if (ghostT) ghostT.setAttribute('fill-opacity', p.ghostOpacity);
-    if (p.glow) valT.setAttribute('filter', `url(#${glowFilter(ctx.defs, w.id, fs)})`);
+    const ghost = seg && p.ghost ? line(true) : null;
+    const val = line(false);
+    if (ghost) ghost.t.setAttribute('fill-opacity', p.ghostOpacity);
+    if (p.glow) val.t.setAttribute('filter', `url(#${glowFilter(ctx.defs, w.id, fs)})`);
     if (p.glass) svg('rect', { width: w.w, height: w.h / 2, rx: p.radius, fill: `url(#${boxShade(ctx.defs, 'glass')})`, 'pointer-events': 'none' }, g);
 
-    // 숫자 위치 — 단위가 오른쪽이면 단위 폭만큼 비켜서 정렬
-    const place = () => {
-      const unitW = !below && unitT.textContent ? unitT.getComputedTextLength() + 4 : 0;
-      const right = w.w - 8 - unitW;
-      const [x, anchor] = p.align === 'start' ? [8, 'start'] : p.align === 'center' ? [(8 + right) / 2, 'middle'] : [right, 'end'];
-      for (const t of [ghostT, valT]) {
-        if (!t) continue;
-        t.setAttribute('x', x);
-        t.setAttribute('text-anchor', anchor);
+    const unitAlign = p.unitAlign || 'bottom';
+    // 세로 배치: 숫자 획 가운데를 상자 가운데에, 단위는 unitAlign에 맞춰 dy로 올린다
+    const layout = () => {
+      const d = inkMetrics(val.t, fs, seg ? '8' : '0');
+      const baseline = w.h / 2 + (d.asc - d.desc) / 2;
+      const u = val.unit.textContent;
+      let dy = 0;
+      if (u) {
+        const m = inkMetrics(val.unit, ufs, u);
+        if (unitAlign === 'top') dy = m.asc - d.asc;
+        else if (unitAlign === 'middle') dy = (m.asc - m.desc) / 2 - (d.asc - d.desc) / 2;
+      }
+      for (const l of [ghost, val]) {
+        if (!l) continue;
+        l.t.setAttribute('y', baseline);
+        l.unit.setAttribute('dx', u ? Math.round(ufs * 0.3) : 0);
+        l.unit.setAttribute('dy', dy);
       }
     };
-    place();
+    layout();
+    if (seg) fontsReady.then(layout);   // 7세그먼트 글꼴이 늦게 로드되면 높이를 다시 잼
 
     return {
       bg,
-      text: valT,
+      text: val.t,
       // str: 표시할 숫자 문자열(또는 '----'), c: { text, bg, border } 색
       set(str, info, c) {
         const u = p.showUnit === false || p.unitPosition === 'none' ? '' : (info.unit || '');
-        if (u !== unitT.textContent) { unitT.textContent = u; place(); }
+        if (u !== val.unit.textContent) {
+          val.unit.textContent = u;
+          if (ghost) ghost.unit.textContent = u;
+          layout();
+        }
         let s = str;
-        if (ghostT) {
+        if (ghost) {
           const gs = ghostOf(info);
-          if (ghostT.textContent !== gs) ghostT.textContent = gs;
-          ghostT.style.fill = c.text;
+          if (ghost.num.textContent !== gs) ghost.num.textContent = gs;
+          ghost.t.style.fill = c.text;
           const pad = gs.replace('.', '').length - s.replace('.', '').length;
           if (pad > 0) s = '!'.repeat(pad) + s;
         }
-        valT.textContent = s;
-        valT.style.fill = c.text;  // CSS(.w .digits의 fill)보다 우선하도록 style로
+        val.num.textContent = s;
+        val.t.style.fill = c.text;  // CSS(.w .digits의 fill)보다 우선하도록 style로
         bg.setAttribute('fill', c.bg);
         bg.setAttribute('stroke', c.border);
       },
@@ -252,6 +287,7 @@
 
   register('numeric', {
     defaults: NUMERIC_DEFAULTS,
+    presets: BOX_PRESETS,   // 편집기가 프리셋 값을 기본값처럼 보여주는 데 씀
     create(g, w, _p, ctx) {
       const p = withPreset(NUMERIC_DEFAULTS, w.props);
       const box = valueBox(g, w, p, ctx);
@@ -705,6 +741,7 @@
 
   register('input', {
     defaults: INPUT_DEFAULTS,
+    presets: BOX_PRESETS,
     create(g, w, _p, ctx) {
       const p = withPreset(INPUT_DEFAULTS, w.props);
       const box = valueBox(g, w, p, ctx);

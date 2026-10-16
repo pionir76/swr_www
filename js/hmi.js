@@ -98,7 +98,11 @@
     // 남아 있으면 편집기 쪽 url(#clip-…)이 문서에서 먼저 나오는 실행 화면 것을 가리킨다.
     stage.innerHTML = '';
     try {
-      if (!window.WHMI.Editor) await loadScript('./js/whmi-editor.js');
+      if (!window.WHMI.Editor) {
+        await loadScript('./js/whmi-schema.js');   // 위젯 속성 정의(속성 창 폼)
+        await loadScript('./js/whmi-tags.js');     // HMI 태그 관리 대화상자
+        await loadScript('./js/whmi-editor.js');
+      }
       editor = window.WHMI.Editor.open(editorRoot, {
         project: result.project,
         tags: result.tags,
