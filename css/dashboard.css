@@ -576,19 +576,6 @@
 
 .state-ok { color: var(--green); font-weight: 800; }
 
-/* Consecutive error count badge inside device status cell */
-.err-count {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: rgba(255, 93, 98, 0.18);
-  color: var(--red);
-  font-size: 11px;
-  font-weight: 800;
-  vertical-align: middle;
-}
-
 /* Last error text in modal device table */
 .last-error-cell {
   color: #9badc5;
@@ -648,6 +635,3 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
-
-/* 비활성 장비(사용자가 끈 장비) 행 */
-tr.row-disabled td { opacity: 0.55; }

@@ -247,7 +247,7 @@
           <td>${escHtml(protoLabel)}</td>
           <td>${addr}</td>
           <td>${d.slaveId}</td>
-          <td class="state-col">${stateBadge(s?.state)}</td>
+          <td class="state-col">${stateBadge(isEnabled(d) ? s?.state : "disabled")}</td>
         </tr>
       `;
     }).join("");
@@ -305,7 +305,8 @@
     dfLastComm.textContent = fmtTime(status?.lastPollTimestamp);
 
     dfCommState.className = "";
-    if (status?.state === "disabled" || (device && !isEnabled(device))) {
+    // 비활성 장비는 상태가 갱신되지 않아 마지막 상태가 남아 있으므로 enabled로 판단
+    if (device && !isEnabled(device)) {
       dfCommState.textContent = "비활성";
       dfCommState.className = "muted-text";
     } else if (status?.state === "ok") {

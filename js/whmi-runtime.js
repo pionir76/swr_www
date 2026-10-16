@@ -237,8 +237,10 @@
       const t = this.tags[w.tag] || {};
       const pick = (...xs) => xs.find((x) => x != null);
       // quality는 3단계(good/normal/bad) — 값이 아예 없으면(통신 실패 등) bad로 간주.
-      const quality = raw ? (raw.q || 'good') : 'bad';
-      let writable = pick(raw && raw.access, t.access) === 'rw';
+      // 'disabled'(소스 장비가 통신 비활성, v는 null)도 bad와 똑같이 그리고 쓰기를 막는다.
+      const disabled = !!raw && raw.q === 'disabled';
+      const quality = disabled ? 'bad' : raw ? (raw.q || 'good') : 'bad';
+      let writable = !disabled && pick(raw && raw.access, t.access) === 'rw';
       if (writable && !this.checkEnableWhen(w)) writable = false;
       return {
         value: raw ? raw.v : undefined,

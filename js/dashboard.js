@@ -55,13 +55,12 @@
   }
 
   function deviceBadgeHtml(d) {
+    // 통신 비활성 장비는 상태가 갱신되지 않아 마지막 상태가 남아 있으므로 "비활성"으로 표시
+    if (d.enabled === false) return `<span class="badge disabled">비활성</span>`;
     const state = d.state ?? 'unknown';
-    if (state === 'disabled') return `<span class="badge disabled">비활성</span>`;
     const cls   = state === 'ok' ? 'ok' : state === 'error' ? 'error' : 'warn';
     const txt   = state === 'ok' ? '정상' : state === 'error' ? '오류' : '알 수 없음';
-    const errBadge = (d.consecutiveErrors > 0)
-      ? ` <span class="err-count">${d.consecutiveErrors}</span>` : '';
-    return `<span class="badge ${cls}">${txt}</span>${errBadge}`;
+    return `<span class="badge ${cls}">${txt}</span>`;
   }
 
   // ── syscard 헬퍼 ─────────────────────────────────────────────────────────────
@@ -136,16 +135,13 @@
     const ok    = kpi.okDevices      ?? 0;
     const err   = kpi.errorDevices   ?? 0;
     const unk   = kpi.unknownDevices ?? 0;
-    const off   = kpi.disabledDevices ?? 0;
 
     if (kpiTotal)    kpiTotal.textContent    = total;
     if (kpiOk)       kpiOk.textContent       = ok;
     if (kpiOkPct)    kpiOkPct.textContent    = total ? `${Math.round(ok  / total * 100)}%` : '—';
     if (kpiError)    kpiError.textContent    = err;
     if (kpiErrorPct) kpiErrorPct.textContent = total ? `${Math.round(err / total * 100)}%` : '—';
-    // 정상·오류 개수에서 빠진 장비(알 수 없음 / 비활성)를 보조 문구로
-    const extra = [unk > 0 ? `알 수 없음 ${unk}대` : '', off > 0 ? `비활성 ${off}대` : ''].filter(Boolean).join(' · ');
-    if (kpiUnknown)  kpiUnknown.textContent  = extra || ' ';
+    if (kpiUnknown)  kpiUnknown.textContent  = unk > 0 ? `알 수 없음 ${unk}대` : ' ';
   }
 
   // ── Polling Status (KPI 전용) ─────────────────────────────────────────────────
@@ -167,7 +163,6 @@
       const dur = (d.lastPollDurationMs != null && d.lastPollDurationMs >= 0)
         ? `${d.lastPollDurationMs}` : '—';
       const tr = document.createElement('tr');
-      if (d.state === 'disabled') tr.className = 'row-disabled';
       tr.innerHTML = `
         <td>${d.name || '—'}</td>
         <td>${d.deviceCode || '—'}</td>
@@ -189,7 +184,6 @@
       const dur = (d.lastPollDurationMs != null && d.lastPollDurationMs >= 0)
         ? `${d.lastPollDurationMs}ms` : '—';
       const tr = document.createElement('tr');
-      if (d.state === 'disabled') tr.className = 'row-disabled';
       tr.innerHTML = `
         <td>${d.name || '—'}</td>
         <td>${d.deviceCode || '—'}</td>
@@ -210,13 +204,11 @@
     if (!regs.length) { tbody.innerHTML = emptyRow(6, '레지스터 없음'); return; }
 
     regs.forEach((r) => {
-      const qualCls   = r.quality === 'good'     ? 'state-ok'
-                      : r.quality === 'normal'   ? 'amber-text'
-                      : r.quality === 'disabled' ? 'muted-text' : 'red-text';
+      const qualCls   = r.quality === 'good'   ? 'state-ok'
+                      : r.quality === 'normal' ? 'amber-text' : 'red-text';
       const devCode   = deviceCodeMap?.[r.deviceId] ?? '—';
       const val       = RegFmt.value(r.scaledValue, r);
       const tr        = document.createElement('tr');
-      if (r.quality === 'disabled') { tr.className = 'row-disabled'; tr.title = '비활성 장비 — 마지막 값'; }
       tr.innerHTML = `
         <td class="mono">${devCode}</td>
         <td>${r.displayName || r.tagName || '—'}</td>
@@ -571,9 +563,17 @@
     
     let ok = false;
     try {
-      const res = await apiFetch('/api/dashboard');
+      // 비활성 여부는 /api/dashboard에 없어 장비 설정 목록(enabled)에서 가져온다
+      const [res, devRes] = await Promise.all([
+        apiFetch('/api/dashboard'),
+        apiFetch('/api/devices').catch(() => null),
+      ]);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      const enabledById = {};
+      if (devRes?.ok) {
+        for (const d of (await devRes.json()).devices ?? []) enabledById[d.id] = d.enabled !== false;
+      }
 
       const kpi     = data.kpi     ?? {};
       const polling = data.polling ?? {};
@@ -581,7 +581,7 @@
       updateKpi(kpi);
       updatePollingStatus(polling.running ?? false);
 
-      allDevices  = data.devices  ?? [];
+      allDevices  = (data.devices ?? []).map((d) => ({ ...d, enabled: enabledById[d.id] }));
       allAlerts   = data.alerts   ?? [];
       allLogs     = data.logs     ?? [];
 

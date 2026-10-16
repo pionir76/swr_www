@@ -68,7 +68,7 @@
 
 .realtime-summary-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  grid-template-columns: repeat(5, minmax(160px, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -746,22 +746,4 @@
 .bit-state.off .bit-dot {
   background: #2e4050;
   border: 1px solid #3a5268;
-}
-/* ── 비활성 장비(사용자가 끈 장비) — 경보색 대신 회색 ──────────────── */
-.summary-icon.disabled { background: linear-gradient(135deg, #5b6879, #8794a6); font-size: 15px; }
-.status-label.disabled { color: #a9b6c7; }
-.status-label.disabled i { background: #7d8a9c; }
-.disabled-value { color: #8d9aab; font-weight: 700; }
-.q-disabled { color: #7d8a9c; }
-tr.row-disabled td { opacity: 0.6; }
-.hide-disabled-check {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #8fa5bc;
-  cursor: pointer;
-  white-space: nowrap;
 }
