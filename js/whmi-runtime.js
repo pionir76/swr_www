@@ -39,6 +39,43 @@
   }
   WHMI.drawWidget = drawWidget;
 
+  // 위젯이 실제로 보이게 그린 범위(위젯 좌표, {x, y, w, h}) — 편집기가 바운딩 박스를 내용에
+  // 맞춰 넓힐 때 쓴다. getBBox()는 clip-path로 잘린 부분까지 세므로, 잘림 영역과 교집합을 낸다.
+  // 회전·이동(transform)도 반영. 선 두께와 필터(발광·그림자) 번짐은 세지 않는다.
+  function contentBox(g) {
+    const inv = g.getCTM().inverse();
+    const toLocal = (el, bb) => {
+      const m = inv.multiply(el.getCTM());
+      const xs = [], ys = [];
+      for (const [x, y] of [[bb.x, bb.y], [bb.x + bb.width, bb.y], [bb.x, bb.y + bb.height], [bb.x + bb.width, bb.y + bb.height]]) {
+        xs.push(m.a * x + m.c * y + m.e);
+        ys.push(m.b * x + m.d * y + m.f);
+      }
+      return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+    };
+    const cut = (a, b) => (b ? { x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1), x2: Math.min(a.x2, b.x2), y2: Math.min(a.y2, b.y2) } : a);
+    let box = null;
+    const walk = (el, clip) => {
+      if (el.nodeType !== 1 || /^(defs|clipPath|mask|title|style)$/.test(el.tagName)) return;
+      if (getComputedStyle(el).display === 'none') return;
+      const ref = /url\(#([^)]+)\)/.exec(el.getAttribute('clip-path') || '');
+      const cp = ref && document.getElementById(ref[1]);
+      if (cp && cp.firstElementChild) clip = cut(toLocal(el, cp.firstElementChild.getBBox()), clip);
+      if (el.tagName === 'g' || el.tagName === 'svg' || el.tagName === 'a') {
+        for (const c of el.children) walk(c, clip);
+        return;
+      }
+      const bb = el.getBBox();
+      if (!bb.width && !bb.height) return;
+      const r = cut(toLocal(el, bb), clip);
+      if (r.x2 <= r.x1 || r.y2 <= r.y1) return;   // 완전히 잘려 안 보임
+      box = box ? { x1: Math.min(box.x1, r.x1), y1: Math.min(box.y1, r.y1), x2: Math.max(box.x2, r.x2), y2: Math.max(box.y2, r.y2) } : r;
+    };
+    for (const c of g.children) walk(c, null);
+    return box && { x: box.x1, y: box.y1, w: box.x2 - box.x1, h: box.y2 - box.y1 };
+  }
+  WHMI.contentBox = contentBox;
+
   async function loadJson(url) {
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);

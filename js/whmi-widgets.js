@@ -3,6 +3,7 @@
 (function () {
   'use strict';
 
+  if (!window.WHMI) return;   // HMI 페이지를 떠나며 정리된 뒤 늦게 도착한 스크립트(이전 페이지 것)
   const { svg, register } = window.WHMI;
 
   // ---- 공통 헬퍼 ------------------------------------------------------------
@@ -118,23 +119,36 @@
   //  caption      상자 왼쪽 위 이름표, captionColor
   //  unitAlign    단위 세로 맞춤 "bottom"(기본) | "middle" | "top", unitColor
   //  radius/borderWidth, bevel(안쪽으로 파인 입체감), glass(위쪽 유리 반사)
+  //  padding      안쪽 여백 — 정렬한 쪽 가장자리와 숫자 사이(이름표·추세 표시는 2px 더 바깥)
   const BOX_DEFAULTS = {
     preset: null, font: 'mono', italic: false, align: 'end', fontSize: null, showUnit: true, unitAlign: 'bottom', unitColor: null,
     ghost: false, ghostOpacity: 0.14, glow: false, caption: '', captionColor: '#8a93a3',
-    radius: 4, borderWidth: 1, bevel: false, glass: false,
+    radius: 4, borderWidth: 1, bevel: false, glass: false, padding: 8,
   };
 
-  const withPreset = (defaults, props) => Object.assign({}, defaults, props && BOX_PRESETS[props.preset], props);
+  const withPreset = (defaults, props, presets = BOX_PRESETS) => Object.assign({}, defaults, props && presets[props.preset], props);
 
   function glowFilter(defs, id, fs) {
     const fid = `glow-${id}`;
-    if (!defs.querySelector(`#${fid}`)) {
-      const f = svg('filter', { id: fid, x: '-30%', y: '-60%', width: '160%', height: '220%' }, defs);
-      svg('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: Math.max(1.5, fs * 0.08), result: 'b' }, f);
-      const m = svg('feMerge', {}, f);
-      svg('feMergeNode', { in: 'b' }, m);
-      svg('feMergeNode', { in: 'SourceGraphic' }, m);
-    }
+    const sd = Math.max(1.5, fs * 0.08);
+    const old = defs.querySelector(`#${fid}`);
+    if (old) { old.firstChild.setAttribute('stdDeviation', sd); return fid; }   // 글자 크기가 바뀌었을 수 있음
+    const f = svg('filter', { id: fid, x: '-30%', y: '-60%', width: '160%', height: '220%' }, defs);
+    svg('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: sd, result: 'b' }, f);
+    const m = svg('feMerge', {}, f);
+    svg('feMergeNode', { in: 'b' }, m);
+    svg('feMergeNode', { in: 'SourceGraphic' }, m);
+    return fid;
+  }
+
+  // 글자 그림자(밝은 배경 위에서도 읽히게) — 글자 크기에 비례
+  function shadowFilter(defs, id, fs) {
+    const fid = `shadow-${id}`;
+    const attrs = { dx: 0, dy: Math.max(1, fs * 0.06), stdDeviation: Math.max(1, fs * 0.07), 'flood-color': '#000', 'flood-opacity': 0.85 };
+    const old = defs.querySelector(`#${fid}`);
+    if (old) { for (const [k, v] of Object.entries(attrs)) old.firstChild.setAttribute(k, v); return fid; }
+    const f = svg('filter', { id: fid, x: '-20%', y: '-40%', width: '140%', height: '180%' }, defs);
+    svg('feDropShadow', attrs, f);
     return fid;
   }
 
@@ -168,6 +182,22 @@
     return { asc: m.actualBoundingBoxAscent, desc: m.actualBoundingBoxDescent };
   }
 
+  // 글자 폭(px) — 숨겨진 화면에서도 잴 수 있게 캔버스로(getComputedTextLength는 숨김이면 0)
+  function textWidth(el, size, text) {
+    const cs = getComputedStyle(el);
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+    measureCtx.font = `${cs.fontStyle} ${cs.fontWeight} ${size}px ${cs.fontFamily}`;
+    return measureCtx.measureText(text).width;
+  }
+
+  // 눈금 숫자 미리 재기용 범위 — 그릴 때(create)는 아직 값이 없으므로 위젯 덮어쓰기 → 태그 정의 순.
+  // 소수 자릿수를 모르면 1자리로 넉넉히 잡는다.
+  function scaleRange(w, p, ctx) {
+    const t = (ctx.tag && w.tag && ctx.tag(w.tag)) || {};
+    const pick = (...xs) => xs.find((x) => x != null);
+    return { min: pick(p.min, t.min, 0), max: pick(p.max, t.max, 100), decimals: pick(p.decimals, t.decimals, 1) };
+  }
+
   // 숫자와 단위를 한 <text> 안의 두 조각(<tspan>)으로 그린다 — 브라우저가 숫자 바로 뒤에 단위를
   // 붙여 배치하므로 정렬(start/center/end)을 바꾸면 둘이 함께 움직이고, 폭을 잴 필요가 없다.
   //  unitAlign  단위 세로 맞춤: "bottom"(기본, 숫자와 바닥선 같음) | "middle" | "top" — 숫자 획 기준
@@ -182,10 +212,10 @@
     const bg = svg('rect', { width: w.w, height: w.h, rx: p.radius, fill: p.bg, stroke: p.border, 'stroke-width': p.borderWidth, class: 'num-bg' }, g);
     if (p.bevel) svg('rect', { width: w.w, height: w.h, rx: p.radius, fill: `url(#${boxShade(ctx.defs, 'bevel')})`, 'pointer-events': 'none' }, g);
     if (p.caption) {
-      svg('text', { x: 6, y: 4, 'dominant-baseline': 'hanging', 'font-size': Math.max(9, Math.round(fs * 0.28)), fill: p.captionColor }, g)
+      svg('text', { x: Math.max(0, p.padding - 2), y: 4, 'dominant-baseline': 'hanging', 'font-size': Math.max(9, Math.round(fs * 0.28)), fill: p.captionColor }, g)
         .textContent = p.caption;
     }
-    const [x, anchor] = p.align === 'start' ? [8, 'start'] : p.align === 'center' ? [w.w / 2, 'middle'] : [w.w - 8, 'end'];
+    const [x, anchor] = p.align === 'start' ? [p.padding, 'start'] : p.align === 'center' ? [w.w / 2, 'middle'] : [w.w - p.padding, 'end'];
     // ghost: 잔상 숫자 + 보이지 않는 같은 단위(폭을 같게 맞춰 어떤 정렬에서도 숫자 위치가 겹치게)
     const line = (ghost) => {
       const t = svg('text', { x, 'text-anchor': anchor, 'font-size': fs, class: 'digits' }, g);
@@ -262,15 +292,72 @@
     },
   });
 
+  // 이미지 — 회사 로고 등. 그림은 화면 데이터 안에 data URL로 들어 있다(편집기가 골라 넣을 때 크기를 줄임).
+  //  src      data URL(없으면 빈 상자에 "이미지")
+  //  fit      "ratio"(기본, 비율 고정 — 편집기가 상자를 그림 비율로 유지) | "stretch"(상자에 맞춰 늘임)
+  //  ratio    그림 원래 비율(너비/높이) — 편집기가 넣을 때 기록, 비율 고정 크기 조절에 씀
+  //  opacity  투명도(0~1), radius 모서리 둥글기
+  register('image', {
+    defaults: { src: null, fit: 'ratio', ratio: null, opacity: 1, radius: 0 },
+    create(g, w, p, ctx) {
+      if (!p.src) {
+        svg('rect', { x: 0.5, y: 0.5, width: Math.max(0, w.w - 1), height: Math.max(0, w.h - 1), rx: p.radius, class: 'img-empty' }, g);
+        svg('text', { x: w.w / 2, y: w.h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'central', class: 'img-empty-text' }, g).textContent = '이미지';
+        return;
+      }
+      const img = svg('image', {
+        width: w.w, height: w.h, opacity: p.opacity,
+        preserveAspectRatio: p.fit === 'stretch' ? 'none' : 'xMidYMid meet',
+      }, g);
+      img.setAttribute('href', p.src);
+      if (p.radius > 0) {
+        const clipId = `clip-${w.id}`;
+        svg('rect', { width: w.w, height: w.h, rx: p.radius }, svg('clipPath', { id: clipId }, ctx.defs));
+        img.setAttribute('clip-path', `url(#${clipId})`);
+      }
+    },
+  });
+
+  //  preset       스타일 묶음(LABEL_PRESETS) — 고른 스타일 값이 기본값이 되고 props가 덮어씀
+  //  bg/border    위젯 상자 전체를 칠하는 배경·테두리(null = 없음), radius 모서리 둥글기
+  //  padding      정렬한 쪽 가장자리와 글자 사이 여백
+  //  glow         글자 발광(글자색), shadow 글자 그림자
+  const LABEL_DEFAULTS = {
+    preset: null, text: '', fontSize: 15, color: '#e6e9ef', align: 'left', bold: false, italic: false,
+    padding: 0, bg: null, border: null, radius: 4, glow: false, shadow: false,
+  };
+  const LABEL_PRESETS = {
+    title:    { fontSize: 22, bold: true },
+    subtitle: { fontSize: 14, bold: true, color: '#8ab4ff' },
+    caption:  { fontSize: 12, color: '#8a93a3' },
+    info:     { fontSize: 13, color: '#9cc9ff', bg: '#173252', align: 'center', padding: 8 },
+    caution:  { fontSize: 13, bold: true, color: '#ffb020', bg: '#3a2c0b', border: '#8a6414', align: 'center', padding: 8 },
+    danger:   { fontSize: 13, bold: true, color: '#ff6b6b', bg: '#3a1416', border: '#8c2a2e', align: 'center', padding: 8 },
+    neon:     { fontSize: 18, bold: true, color: '#46f0e0', glow: true },
+  };
+
   register('label', {
-    defaults: { text: '', fontSize: 15, color: '#e6e9ef', align: 'left', bold: false },
-    create(g, w, p) {
-      const x = { left: 0, center: w.w / 2, right: w.w }[p.align];
+    defaults: LABEL_DEFAULTS,
+    presets: LABEL_PRESETS,
+    create(g, w, _p, ctx) {
+      const p = withPreset(LABEL_DEFAULTS, w.props, LABEL_PRESETS);
+      if (p.bg || p.border) {
+        const bw = p.border ? 1 : 0;
+        svg('rect', {
+          x: bw / 2, y: bw / 2, width: Math.max(0, w.w - bw), height: Math.max(0, w.h - bw), rx: p.radius,
+          fill: p.bg || 'none', stroke: p.border || 'none', 'stroke-width': bw,
+        }, g);
+      }
+      const x = { left: p.padding, center: w.w / 2, right: w.w - p.padding }[p.align];
       const anchor = { left: 'start', center: 'middle', right: 'end' }[p.align];
+      // 그림자는 감싸는 g에, 발광은 글자에 — 둘 다 켜도 겹쳐 적용된다
+      const holder = p.shadow ? svg('g', { filter: `url(#${shadowFilter(ctx.defs, w.id, p.fontSize)})` }, g) : g;
       const t = svg('text', {
         x, y: w.h / 2, 'text-anchor': anchor, 'dominant-baseline': 'central',
         'font-size': p.fontSize, 'font-weight': p.bold ? 700 : 400, fill: p.color,
-      }, g);
+      }, holder);
+      if (p.italic) t.style.fontStyle = 'italic';
+      if (p.glow) t.setAttribute('filter', `url(#${glowFilter(ctx.defs, w.id, p.fontSize)})`);
       t.textContent = p.text;
     },
   });
@@ -293,7 +380,7 @@
       const box = valueBox(g, w, p, ctx);
       const fs = p.fontSize || Math.round(w.h * 0.55);
       const trendT = p.showTrend
-        ? svg('text', { x: w.w - 6, y: 4, 'dominant-baseline': 'hanging', 'text-anchor': 'end', 'font-size': Math.max(9, Math.round(fs * 0.3)) }, g)
+        ? svg('text', { x: w.w - Math.max(0, p.padding - 2), y: 4, 'dominant-baseline': 'hanging', 'text-anchor': 'end', 'font-size': Math.max(9, Math.round(fs * 0.3)) }, g)
         : null;
       const anim = animator(p.animMs);
       let prev = null;
@@ -336,18 +423,78 @@
     },
   });
 
+  // 밝은 색 위엔 검정, 어두운 색 위엔 흰색 — 램프 기호·알림창 글자
+  function inkOn(color) {
+    const m = /^#([0-9a-f]{6})/i.exec(color || '');
+    if (!m) return '#ffffff';
+    const n = parseInt(m[1], 16);
+    return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 150 ? '#111111' : '#ffffff';
+  }
+
+  //  shape   circle(기본) | square | warning(▲ + !) | error(● + ×) | info(● + i) | ok(● + ✓)
+  //          | panel(알림창 — 위젯 상자 전체가 표시등, 글자는 안쪽 가운데)
+  //          기호는 SVG로 그린다(글꼴에 없는 기호가 □로 보이지 않게). 기호·알림창 글자 색은 바탕 밝기로 자동.
+  //  preset  스타일 묶음(LAMP_PRESETS) — 모양·색을 한 번에
+  //  bit     지정하면 값을 그대로 쓰지 않고 (value >> bit) & 1로 해당 비트만 뽑아 판정한다.
+  //          레지스터 하나가 여러 상태를 비트로 묶어 담고 있을 때 쓴다(scale:1인 정수 태그 전제).
+  const LAMP_DEFAULTS = {
+    preset: null, shape: 'circle', onColor: '#2ecc71', offColor: '#3a4250', onValue: null, bit: null, blink: false,
+    text: '', fontSize: 15, textColor: '#e6e9ef',
+  };
+  const LAMP_PRESETS = {
+    warning: { shape: 'warning', onColor: '#ffb020' },
+    error:   { shape: 'error', onColor: '#e5534b', blink: true },
+    info:    { shape: 'info', onColor: '#3fa7ff' },
+    ok:      { shape: 'ok', onColor: '#2ecc71' },
+    alarm:   { shape: 'panel', onColor: '#e5534b', blink: true },
+  };
+
   register('lamp', {
-    // bit: 지정하면 값을 그대로 쓰지 않고 (value >> bit) & 1로 해당 비트만 뽑아 판정한다.
-    // 레지스터 하나가 여러 상태를 비트로 묶어 담고 있을 때 쓴다(scale:1인 정수 태그 전제).
-    defaults: { onColor: '#2ecc71', offColor: '#3a4250', onValue: null, bit: null, blink: false, text: '', fontSize: 15, textColor: '#e6e9ef' },
-    create(g, w, p) {
-      const d = p.text ? w.h : Math.min(w.w, w.h);
-      const r = d / 2 - 2;
-      const lamp = svg('circle', { cx: d / 2, cy: w.h / 2, r, stroke: '#0b0f14', 'stroke-width': 2, class: 'lamp' }, g);
-      svg('circle', { cx: d / 2 - r * 0.3, cy: w.h / 2 - r * 0.3, r: r * 0.35, fill: '#fff', 'fill-opacity': 0.25 }, g);
-      if (p.text) {
-        svg('text', { x: d + 10, y: w.h / 2, 'dominant-baseline': 'central', 'font-size': p.fontSize, fill: p.textColor }, g)
-          .textContent = p.text;
+    defaults: LAMP_DEFAULTS,
+    presets: LAMP_PRESETS,
+    create(g, w, _p) {
+      const p = withPreset(LAMP_DEFAULTS, w.props, LAMP_PRESETS);
+      const panel = p.shape === 'panel';
+      const lampG = svg('g', {}, g);   // 모양 + 기호 — 발광·깜빡임은 묶음째
+      let body, mark = null, label = null, glowR;
+      if (panel) {
+        body = svg('rect', { x: 1, y: 1, width: Math.max(0, w.w - 2), height: Math.max(0, w.h - 2), rx: 6, stroke: '#0b0f14', 'stroke-width': 2 }, lampG);
+        glowR = Math.min(w.w, w.h) * 0.25;
+        if (p.text) {
+          label = svg('text', { x: w.w / 2, y: w.h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': p.fontSize, 'font-weight': 700 }, lampG);
+          label.textContent = p.text;
+        }
+      } else {
+        const d = p.text ? w.h : Math.min(w.w, w.h);
+        const r = d / 2 - 2;
+        const cx = d / 2, cy = w.h / 2;
+        glowR = r * 0.5;
+        const sw = Math.max(1.5, r * 0.2);   // 기호 선 두께
+        const line = (x1, y1, x2, y2) => svg('line', { x1: cx + x1 * r, y1: cy + y1 * r, x2: cx + x2 * r, y2: cy + y2 * r, 'stroke-width': sw, 'stroke-linecap': 'round' }, mark);
+        if (p.shape === 'square') {
+          body = svg('rect', { x: cx - r, y: cy - r, width: r * 2, height: r * 2, rx: r * 0.25, stroke: '#0b0f14', 'stroke-width': 2 }, lampG);
+        } else if (p.shape === 'warning') {
+          const pts = [[0, -0.95], [1, 0.8], [-1, 0.8]].map(([x, y]) => `${cx + x * r},${cy + y * r}`).join(' ');
+          body = svg('polygon', { points: pts, stroke: '#0b0f14', 'stroke-width': 2, 'stroke-linejoin': 'round' }, lampG);
+        } else {
+          body = svg('circle', { cx, cy, r, stroke: '#0b0f14', 'stroke-width': 2 }, lampG);
+        }
+        if (['warning', 'error', 'info', 'ok'].includes(p.shape)) {
+          mark = svg('g', { fill: 'none' }, lampG);
+          if (p.shape === 'warning') { line(0, -0.38, 0, 0.18); svg('circle', { cx, cy: cy + 0.47 * r, r: sw * 0.6, stroke: 'none', class: 'mark-dot' }, mark); }
+          if (p.shape === 'error') { line(-0.38, -0.38, 0.38, 0.38); line(0.38, -0.38, -0.38, 0.38); }
+          if (p.shape === 'info') { line(0, -0.08, 0, 0.45); svg('circle', { cx, cy: cy - 0.42 * r, r: sw * 0.6, stroke: 'none', class: 'mark-dot' }, mark); }
+          if (p.shape === 'ok') {
+            svg('path', { d: `M${cx - 0.42 * r} ${cy + 0.02 * r}L${cx - 0.12 * r} ${cy + 0.32 * r}L${cx + 0.45 * r} ${cy - 0.35 * r}`, 'stroke-width': sw, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, mark);
+          }
+        } else if (p.shape !== 'square') {
+          // 원형: 위쪽 반사광
+          svg('circle', { cx: cx - r * 0.3, cy: cy - r * 0.3, r: r * 0.35, fill: '#fff', 'fill-opacity': 0.25 }, lampG);
+        }
+        if (p.text) {
+          svg('text', { x: d + 10, y: w.h / 2, 'dominant-baseline': 'central', 'font-size': p.fontSize, fill: p.textColor }, g)
+            .textContent = p.text;
+        }
       }
       return {
         update(info) {
@@ -355,9 +502,19 @@
           if (info.ok && p.bit != null && typeof v === 'number') v = (Math.trunc(v) >> p.bit) & 1;
           const on = info.ok && (p.onValue != null ? v == p.onValue : !!v);
           const color = on ? p.onColor : p.offColor;
-          lamp.setAttribute('fill', color);
-          lamp.style.filter = on ? `drop-shadow(0 0 ${r * 0.5}px ${color})` : '';
-          lamp.classList.toggle('blink', on && p.blink);
+          const ink = inkOn(color);
+          body.setAttribute('fill', color);
+          if (mark) {
+            mark.setAttribute('stroke', ink);
+            mark.querySelectorAll('.mark-dot').forEach((c) => c.setAttribute('fill', ink));
+            mark.style.opacity = on ? 1 : 0.45;
+          }
+          if (label) {
+            label.setAttribute('fill', on ? ink : p.textColor);
+            label.style.opacity = on ? 1 : 0.6;
+          }
+          lampG.style.filter = on ? `drop-shadow(0 0 ${glowR}px ${color})` : '';
+          lampG.classList.toggle('blink', on && p.blink);
         },
       };
     },
@@ -367,27 +524,38 @@
     defaults: { fillColor: '#3fa7ff', bgColor: '#0b0f14', shellColor: '#4a5566', ranges: null, showValue: true, showScale: true, ticks: 5 },
     create(g, w, p, ctx) {
       cylinderGradient(ctx.defs);
-      const bw = w.w - (p.showScale ? 44 : 0);
-      const h = w.h;
+      // 눈금이 있으면: 오른쪽 눈금 칸 폭은 가장 긴 눈금 숫자에 맞추고, 맨 위·아래 숫자가 상자 밖으로
+      // 나가지 않게 몸통을 위아래로 반 글자씩 줄인다(눈금과 수위가 같은 높이를 쓰도록 몸통도 함께)
+      let scaleW = 0, pad = 0;
+      if (p.showScale) {
+        const sr = scaleRange(w, p, ctx);
+        const longest = Math.max(...[sr.min, sr.max].map((v) => textWidth(g, 11, Number(v).toFixed(sr.decimals))));
+        scaleW = Math.max(44, Math.ceil(14 + longest + 2));
+        pad = 7;
+      }
+      const bw = Math.max(1, w.w - scaleW);
+      const h = Math.max(1, w.h - pad * 2);
+      const body = svg('g', { transform: `translate(0,${pad})` }, g);
       const rx = Math.min(bw * 0.18, 20);
       const clipId = `clip-${w.id}`;
       svg('rect', { width: bw, height: h, rx }, svg('clipPath', { id: clipId }, ctx.defs));
 
-      svg('rect', { width: bw, height: h, rx, fill: p.bgColor }, g);
-      const level = svg('rect', { width: bw, height: h, class: 'level' }, svg('g', { 'clip-path': `url(#${clipId})` }, g));
-      svg('rect', { width: bw, height: h, rx, fill: 'url(#whmi-cyl)' }, g);
-      svg('rect', { width: bw, height: h, rx, fill: 'none', stroke: p.shellColor, 'stroke-width': 2 }, g);
+      svg('rect', { width: bw, height: h, rx, fill: p.bgColor }, body);
+      const level = svg('rect', { width: bw, height: h, class: 'level' }, svg('g', { 'clip-path': `url(#${clipId})` }, body));
+      svg('rect', { width: bw, height: h, rx, fill: 'url(#whmi-cyl)' }, body);
+      svg('rect', { width: bw, height: h, rx, fill: 'none', stroke: p.shellColor, 'stroke-width': 2 }, body);
 
       const tickLabels = [];
       if (p.showScale) {
         for (let i = 0; i < p.ticks; i++) {
           const y = h - (h * i) / (p.ticks - 1);
-          svg('line', { x1: bw + 4, x2: bw + 10, y1: y, y2: y, stroke: '#4a5566' }, g);
-          tickLabels.push(svg('text', { x: bw + 13, y, 'dominant-baseline': 'central', class: 'scale' }, g));
+          svg('line', { x1: bw + 4, x2: bw + 10, y1: y, y2: y, stroke: '#4a5566' }, body);
+          // 오른쪽 끝에 맞춰 — 실행 중 숫자가 예상보다 길어도 상자 밖으로 나가지 않는다
+          tickLabels.push(svg('text', { x: bw + scaleW, y, 'text-anchor': 'end', 'dominant-baseline': 'central', class: 'scale' }, body));
         }
       }
       const val = p.showValue
-        ? svg('text', { x: bw / 2, y: h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': Math.round(bw * 0.17), class: 'outlined' }, g)
+        ? svg('text', { x: bw / 2, y: h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': Math.round(bw * 0.17), class: 'outlined' }, body)
         : null;
 
       let scaleKey = '';
@@ -430,9 +598,14 @@
       gradient: null, shade: false, showValue: false, origin: null, showRanges: false, markers: null,
       tickColor: '#4a5566', labelColor: '#8a93a3', fontSize: 11, animMs: 400, valueAlign: 'end',
     },
-    create(g, w, p, ctx) {
+    create(g0, w, p, ctx) {
       const H = p.orientation === 'h';
-      const L = H ? w.w : w.h;                       // 주축 길이
+      // 세로 막대는 맨 위·아래 숫자가 가운데 맞춤이라 반 글자씩 튀어나온다 — 그만큼 주축을 줄이고
+      // 전체를 내려 그린다(가로는 양 끝 숫자를 안쪽으로 맞춰 그리므로 필요 없음)
+      const endLabels = (p.showScale && p.tickLabels) || p.showMinMax || p.origin != null;
+      const pad = !H && endLabels ? Math.ceil(p.fontSize * 0.6) : 0;
+      const g = pad ? svg('g', { transform: `translate(0,${pad})` }, g0) : g0;
+      const L = (H ? w.w : w.h) - pad * 2;           // 주축 길이
       const C = H ? w.h : w.w;                       // 교차축 길이
       // origin을 지정하면 기준값 라벨을 그리므로 라벨 자리도 확보한다
       const hasSide = p.showScale || p.showMinMax || p.showRanges || p.origin != null;
@@ -543,8 +716,8 @@
         }
         for (const mk of p.markers || []) {
           const m = mainOf(mk.value, mn, mx);
-          const a = pt(m, t0 - 3);
-          const b = pt(m, t0 + th + 3);
+          const a = pt(m, Math.max(0, t0 - 3));        // 트랙보다 조금 길게, 단 상자 안에서
+          const b = pt(m, Math.min(C, t0 + th + 3));
           svg('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: mk.color || '#e6e9ef', 'stroke-width': 2 }, scaleG);
         }
       }
@@ -595,15 +768,22 @@
     // 각도: 0° = 12시 방향, 시계방향 증가
     // lineCap: "butt"(각진 끝, 기본) | "round"(둥근 끝)
     defaults: { startAngle: -135, endAngle: 135, arcColor: '#3fa7ff', trackColor: '#2a313c', ranges: null, title: '', thickness: null, animMs: 400, lineCap: 'butt' },
-    create(g, w, p) {
+    create(g, w, p, ctx) {
       const titleH = p.title ? 26 : 0;
       const areaH = w.h - titleH;
-      const r = (Math.min(w.w, areaH) / 2) * 0.78;
-      const th = p.thickness || r * 0.18;
-      const cx = w.w / 2;
-      const cy = areaH / 2 + r * 0.12;
       const a0 = p.startAngle;
       const a1 = p.endAngle;
+      const hasBands = !!(p.ranges && p.ranges.length);
+
+      // 크기: 각도와 상관없이 원 전체가 상자에 들어가게 잡는다(부분 호도 같은 원 크기).
+      // 원 바깥쪽에 그리는 것 — 선 두께 절반, 구간 띠, 호 끝 아래 min/max 숫자 — 자리만큼 반지름을 줄인다.
+      const sr = scaleRange(w, p, ctx);
+      const lblW = Math.max(...[sr.min, sr.max].map((v) => textWidth(g, 11, Number(v).toFixed(sr.decimals))));
+      const R = Math.min(w.w, areaH) / 2;
+      const th = p.thickness || R * 0.14;
+      const r = Math.max(4, R - th / 2 - (hasBands ? 7 : 0) - Math.max(lblW / 2, th / 2 + 13) - 2);
+      const cx = w.w / 2;
+      const cy = areaH / 2;
 
       const pt = (a, rad) => {
         const t = (a * Math.PI) / 180;

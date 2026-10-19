@@ -67,19 +67,20 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 | type | 용도 | props (기본값) |
 |---|---|---|
 | `rect` | 패널·구분 박스 | `fill`(`#1b212b`), `stroke`(`#2e3846`), `strokeWidth`(1), `radius`(8) |
-| `label` | 고정 텍스트 | `text`, `fontSize`(15), `color`(`#e6e9ef`), `align`(left\|center\|right), `bold`(false) |
+| `image` | 이미지(로고 등) | `src`(data URL — 편집기에서 파일을 고르면 긴 변 1024px 이하, 150KB 이하로 자동 축소해 화면 데이터에 넣음, 작은 SVG는 그대로), `fit`(ratio=비율 고정(기본, 상자가 그림 비율을 유지) \| stretch=상자에 맞춤), `ratio`(그림 원래 너비/높이 — 편집기가 기록, 폼에는 없음), `opacity`(1), `radius`(0) |
+| `label` | 고정 텍스트 | `preset`(title\|subtitle\|caption\|info\|caution\|danger\|neon — 고른 스타일 값이 기본값), `text`, `fontSize`(15), `color`(`#e6e9ef`), `align`(left\|center\|right), `bold`(false), `italic`(false), `padding`(0, 안쪽 여백 — 정렬한 쪽), `bg`/`border`(null=없음, 위젯 상자 전체), `radius`(4), `glow`(false, 글자 발광), `shadow`(false, 글자 그림자) |
 
 ### 표시 위젯 (읽기, `access` 무관하게 표시만)
 
 | type | 용도 | props (기본값) |
 |---|---|---|
 | `numeric` | 디지털 숫자 표시기 | `color`(`#7cfc9a`), `bg`, `border`, `ranges`/`rangeTarget`(text\|bg\|border, 구간 `blink:true`), `animMs`(0=끔), `flashOnChange`, `showTrend`, 공통 상자 옵션(아래) |
-| `lamp` | 상태 램프(불리언) | `onColor`(`#2ecc71`), `offColor`(`#3a4250`), `onValue`(생략 시 truthy 판정), `bit`(지정하면 `(값 >> bit) & 1`로 판정), `blink`(false), `text`, `fontSize`(15), `textColor` |
+| `lamp` | 상태 램프(불리언) | `preset`(warning\|error\|info\|ok\|alarm — 모양·색 묶음), `shape`(circle\|square\|warning(▲+!)\|error(●+×)\|info(●+i)\|ok(●+체크)\|panel(알림창: 상자 전체가 표시등, 글자 안쪽 가운데) — 기호는 SVG, 기호·알림창 글자 색은 바탕 밝기로 자동), `onColor`(`#2ecc71`), `offColor`(`#3a4250`), `onValue`(생략 시 truthy 판정), `bit`(지정하면 `(값 >> bit) & 1`로 판정), `blink`(false), `text`, `fontSize`(15), `textColor` |
 | `tank` | 탱크 수위 | `fillColor`(`#3fa7ff`), `bgColor`, `shellColor`, `ranges`, `showValue`(true), `showScale`(true), `ticks`(5) |
 | `bar` | 막대 게이지 | `orientation`(v\|h), `fillColor`, `bgColor`, `border`, `radius`(3), `ranges`, `thickness`(생략 시 자동), `showScale`(false)/`ticks`(5)/`minorTicks`(0)/`tickLabels`(true), `showMinMax`(false), `scalePosition`(after\|before), `gradient`(`[{at: 값, color}]`, ranges보다 우선), `shade`(false), `showValue`(false), `valueAlign`(start\|center\|end\|follow, 기본 end), `origin`(생략 시 min부터 채움), `showRanges`(false), `markers`(`[{value, color?}]`), `tickColor`/`labelColor`/`fontSize`, `animMs`(400, 0=끔) |
 | `gauge` | 원형(아크) 게이지 | `startAngle`(-135), `endAngle`(135), `arcColor`, `trackColor`, `ranges`, `title`, `thickness`, `animMs`(400, 0=끔), `lineCap`(butt\|round) |
 
-**공통 상자 옵션(numeric·input)**: `preset`(led\|lcd\|vfd — 색·효과 묶음, 위젯 props가 우선), `font`(mono\|seg7\|sans), `fontSize`(생략 시 h×0.55), `italic`, `align`(end\|start\|center), `showUnit`(true), `unitAlign`(bottom\|middle\|top, 기본 bottom), `unitColor`, `ghost`/`ghostOpacity`(seg7 잔상), `glow`, `caption`/`captionColor`, `radius`(4), `borderWidth`, `bevel`, `glass`.
+**공통 상자 옵션(numeric·input)**: `preset`(led\|lcd\|vfd — 색·효과 묶음, 위젯 props가 우선), `font`(mono\|seg7\|sans), `fontSize`(생략 시 h×0.55), `italic`, `align`(end\|start\|center), `showUnit`(true), `unitAlign`(bottom\|middle\|top, 기본 bottom), `unitColor`, `ghost`/`ghostOpacity`(seg7 잔상), `glow`, `caption`/`captionColor`, `radius`(4), `borderWidth`, `bevel`, `glass`, `padding`(8, 안쪽 여백 — 정렬한 쪽 가장자리와 숫자 사이, 이름표·추세 표시는 2px 더 바깥).
 - 숫자와 단위는 한 `<text>` 안의 두 조각(`<tspan>`)이라 정렬을 바꾸면 **함께 움직인다**.
 - 단위 글꼴은 숫자와 같다. 단 7세그먼트(DSEG7)는 숫자 전용이라 단위는 고정폭 글꼴.
 - `unitAlign`은 숫자·단위의 **실제 글자 획**(캔버스로 측정) 기준: bottom = 바닥선, middle = 획 가운데, top = 획 윗줄. 숫자도 획 가운데가 상자 가운데에 온다.
@@ -111,12 +112,26 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 
 ---
 
-## 4. 편집기 속성 정의(`js/whmi-schema.js`)
+## 4. 바운딩 박스 규칙
+
+**위젯이 그리는 내용은 바운딩 박스(x/y/w/h) 밖으로 나갈 수 없다.**
+
+- 위젯 구현은 내용을 상자 안에 배치한다. 상자 크기와 함께 커지는 그림(게이지 호, 탱크 몸통 등)은 끝 숫자·선 두께까지 상자 안에 들어가게 계산한다.
+  - 탱크: 눈금이 있으면 몸통을 위아래로 7px씩 줄이고, 눈금 칸 폭은 가장 긴 눈금 숫자(위젯 min/max → 태그 정의)에 맞춤. 눈금 숫자는 오른쪽 끝 정렬.
+  - 막대: 세로 막대는 끝 숫자 자리만큼 주축을 줄임. 마커 선은 상자 안에서 자름.
+  - 게이지: 각도와 상관없이 원 전체가 상자에 들어가게 잡고(부분 호도 같은 원 크기), 선 두께 절반·구간 띠·호 끝 아래 min/max 숫자 자리만큼 반지름을 줄임. 반원·부채꼴은 빈 공간이 남지만 계산이 단순함.
+- 글자 크기·글자 길이처럼 상자와 무관하게 커지는 내용은 **편집기가 상자를 넓힌다**: 속성 변경·태그 변경·크기 조절·w/h 입력 뒤에 `WHMI.contentBox(g)`(잘림 영역 반영, 선 두께·필터 번짐 제외)로 그린 범위를 재서 넘치면 넓힘. 자동으로 줄이지는 않음. 크기 조절은 반대쪽 변을 고정하고 끌던 변만 되돌아감. 격자 맞춤이면 넓힌 변을 격자에 맞춤. 넓혀도 넘침이 줄지 않으면 되돌리고 멈춤.
+- 실행 중 값이 길어져 넘치는 경우(예: 범위보다 큰 값)는 처리하지 않는다 — 디자인할 때 상자를 넉넉히 잡는다.
+- **안쪽 여백(`padding`)**: 상자 테두리에서 안쪽으로 내용까지의 여백(바깥 여백 margin은 쓰지 않음 — 위젯은 좌표로 배치). 글자를 한쪽에 정렬하는 위젯(라벨, 숫자 표시·입력)에만 있다. 가운데 정렬 위젯(버튼 등)과 상자 크기에 맞춰 그리는 그림 위젯에는 두지 않는다(상자를 키우거나 옮기는 것과 같음).
+- 새 위젯을 만들 때 이 규칙을 지킨다. 확인은 위젯·옵션 조합별로 `contentBox`를 재는 방식으로 한다.
+
+## 5. 편집기 속성 정의(`js/whmi-schema.js`)
 
 편집기 속성 창의 폼은 위젯 타입별 필드 목록으로 만든다. 기본값은 여기 두지 않고 위젯 구현의 `defaults`(numeric·input은 `presets`까지)를 그대로 쓴다.
 
 - 필드: `{ key, label, type, group, min?, max?, step?, options?, placeholder?, when?(p) }`
 - 입력 종류: `text`, `opttext`, `num`, `optnum`, `color`, `optcolor`, `bool`, `select`, `screen`, `value`(true/false/숫자/글자), `list`(행 추가/삭제), `anim`(사용 체크 + ms), `enable`(위젯 필드 `enableWhen`)
 - 그룹: 기본 / 눈금 / 값 / 색상 / 동작 / 효과
+- 색(`color`/`optcolor`) 값은 `#RRGGBB` 또는 투명도가 있는 `#RRGGBBAA`. 속성 창은 색 + 투명도(%) 칸으로 편집하고, 100%면 6자리로 저장한다. 목록 안의 색(구간 색 등)과 화면 배경색은 투명도 없음.
 
 **위젯에 속성을 추가하면 `whmi-schema.js`에도 필드를 추가한다.** 편집기에는 JSON 편집 칸이 없으므로, 빠뜨리면 그 속성은 편집기에서 바꿀 수 없다(화면 JSON에 들어 있는 값은 그대로 동작·보존).

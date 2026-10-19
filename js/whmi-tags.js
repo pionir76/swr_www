@@ -9,6 +9,7 @@
 (function () {
   'use strict';
 
+  if (!window.WHMI) return;   // HMI 페이지를 떠나며 정리된 뒤 늦게 도착한 스크립트(이전 페이지 것)
   const { esc } = window.WHMI;
 
   // 레지스터 min/max는 "제한 없음"을 아주 큰 수로 내려주는 경우가 있다
@@ -342,9 +343,11 @@
     return out;
   }
 
-  function formHtml(t, data) {
+  // firstDev: 이 장비의 레지스터를 맨 앞에(속성 창에서 장비를 고른 채 "+ 새 태그…"로 열었을 때)
+  function formHtml(t, data, firstDev) {
     // 장비별로 묶은 레지스터 목록. 이미 태그가 있는 레지스터는 그 태그 id를 함께 보여준다.
     const byDev = new Map();
+    if (firstDev != null) for (const { dev } of data.regs.values()) if (dev.id === firstDev) { byDev.set(dev.id, { dev, regs: [] }); break; }
     for (const { reg, dev } of data.regs.values()) {
       if (!byDev.has(dev.id)) byDev.set(dev.id, { dev, regs: [] });
       byDev.get(dev.id).regs.push(reg);
@@ -392,6 +395,7 @@
 
   // ---- 대화상자 ---------------------------------------------------------------
   // opts.createFor: 위젯 id — 속성 창 "+ 새 태그…"에서 열면 바로 새 태그 폼, 만들면 그 위젯에 연결하고 닫음
+  // opts.deviceId: 속성 창에서 고른 장비 — 새 태그 폼의 소스 레지스터 목록에서 이 장비를 맨 앞에
   function open(editor, opts = {}) {
     const d = window.WHMI.dialog.open(`<div class="ed-dlg tm">
       <div class="tm-head">
@@ -575,7 +579,7 @@
 
     const showForm = (tag) => {
       editing = { tag };
-      formWrap.innerHTML = formHtml(tag, data);
+      formWrap.innerHTML = formHtml(tag, data, tag ? null : opts.deviceId);
       d.querySelector('.tm').classList.add('editing');
       formWrap.hidden = false;
       drawButtons();

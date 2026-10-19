@@ -3,13 +3,14 @@
 (function () {
   'use strict';
 
+  if (!window.WHMI) return;   // HMI 페이지를 떠나며 정리된 뒤 늦게 도착한 스크립트(이전 페이지 것)
   const { svg, esc } = window.WHMI;
 
   // 위젯 목록에 보일 이름 — 등록됐지만 여기 없는 타입은 타입 이름 그대로 보인다
   const TYPE_LABEL = {
     label: '텍스트', rect: '사각형', numeric: '숫자 표시', input: '숫자 입력',
     lamp: '램프', bar: '바 게이지', gauge: '원형 게이지', tank: '탱크',
-    button: '버튼', switch: '스위치', selector: '셀렉터', screenlink: '화면 이동',
+    button: '버튼', switch: '스위치', selector: '셀렉터', screenlink: '화면 이동', image: '이미지',
   };
   const TYPE_ORDER = Object.keys(TYPE_LABEL);
 
@@ -27,6 +28,7 @@
     switch:     { w: 110, h: 40 },
     selector:   { w: 190, h: 130 },
     screenlink: { w: 180, h: 36 },
+    image:      { w: 160, h: 90 },
   };
   const NEW_WIDGET_FALLBACK = { w: 120, h: 60 };
   const HISTORY_MAX = 50;
@@ -36,7 +38,12 @@
   const MAX_SCREEN_BYTES = 256 * 1024;      // 서버 화면 content 상한(413)
   const ANIM_DEFAULT_MS = 400;
   const MIXED = '__mixed__';                // 여러 개 선택에서 값이 서로 다른 선택 상자의 표시 항목
-  const MULTI_SKIP = ['list', 'enable'];    // 여러 개 동시 편집에서 빼는 필드(하나씩 편집)              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
+  const MULTI_SKIP = ['list', 'enable', 'image'];   // 여러 개 동시 편집에서 빼는 필드(하나씩 편집)
+  const IMAGE_MAX_BYTES = 150 * 1024;       // 이미지 위젯: 화면 데이터에 넣는 그림 상한(data URL 길이) — 넘으면 자동으로 더 줄임
+  const IMAGE_MAX_SIDE = 1024;              // 이미지 위젯: 긴 변 최대 픽셀
+  const TAG_LABEL_PX = 10;                  // 태그 보기 글자 크기(실제 픽셀, 10pt 이하)
+  const NO_DEV = 'none';                    // 태그 고르기: 소스 장비를 모르는 태그 묶음
+  const KEEP = '__keep__';                  // 태그 고르기: 다른 장비 태그가 연결된 상태(선택 전)              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
   const DRAFT_DELAY_MS = 400;               // 임시 저장(localStorage) 지연
   const TITLE_MAX = 64;                     // 화면 제목 최대 길이(서버 규칙)
   const SCREEN_MIN = 100, SCREEN_MAX = 7680; // 화면 크기(기준 해상도) 범위
@@ -65,6 +72,20 @@
     ['h',  '높이 같게',     icon(line(3, 1, 13, 1) + line(3, 15, 13, 15) + line(8, 3, 8, 13) + '<path d="M8 3l-2.5 2.5M8 3l2.5 2.5M8 13l-2.5-2.5M8 13l2.5-2.5" stroke="currentColor" stroke-width="1.4" fill="none"/>')],
     ['wh', '크기 같게',     icon('<rect x="2" y="2" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 1.5"/>' + bar(5, 5, 6, 6))],
   ];     // 실행 취소 단계 수(화면 JSON 통째 저장 — 화면 하나 약 20KB)
+
+  // 화면 설정(아무것도 선택 안 함)에 보이는 조작 안내: [동작, [키…]]
+  const KEY_HELP = [
+    ['추가 선택', ['Shift/Ctrl+클릭']],
+    ['영역 선택', ['빈 곳 드래그', 'Alt+드래그']],
+    ['이동', ['방향키', 'Shift+방향키']],
+    ['전체 선택 / 해제', ['Ctrl+A', 'Esc']],
+    ['복제 / 삭제', ['Ctrl+D', 'Del']],
+    ['복사 / 잘라내기 / 붙여넣기', ['Ctrl+C', 'X', 'V']],
+    ['실행 취소 / 다시 실행', ['Ctrl+Z', 'Ctrl+Y']],
+    ['앞으로 / 뒤로', ['Ctrl+]', 'Ctrl+[']],
+    ['맨 앞 / 맨 뒤', ['Ctrl+Shift+]', 'Ctrl+Shift+[']],
+    ['저장', ['Ctrl+S']],
+  ];
 
   // 도구줄 아이콘 — ⛶ ↶ ↷ 같은 기호도 글꼴이 없으면 □로 보이므로 SVG로
   const stroke = (d) => `<path d="${d}" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
@@ -117,6 +138,53 @@
 
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  // 색 + 투명도: 투명도 100%면 #rrggbb(기존 데이터 그대로), 미만이면 #rrggbbaa
+  const splitColor = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v)
+    ? { rgb: v.slice(0, 7).toLowerCase(), a: v.length === 9 ? Math.round(parseInt(v.slice(7), 16) / 2.55) : 100 } : null);
+  const joinColor = (rgb, a) => (a >= 100 ? rgb : rgb + Math.round(Math.max(0, a) * 2.55).toString(16).padStart(2, '0'));
+  const VIEW_KEY = 'whmi.editorView';   // 보기 메뉴 설정(브라우저별)
+  const loadView = () => {
+    try { return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
+  };
+
+  // 그림 파일 → 화면 데이터에 넣을 data URL. 사용자가 크기를 신경 쓰지 않도록 긴 변 IMAGE_MAX_SIDE 이하로 줄이고,
+  // IMAGE_MAX_BYTES를 넘으면 품질 → 크기 순으로 더 줄인다(WebP, 못 쓰는 브라우저는 PNG). 작은 SVG는 그대로.
+  // 반환 { src, ratio(원래 너비/높이) }
+  async function shrinkImage(file) {
+    if (!/^image\//.test(file.type)) throw new Error('그림 파일이 아닙니다.');
+    const url = await new Promise((ok, fail) => {
+      const fr = new FileReader();
+      fr.onload = () => ok(fr.result);
+      fr.onerror = () => fail(new Error('파일을 읽지 못했습니다.'));
+      fr.readAsDataURL(file);
+    });
+    const img = await new Promise((ok, fail) => {
+      const im = new Image();
+      im.onload = () => ok(im);
+      im.onerror = () => fail(new Error('그림을 열지 못했습니다.'));
+      im.src = url;
+    });
+    const nw = img.naturalWidth || 300, nh = img.naturalHeight || 150;
+    const ratio = nw / nh;
+    if (file.type === 'image/svg+xml' && url.length <= IMAGE_MAX_BYTES) return { src: url, ratio };
+    const cv = document.createElement('canvas');
+    let scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(nw, nh));
+    for (let i = 0; i < 12; i++) {
+      cv.width = Math.max(1, Math.round(nw * scale));
+      cv.height = Math.max(1, Math.round(nh * scale));
+      const c = cv.getContext('2d');
+      c.clearRect(0, 0, cv.width, cv.height);
+      c.drawImage(img, 0, 0, cv.width, cv.height);
+      for (const q of [0.9, 0.8, 0.65]) {
+        const out = cv.toDataURL('image/webp', q);
+        const src = out.startsWith('data:image/webp') ? out : cv.toDataURL('image/png');
+        if (src.length <= IMAGE_MAX_BYTES) return { src, ratio };
+        if (src !== out) break;   // PNG는 품질 조절이 없으니 크기를 줄인다
+      }
+      scale *= 0.75;
+    }
+    throw new Error('그림을 충분히 줄이지 못했습니다.');
+  }
   const inside = (px, py, w) => px >= w.x && px <= w.x + w.w && py >= w.y && py <= w.y + w.h;
   const contains = (r, w) => w.x >= r.x && w.y >= r.y && w.x + w.w <= r.x + r.w && w.y + w.h <= r.y + r.h;
   // 글자 입력 중인 요소면 편집기 단축키를 쓰지 않는다(체크박스/버튼은 해당 없음)
@@ -139,7 +207,10 @@
       this.future = [];       // 다시 실행용
       this.clipboard = null;  // 복사한 위젯들(JSON 문자열) — 화면을 바꿔도 유지
       this.groupOpen = {};   // 속성 창 그룹 접힘 상태(기본: 펼침)
-      this.grid = { show: true, snap: true, size: 10 };  // 보기와 맞춤은 따로 켜고 끈다
+      // 보기 메뉴 설정(격자 보기·맞춤·간격, 태그 보기) — 실행 모드에 다녀와도 유지되게 브라우저에 기억
+      const view = loadView();
+      this.grid = Object.assign({ show: true, snap: true, size: 10 }, view.grid);   // 보기와 맞춤은 따로 켜고 끈다
+      this.showTags = !!view.showTags;
       this.buildDom();
       this.onKey = (e) => this.handleKey(e);
       document.addEventListener('keydown', this.onKey);
@@ -168,14 +239,16 @@
             ${menuItem('manage', '화면 관리', '순서·시작 화면·삭제')}`)}
           <button class="ed-btn" type="button" data-act="tags" title="HMI 태그 목록·만들기·수정">태그 관리</button>
           <span class="ed-sep"></span>
-          ${menu('격자', '격자 보기·맞춤·간격', `
-            <label class="ed-check" title="격자선 표시"><input type="checkbox" data-opt="gridShow" checked> 격자 보기</label>
-            <label class="ed-check" title="이동·크기 조절 시 격자에 맞춤"><input type="checkbox" data-opt="gridSnap" checked> 격자 맞춤</label>
+          ${menu('보기', '격자·태그 표시', `
+            <label class="ed-check" title="격자선 표시"><input type="checkbox" data-opt="gridShow"${this.grid.show ? ' checked' : ''}> 격자 보기</label>
+            <label class="ed-check" title="이동·크기 조절 시 격자에 맞춤"><input type="checkbox" data-opt="gridSnap"${this.grid.snap ? ' checked' : ''}> 격자 맞춤</label>
             <label class="ed-check">간격
               <select class="ed-grid-size" title="격자 간격">
                 ${[5, 10, 20, 40].map((n) => `<option value="${n}"${n === this.grid.size ? ' selected' : ''}>${n}px</option>`).join('')}
               </select>
-            </label>`)}
+            </label>
+            <div class="ed-menu-sep"></div>
+            <label class="ed-check" title="위젯마다 장비명 - 레지스터 - 통합주소 표시"><input type="checkbox" data-opt="tagShow"${this.showTags ? ' checked' : ''}> 태그 보기</label>`)}
           <span class="ed-sep"></span>
           <button class="ed-btn ed-icon-btn" type="button" data-act="undo" title="실행 취소 (Ctrl+Z)">${TB_ICONS.undo}</button>
           <button class="ed-btn ed-icon-btn" type="button" data-act="redo" title="다시 실행 (Ctrl+Y)">${TB_ICONS.redo}</button>
@@ -223,13 +296,21 @@
       this.root.querySelector('[data-opt="gridShow"]').addEventListener('change', (e) => {
         this.grid.show = e.target.checked;
         this.updateGrid();
+        this.saveView();
       });
       this.root.querySelector('[data-opt="gridSnap"]').addEventListener('change', (e) => {
         this.grid.snap = e.target.checked;
+        this.saveView();
+      });
+      this.root.querySelector('[data-opt="tagShow"]').addEventListener('change', (e) => {
+        this.showTags = e.target.checked;
+        this.drawSelection();
+        this.saveView();
       });
       this.root.querySelector('.ed-grid-size').addEventListener('change', (e) => {
         this.grid.size = Number(e.target.value);
         this.updateGrid();
+        this.saveView();
       });
       this.root.querySelector('.ed-toolbar').addEventListener('click', (e) => {
         const mb = e.target.closest('[data-menu]');
@@ -243,6 +324,8 @@
       this.root.querySelector('.ed-palette-list').addEventListener('pointerdown', (e) => this.paletteDown(e));
       this.refreshScreenSel();
       this.inspector.addEventListener('change', (e) => {
+        if (e.target.dataset.tagdev) { this.onTagDevChange(e.target); return; }
+        if (e.target.dataset.imgfile !== undefined) { this.onImageFile(e.target); return; }
         if (e.target.dataset.f) this.onFieldChange(e.target);
         else if (e.target.dataset.s) this.onScreenField(e.target);
         else if (e.target.dataset.p) this.onPropChange(e.target);
@@ -250,9 +333,30 @@
         else if (e.target.dataset.ew) this.onEnableChange(e.target.closest('.ed-pf'));
       });
       this.inspector.addEventListener('input', (e) => {
-        // 색 선택기는 끄는 동안 바로 반영(연속 변경은 실행 취소 한 단계로 묶임)
-        if (e.target.dataset.p && e.target.type === 'color') this.onPropChange(e.target, true);
+        // 색 선택기·글자 칸은 바꾸는 동안 바로 반영(연속 변경은 실행 취소 한 단계로 묶임)
+        if (e.target.dataset.p && (e.target.type === 'color' || this.isLiveText(e.target))) this.onPropChange(e.target, true);
         else if (e.target.dataset.lc && e.target.type === 'color') this.onListChange(e.target.closest('[data-list]'), true);
+      });
+      // 기본값 상태의 숫자 칸은 비어 있고 기본값은 흐린 안내 글자로만 보인다 — 그대로 두면 화살표(▲▼·방향키)가
+      // 최소값부터 시작하므로, 화살표를 누르는 순간에만 기본값을 채워 그 값부터 움직이게 한다(직접 입력은 그대로).
+      // 안 바꾸고 나가면 다시 비운다.
+      const fillDefault = (el) => {
+        if (el.type !== 'number' || !el.dataset.p || el.value !== '' || el.placeholder === '' || !Number.isFinite(Number(el.placeholder))) return;
+        el.value = el.placeholder;
+        el.dataset.filled = el.placeholder;
+      };
+      this.inspector.addEventListener('keydown', (e) => {
+        if (/^(ArrowUp|ArrowDown|PageUp|PageDown)$/.test(e.key)) fillDefault(e.target);
+      });
+      this.inspector.addEventListener('mousedown', (e) => {
+        const el = e.target;
+        if (el.type === 'number' && e.offsetX > el.clientWidth - 20) fillDefault(el);   // 오른쪽 ▲▼ 버튼
+      });
+      this.inspector.addEventListener('focusout', (e) => {
+        const el = e.target;
+        if (el.dataset.filled === undefined) return;
+        if (el.value === el.dataset.filled) el.value = '';
+        delete el.dataset.filled;
       });
       // 속성 그룹 접힘 상태는 위젯을 바꿔도 유지
       this.inspector.addEventListener('toggle', (e) => {
@@ -262,6 +366,12 @@
       this.inspector.addEventListener('click', (e) => {
         const rs = e.target.closest('[data-reset]');
         if (rs) { this.resetProp(rs.dataset.reset); return; }
+        const ib = e.target.closest('[data-img]');
+        if (ib) {
+          if (ib.dataset.img === 'pick') ib.parentElement.querySelector('[data-imgfile]').click();
+          else { const w = this.selected()[0]; if (w) this.setImage(w, null); }
+          return;
+        }
         const la = e.target.closest('[data-list-add]');
         if (la) { this.addListRow(la.dataset.listAdd); return; }
         const ld = e.target.closest('[data-list-del]');
@@ -291,6 +401,10 @@
         case 'paste': this.paste(); break;
         case 'front': case 'forward': case 'backward': case 'back': this.reorder(act); break;
       }
+    }
+
+    saveView() {
+      try { localStorage.setItem(VIEW_KEY, JSON.stringify({ grid: this.grid, showTags: this.showTags })); } catch (_) {}
     }
 
     toggleMenu(btn) {
@@ -689,6 +803,7 @@
       this.gridRect = svg('rect', { width: W, height: H, fill: 'url(#ed-grid)', 'pointer-events': 'none' }, this.overlay);
       // 화면 경계 — 확대/축소와 상관없이 1px로 보이게
       svg('rect', { width: W, height: H, class: 'ed-bounds' }, this.overlay);
+      this.tagLayer = svg('g', { 'pointer-events': 'none' }, this.overlay);   // 태그 보기(편집 보조 표시)
       this.selLayer = svg('g', {}, this.overlay);
 
       this.nodes = new Map(); // widget id → { wrap, g }
@@ -761,6 +876,7 @@
       this.selLayer.innerHTML = '';
       const u = this.unitPx();
       this.updateToolbar();
+      this.drawTags(u);
       const list = this.selected();
       // 여러 개 선택이면 기준 위젯(먼저 선택한 것 — 크기 맞추기 기준)은 실선으로
       const primary = list.length > 1 ? this.primaryId() : null;
@@ -781,6 +897,40 @@
       if (this.drag && this.drag.kind === 'marquee' && this.drag.rect) {
         const r = this.drag.rect;
         svg('rect', { x: r.x, y: r.y, width: r.w, height: r.h, class: 'ed-marquee' }, this.selLayer);
+      }
+    }
+
+    // 태그 보기 — 태그가 있는 위젯마다 왼쪽 위 안쪽에 "장비명 - 레지스터 - D통합주소"(태그 응답의 source).
+    // 위젯과 별개의 표시 층이라 화면 데이터·바운딩 박스와 무관하고, 글자 크기는 확대/축소와 상관없이 일정.
+    drawTags(u) {
+      const layer = this.tagLayer;
+      if (!layer) return;
+      layer.innerHTML = '';
+      if (!this.showTags) return;
+      const fs = TAG_LABEL_PX * u, padX = 4 * u, padY = 2 * u;
+      // 이웃 라벨과 겹치지 않게 위젯 폭에 맞춰 줄인다(…). 선택한 위젯은 전체 글자를 맨 위에
+      const order = this.doc.widgets.filter((w) => !this.sel.has(w.id)).concat(this.selected());
+      for (const w of order) {
+        if (!w.tag) continue;
+        const t = this.tags[w.tag];
+        const src = (t && t.source) || {};
+        const text = !t ? `${w.tag} (정의 없음)`
+          : `${src.deviceDisplayName ?? '?'} - ${src.registerTagName ?? '?'} - ${src.unifiedAddress != null ? `D${src.unifiedAddress}` : '?'}`;
+        const bg = svg('rect', { class: 'ed-taglbl-bg', rx: 2 * u }, layer);
+        const tx = svg('text', { x: w.x + 2 * u + padX, y: w.y + 2 * u + padY, 'font-size': fs, 'dominant-baseline': 'hanging', class: `ed-taglbl${t ? '' : ' bad'}` }, layer);
+        tx.textContent = text;
+        const room = w.w - 4 * u - padX * 2;
+        if (!this.sel.has(w.id) && tx.getComputedTextLength() > room) {
+          let lo = 0, hi = text.length;
+          while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            tx.textContent = `${text.slice(0, mid)}…`;
+            if (tx.getComputedTextLength() <= room) lo = mid; else hi = mid - 1;
+          }
+          tx.textContent = lo ? `${text.slice(0, lo)}…` : '…';
+        }
+        const bb = tx.getBBox();
+        for (const [k, v] of Object.entries({ x: bb.x - padX, y: bb.y - padY, width: bb.width + padX * 2, height: bb.height + padY * 2 })) bg.setAttribute(k, v);
       }
     }
 
@@ -1139,6 +1289,15 @@
       if (h.includes('e')) x2 = clamp(this.snap(r.x + r.w + pos.x - d.start.x), x1 + MIN_SIZE, W);
       if (h.includes('n')) y1 = clamp(this.snap(r.y + pos.y - d.start.y), 0, y2 - MIN_SIZE);
       if (h.includes('s')) y2 = clamp(this.snap(r.y + r.h + pos.y - d.start.y), y1 + MIN_SIZE, H);
+      const ar = this.lockedRatio(w);
+      if (ar) {
+        // 비율 고정: 모서리는 더 많이(비율로) 바뀐 쪽 기준, 변은 그 방향 기준. 반대쪽 변·모서리를 고정한다
+        let nw = x2 - x1, nh = y2 - y1;
+        const byH = h === 'n' || h === 's' || (h.length === 2 && Math.abs(nh / r.h - 1) > Math.abs(nw / r.w - 1));
+        if (byH) nw = Math.max(MIN_SIZE, Math.round(nh * ar)); else nh = Math.max(MIN_SIZE, Math.round(nw / ar));
+        if (h.includes('w')) x1 = x2 - nw; else x2 = x1 + nw;
+        if (h.includes('n')) y1 = y2 - nh; else y2 = y1 + nh;
+      }
       Object.assign(w, { x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
       this.drawSelection();
       this.showGeometry();
@@ -1166,7 +1325,8 @@
       this.drag = null;
       if (this.svgRoot.hasPointerCapture(e.pointerId)) this.svgRoot.releasePointerCapture(e.pointerId);
       if (d.raf) cancelAnimationFrame(d.raf);
-      if (d.active && d.kind === 'resize') this.redrawOne(this.selected()[0]);
+      // 내용보다 작게 줄였으면 놓는 순간 내용이 들어가는 크기로 되돌린다
+      if (d.active && d.kind === 'resize') { const w = this.selected()[0]; this.redrawOne(w); this.fitBox(w, d.handle); }
       if (!d.active && d.collapseTo) this.sel = new Set([d.collapseTo]);
       this.drawSelection();
       if (d.active && (d.kind === 'move' || d.kind === 'resize')) {
@@ -1407,14 +1567,65 @@
     }
 
     // 위치만 바뀐 위젯은 transform만, 크기가 바뀐 위젯은 다시 그린다
-    applyGeometry(before) {
+    applyGeometry(before, handle) {
       for (const w of this.selected()) {
         const b = before.get(w.id);
-        if (b.w !== w.w || b.h !== w.h) this.redrawOne(w);
+        if (b.w !== w.w || b.h !== w.h) { this.redrawOne(w); this.fitBox(w, handle); }
         else if (b.x !== w.x || b.y !== w.y) this.nodes.get(w.id).g.setAttribute('transform', `translate(${w.x},${w.y})`);
       }
       this.drawSelection();
       this.commit();
+    }
+
+    // 바운딩 박스는 항상 내용을 감싼다 — 그린 내용(WHMI.contentBox)이 상자 밖으로 나가면 상자를
+    // 넓힌다(자동으로 줄이지는 않음). 내용은 제자리, 상자가 넓어지는 쪽은 넘친 쪽. 상자 크기에 따라
+    // 그림도 커지는 위젯(막대 두께 등)은 한 번에 안 맞을 수 있어 맞을 때까지 몇 번 반복한다.
+    // 격자 맞춤이면 넓힌 변을 격자에 맞추고, 화면 밖으로 나가면 안쪽으로 민다. 넓혔으면 true.
+    //  handle  크기 조절 손잡이('se' 등) 또는 'se'(입력란에서 w/h를 바꿈) — 이때는 반대쪽 변을 고정하고
+    //          끌던 변만 넓힌다(놓으면 끌던 변이 내용이 들어가는 크기로 되돌아감)
+    fitBox(w, handle) {
+      const o = { x: w.x, y: w.y, w: w.w, h: w.h };
+      const grew = { l: false, t: false, r: false, b: false };
+      let prev = Infinity;
+      for (let i = 0; i < 12; i++) {
+        const node = this.nodes.get(w.id);
+        const cb = node && window.WHMI.contentBox(node.g);
+        if (!cb) break;
+        let L = Math.ceil(-cb.x - 0.5), T = Math.ceil(-cb.y - 0.5);
+        let R = Math.ceil(cb.x + cb.w - w.w - 0.5), B = Math.ceil(cb.y + cb.h - w.h - 0.5);
+        if (L <= 0 && T <= 0 && R <= 0 && B <= 0) break;
+        // 넓혀도 넘침이 줄지 않으면(그림이 상자와 같은 비율로 커짐 — 예: 미리보기 값이 범위 밖인 게이지)
+        // 끝없이 커지므로 원래 크기로 되돌리고 멈춘다
+        const total = Math.max(0, L) + Math.max(0, T) + Math.max(0, R) + Math.max(0, B);
+        if (total >= prev) { Object.assign(w, o); this.redrawOne(w); return false; }
+        prev = total;
+        if (handle) {
+          // 넘친 양을 모두 끌던 쪽 변으로(반대쪽 변은 고정)
+          const dx = Math.max(0, L) + Math.max(0, R), dy = Math.max(0, T) + Math.max(0, B);
+          const west = handle.includes('w'), north = handle.includes('n');
+          L = west ? dx : 0; R = west ? 0 : dx;
+          T = north ? dy : 0; B = north ? 0 : dy;
+        }
+        if (L > 0) { w.x -= L; w.w += L; grew.l = true; }
+        if (T > 0) { w.y -= T; w.h += T; grew.t = true; }
+        if (R > 0) { w.w += R; grew.r = true; }
+        if (B > 0) { w.h += B; grew.b = true; }
+        this.redrawOne(w);
+      }
+      if (w.w === o.w && w.h === o.h) return false;
+      if (this.grid.snap) {
+        const n = this.grid.size;
+        const x2 = w.x + w.w, y2 = w.y + w.h;
+        if (grew.l) w.x = Math.floor(w.x / n) * n;
+        if (grew.t) w.y = Math.floor(w.y / n) * n;
+        w.w = (grew.r ? Math.ceil(x2 / n) * n : x2) - w.x;
+        w.h = (grew.b ? Math.ceil(y2 / n) * n : y2) - w.y;
+      }
+      const { w: W, h: H } = this.doc.size;
+      w.x = clamp(w.x, 0, Math.max(0, W - w.w));
+      w.y = clamp(w.y, 0, Math.max(0, H - w.h));
+      this.redrawOne(w);
+      return true;
     }
 
     snapshotGeometry() {
@@ -1508,7 +1719,13 @@
       if (f === 'id') { this.renameWidget(w, el.value.trim(), el); return; }
       if (f === 'tag') {
         // "+ 새 태그…": 선택은 되돌리고 태그 관리의 새 태그 폼을 연다(만들면 이 위젯에 연결)
-        if (el.value === '__new__') { el.value = w.tag || ''; window.WHMI.TagManager.open(this, { createFor: w.id }); return; }
+        if (el.value === '__new__') {
+          const dev = el.previousElementSibling.value;
+          this.fillTagPicker(el, w.tag, true, dev);
+          window.WHMI.TagManager.open(this, { createFor: w.id, deviceId: dev === NO_DEV ? null : Number(dev) });
+          return;
+        }
+        if (el.value === KEEP) return;
         this.setTag(w, el.value);
         return;
       }
@@ -1521,8 +1738,11 @@
       if (f === 'y') w.y = clamp(v, 0, Math.max(0, H - w.h));
       if (f === 'w') w.w = clamp(v, MIN_SIZE, Math.max(MIN_SIZE, W - w.x));
       if (f === 'h') w.h = clamp(v, MIN_SIZE, Math.max(MIN_SIZE, H - w.y));
+      const ar = this.lockedRatio(w);   // 비율 고정 이미지: 다른 쪽도 함께
+      if (ar && f === 'w') w.h = Math.max(MIN_SIZE, Math.round(w.w / ar));
+      if (ar && f === 'h') w.w = Math.max(MIN_SIZE, Math.round(w.h * ar));
       el.value = w[f];
-      this.applyGeometry(before);
+      this.applyGeometry(before, 'se');   // w/h 입력은 왼쪽 위 고정
     }
 
     renameWidget(w, id, el) {
@@ -1551,6 +1771,7 @@
         } catch (_) {}
       }
       this.redrawOne(w);
+      this.fitBox(w);   // 태그의 단위·범위로 내용이 커질 수 있다
       this.drawSelection();
       this.commit();
     }
@@ -1582,18 +1803,22 @@
         switch (f.type) {
           case 'num': case 'optnum': return `<input type="number" data-p="${k}"${lim}>`;
           case 'color': case 'optcolor':
-            return `<span class="ed-color"><input type="color" data-p="${k}"><input type="text" data-p="${k}" data-pct spellcheck="false"></span>`;
+            return `<span class="ed-color"><span class="ed-swatch"><input type="color" data-p="${k}"></span>` +
+              `<input type="text" data-p="${k}" data-pct spellcheck="false">` +
+              `<input type="number" class="ed-alpha" data-p="${k}" data-alpha min="0" max="100" step="5" title="투명도(%) — 100이 불투명"><span class="ed-alpha-unit">%</span></span>`;
           case 'bool': return `<input type="checkbox" data-p="${k}">`;
           case 'select': return `<select data-p="${k}">${f.options.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select>`;
           case 'screen': return `<select data-p="${k}"><option value="">(선택 안 함)</option>${screens}</select>`;
           case 'list':
             return `<div class="ed-list" data-list="${k}"></div><button class="ed-list-add" type="button" data-list-add="${k}">+ 추가</button>`;
-          case 'enable': {
-            const tagOpts = Object.values(this.tags).sort((a, b) => a.id.localeCompare(b.id))
-              .map((t) => `<option value="${esc(t.id)}">${esc(t.id)}${t.name ? ` — ${esc(t.name)}` : ''}</option>`).join('');
-            return `<select data-ew="tag"><option value="">(조건 없음 — 항상 허용)</option>${tagOpts}</select>` +
+          case 'image':
+            return `<div class="ed-img"><span class="ed-img-thumb"></span>` +
+              `<button class="ed-btn" type="button" data-img="pick">파일 선택…</button>` +
+              `<button class="ed-btn" type="button" data-img="clear">지우기</button>` +
+              `<input type="file" accept="image/*" data-imgfile hidden></div>`;
+          case 'enable':
+            return `<div class="ed-tagpick"><select data-tagdev="ew" title="장비"></select><select data-ew="tag" title="태그"></select></div>` +
               `<input type="text" data-ew="equals" spellcheck="false" placeholder="이 값일 때 허용">`;
-          }
           case 'anim':
             return `<div class="ed-anim"><label><input type="checkbox" data-p="${k}" data-anim> 사용</label>` +
               `<span class="ed-anim-ms"><input type="number" data-p="${k}"${lim}> ms</span></div>`;
@@ -1650,12 +1875,16 @@
           const eq = box.querySelector('[data-ew="equals"]');
           box.querySelector('.ed-reset').hidden = !ew;
           box.classList.toggle('is-set', !!ew);
-          if (tagSel !== active) {
-            if (ew && ![...tagSel.options].some((o) => o.value === ew.tag)) tagSel.add(new Option(`${ew.tag} (정의되지 않은 태그)`, ew.tag));
-            tagSel.value = ew ? ew.tag : '';
-          }
+          if (tagSel !== active) this.fillTagPicker(tagSel, ew ? ew.tag : null, false);
           eq.disabled = !ew;
           if (eq !== active) eq.value = ew ? this.fmtVal(ew.equals) : '';
+          continue;
+        }
+        if (f.type === 'image') {
+          const src = ws[0].props && ws[0].props.src;
+          box.querySelector('.ed-img-thumb').style.backgroundImage = src ? `url("${src}")` : '';
+          box.querySelector('[data-img="clear"]').disabled = !src;
+          box.querySelector('.ed-reset').hidden = true;   // 지우기 버튼이 대신한다
           continue;
         }
         if (f.type === 'anim') {
@@ -1683,7 +1912,16 @@
         for (const el of box.querySelectorAll('[data-p]')) {
           if (el === active && isTyping(el)) continue;   // 체크 상자는 포커스가 있어도 갱신(실행 취소 반영)
           if (f.type === 'bool') { el.checked = !mixed && !!(set ? cur : def); el.indeterminate = mixed; }
-          else if (el.type === 'color') el.value = (set ? cur : def) || '#000000';
+          else if (el.type === 'color') {
+            const c = splitColor(set ? cur : def);
+            el.value = c ? c.rgb : '#000000';
+            el.style.opacity = c ? c.a / 100 : 1;   // 체크무늬 위에 투명도만큼 비쳐 보이게
+          } else if (el.dataset.alpha !== undefined) {
+            const as = items.map((it) => (splitColor(it.eff[f.key]) || { a: 100 }).a);
+            const c = splitColor(set ? cur : def);
+            el.value = as.some((a) => a !== as[0]) ? '' : set && c && c.a < 100 ? c.a : '';
+            el.placeholder = as.some((a) => a !== as[0]) ? '여러 값' : String(c ? c.a : 100);
+          }
           else if (f.type === 'select' || f.type === 'screen') {
             // 값이 섞이면 고를 수 없는 "(여러 값)" 항목을 잠시 넣어 보여 준다
             let mx = el.querySelector(`option[value="${MIXED}"]`);
@@ -1696,7 +1934,8 @@
             el.placeholder = '여러 값';
           } else {
             el.value = set ? this.fmtVal(cur) : '';
-            el.placeholder = f.placeholder || (def == null || def === '' ? (f.type === 'optnum' ? '자동' : '') : this.fmtVal(def));
+            // 기본값(스타일 값 포함)이 있으면 그 값을, 없으면 안내 문구를 흐리게
+            el.placeholder = def != null && def !== '' ? this.fmtVal(def) : f.placeholder || (f.type === 'optnum' ? '자동' : '');
           }
         }
       }
@@ -1706,11 +1945,105 @@
       });
     }
 
+    // ---- 이미지 위젯 ---------------------------------------------------------
+    async onImageFile(input) {
+      const file = input.files && input.files[0];
+      input.value = '';   // 같은 파일을 다시 골라도 change가 나도록
+      const w = this.selected()[0];
+      if (!file || !w) return;
+      this.msg('그림을 줄이는 중…');
+      try {
+        const { src, ratio } = await shrinkImage(file);
+        if (!this.doc.widgets.includes(w)) return;   // 그 사이 위젯이 사라짐
+        this.setImage(w, src, ratio);
+        this.flash(`그림을 넣었습니다 (${Math.ceil(src.length / 1024)}KB)`);
+      } catch (e) {
+        this.msg(e.message, 'err');
+      }
+    }
+
+    // 그림 넣기/지우기(실행 취소 한 단계). 비율 고정이면 너비는 두고 높이를 그림 비율에 맞춘다.
+    setImage(w, src, ratio) {
+      const props = Object.assign({}, w.props);
+      if (src) Object.assign(props, { src, ratio: Math.round(ratio * 10000) / 10000 });
+      else { delete props.src; delete props.ratio; }
+      if (Object.keys(props).length) w.props = props; else delete w.props;
+      this.applyRatio(w);
+      this.canonical(w);
+      this.redrawOne(w);
+      this.drawSelection();
+      this.commit();
+    }
+
+    // 비율 고정 이미지면 그림 비율(너비/높이), 아니면 null
+    lockedRatio(w) {
+      const p = w.props || {};
+      return w.type === 'image' && p.src && p.ratio > 0 && (p.fit || 'ratio') === 'ratio' ? p.ratio : null;
+    }
+
+    // 상자를 그림 비율로 — 너비 기준, 화면을 넘으면 높이 기준으로 다시
+    applyRatio(w) {
+      const ar = this.lockedRatio(w);
+      if (!ar) return;
+      const { w: W, h: H } = this.doc.size;
+      w.h = Math.max(MIN_SIZE, Math.round(w.w / ar));
+      if (w.y + w.h > H) { w.h = Math.max(MIN_SIZE, H - w.y); w.w = Math.max(MIN_SIZE, Math.round(w.h * ar)); }
+    }
+
+    // ---- 태그 고르기: 장비 → 태그 2단계 ----------------------------------------
+    // 태그 응답의 source.deviceId/deviceDisplayName(서버가 채움)으로 장비별로 묶는다.
+    // 소스를 모르는 태그·정의되지 않은 태그는 "(장비 없음)"으로.
+    tagGroups() {
+      const groups = new Map();
+      for (const t of Object.values(this.tags)) {
+        const src = t.source || {};
+        const key = src.deviceId != null ? String(src.deviceId) : NO_DEV;
+        if (!groups.has(key)) groups.set(key, { key, name: src.deviceDisplayName || src.deviceCode || '(장비 없음)', tags: [] });
+        groups.get(key).tags.push(t);
+      }
+      for (const g of groups.values()) g.tags.sort((a, b) => a.id.localeCompare(b.id));
+      return [...groups.values()].sort((a, b) => (a.key === NO_DEV) - (b.key === NO_DEV) || a.name.localeCompare(b.name, 'ko'));
+    }
+
+    // tagSel 바로 앞의 장비 선택 상자와 함께 채운다.
+    //  tagId    현재 연결된 태그(없으면 null)    isWidget  위젯 tag(+ 새 태그…) / 쓰기 허용 조건
+    //  devKey   보여 줄 장비(생략 시 태그의 장비 → 마지막으로 고른 장비 → 첫 장비)
+    fillTagPicker(tagSel, tagId, isWidget, devKey) {
+      const devSel = tagSel.previousElementSibling;
+      const groups = this.tagGroups();
+      const defined = tagId && this.tags[tagId];
+      const own = defined ? (defined.source && defined.source.deviceId != null ? String(defined.source.deviceId) : NO_DEV) : tagId ? NO_DEV : null;
+      if (tagId && !defined && !groups.some((g) => g.key === NO_DEV)) groups.push({ key: NO_DEV, name: '(장비 없음)', tags: [] });
+      const key = [devKey, own, this.tagDev].find((k) => k && groups.some((g) => g.key === k)) || (groups[0] && groups[0].key) || '';
+      devSel.innerHTML = groups.map((g) => `<option value="${esc(g.key)}">${esc(g.name)} (${g.tags.length})</option>`).join('');
+      devSel.value = key;
+      devSel.disabled = !groups.length;
+      const g = groups.find((x) => x.key === key);
+      const none = isWidget ? '(없음)' : '(조건 없음 — 항상 허용)';
+      // 연결된 태그가 다른 장비 것이면, 이 장비 목록에서 고르기 전까지는 연결을 바꾸지 않는다
+      const head = tagId && own !== key ? `<option value="${KEEP}" disabled>— 태그 선택 —</option>` : '';
+      const opts = (g ? g.tags : []).map((t) => `<option value="${esc(t.id)}">${esc(t.id)}${t.name ? ` — ${esc(t.name)}` : ''}</option>`).join('');
+      const undef = tagId && !defined && key === NO_DEV ? `<option value="${esc(tagId)}">${esc(tagId)} (정의되지 않은 태그)</option>` : '';
+      tagSel.innerHTML = `${head}<option value="">${none}</option>${undef}${opts}${isWidget ? '<option value="__new__">+ 새 태그…</option>' : ''}`;
+      tagSel.value = head ? KEEP : tagId || '';
+    }
+
+    // 장비를 바꾸면 태그 목록만 바꾼다(연결은 태그를 고를 때 바뀜). 고른 장비는 다음 위젯에서도 먼저 보여 준다.
+    onTagDevChange(devSel) {
+      const tagSel = devSel.nextElementSibling;
+      this.tagDev = devSel.value;
+      const w = this.selected()[0];
+      if (!w) return;
+      if (devSel.dataset.tagdev === 'f') this.fillTagPicker(tagSel, w.tag, true, devSel.value);
+      else this.fillTagPicker(tagSel, w.enableWhen ? w.enableWhen.tag : null, false, devSel.value);
+    }
+
     // ---- 쓰기 허용 조건(위젯 필드 enableWhen) -------------------------------------
     onEnableChange(box) {
       const w = this.selected()[0];
       if (!w || !box) return;
       const tag = box.querySelector('[data-ew="tag"]').value;
+      if (tag === KEEP) return;
       const raw = box.querySelector('[data-ew="equals"]').value.trim();
       if (!tag) { this.setEnableWhen(w, null); return; }
       // 태그를 처음 고르면 조건 값은 1(켜짐)로 시작 — 비워 두면 쓰기가 항상 막히므로
@@ -1839,11 +2172,25 @@
           el.value = v;
           break;
         }
-        case 'color': case 'optcolor':
-          if (raw === '') { v = undefined; break; }
-          if (!/^#[0-9a-fA-F]{6}$/.test(raw)) { this.formError(`${f.label}: #RRGGBB 형식이어야 합니다.`); this.syncPropForm(ws); return; }
-          v = raw.toLowerCase();
+        case 'color': case 'optcolor': {
+          // 위젯마다 지금 색(기본값 포함)을 기준으로 — 여러 개 편집에서도 바꾼 쪽(색 또는 투명도)만 같아진다
+          const now = (x) => splitColor(Object.prototype.hasOwnProperty.call(x.props || {}, f.key) ? x.props[f.key] : this.propDefaults(x)[f.key]);
+          if (el.dataset.alpha !== undefined) {
+            const a = raw === '' ? 100 : Math.round(Number(raw));
+            if (!Number.isFinite(a)) { this.syncPropForm(ws); return; }
+            const al = clamp(a, 0, 100);
+            v = (x) => { const c = now(x); return c ? joinColor(c.rgb, al) : undefined; };
+          } else if (el.type === 'color') {
+            const rgb = el.value.toLowerCase();
+            v = (x) => joinColor(rgb, (now(x) || { a: 100 }).a);
+          } else {
+            if (raw === '') { v = undefined; break; }
+            if (!splitColor(raw)) { this.formError(`${f.label}: #RRGGBB 또는 #RRGGBBAA 형식이어야 합니다.`); this.syncPropForm(ws); return; }
+            const c = splitColor(raw);
+            v = joinColor(c.rgb, c.a);
+          }
           break;
+        }
         case 'value': v = raw === '' ? undefined : this.parseValue(raw); break;
         default: v = raw === '' ? undefined : el.value;   // text / opttext
       }
@@ -1863,8 +2210,9 @@
       const ws = Array.isArray(target) ? target : [target];
       for (const w of ws) {
         const props = Object.assign({}, w.props);
-        if (v === undefined || JSON.stringify(v) === JSON.stringify(this.propDefaults(w)[key])) delete props[key];
-        else props[key] = v;
+        const val = typeof v === 'function' ? v(w) : v;   // 위젯마다 다른 값(예: 색은 두고 투명도만)
+        if (val === undefined || JSON.stringify(val) === JSON.stringify(this.propDefaults(w)[key])) delete props[key];
+        else props[key] = val;
         if (key === 'preset') {
           // 스타일이 바뀌면 기본값이 달라지므로, 새 기본값과 같아진 속성은 정리한다
           const impl = window.WHMI.impl(w.type);
@@ -1872,13 +2220,22 @@
           for (const k of Object.keys(props)) if (k !== 'preset' && JSON.stringify(props[k]) === JSON.stringify(defs[k])) delete props[k];
         }
         if (Object.keys(props).length) w.props = props; else delete w.props;
+        if (key === 'fit') this.applyRatio(w);   // 이미지: 비율 고정으로 바꾸면 상자를 그림 비율로
         this.canonical(w);
         this.redrawOne(w);
+        this.fitBox(w);   // 글자 크기·글자 등이 커져 내용이 넘치면 상자도 넓힌다
       }
       this.drawSelection();
       // 색 선택기를 끄는 동안의 연속 변경만 한 단계로 묶는다(끝나는 change 이벤트도 같은 단계)
       const mk = `prop:${ws.map((w) => w.id).join(',')}:${key}`;
       this.commit(live || (this.lastMerge && this.lastMerge.key === mk) ? mk : undefined);
+    }
+
+    // 글자(text/opttext) 칸 — 칠 때마다 위젯에 반영한다
+    isLiveText(el) {
+      const ws = this.propTargets();
+      const f = ws && el.type === 'text' && this.propFields(ws[0]).find((x) => x.key === el.dataset.p);
+      return !!f && (f.type === 'text' || f.type === 'opttext');
     }
 
     // 속성 폼이 편집하는 위젯들 — 하나, 또는 같은 종류 여러 개. 아니면 null
@@ -1895,17 +2252,13 @@
         if (el && document.activeElement !== el) el.value = w[f];
       }
       const sel = this.inspector.querySelector('[data-f="tag"]');
-      if (sel) {
-        if (w.tag && ![...sel.options].some((o) => o.value === w.tag)) {
-          sel.add(new Option(`${w.tag} (정의되지 않은 태그)`, w.tag));
-        }
-        sel.value = w.tag || '';
-      }
+      if (sel && document.activeElement !== sel) this.fillTagPicker(sel, w.tag, true);
       this.syncPropForm([w]);
     }
 
     renderInspector() {
       if (!this.doc) return;
+      this.inspector.classList.remove('is-screen');
       const list = this.selected();
       const tools = (items, kind, disabled) => `<div class="ed-tools">${items.map(([k, title, svgIcon]) =>
         `<button class="ed-tool" type="button" data-${kind}="${k}" title="${title}"${disabled ? ' disabled' : ''}>${svgIcon}</button>`).join('')}</div>`;
@@ -1922,8 +2275,6 @@
         const key = `one:${w.id}`;
         if (this.inspKey === key) { this.updateFields(w); return; }
         this.inspKey = key;
-        const tagOpts = Object.values(this.tags).sort((a, b) => a.id.localeCompare(b.id))
-          .map((t) => `<option value="${esc(t.id)}">${esc(t.id)}${t.name ? ` — ${esc(t.name)}` : ''}</option>`).join('');
         const num = (f) => `<label class="ed-field"><span>${f}</span><input type="number" step="1" data-f="${f}"></label>`;
         this.inspector.innerHTML = `
           ${alignBlock(1)}
@@ -1931,7 +2282,7 @@
           <div class="ed-form">
             <label class="ed-field wide"><span>id</span><input type="text" data-f="id" spellcheck="false" autocomplete="off"></label>
             ${num('x')}${num('y')}${num('w')}${num('h')}
-            <label class="ed-field wide"><span>tag</span><select data-f="tag"><option value="">(없음)</option>${tagOpts}<option value="__new__">+ 새 태그…</option></select></label>
+            <div class="ed-field wide ed-tagpick"><span>tag</span><select data-tagdev="f" title="장비"></select><select data-f="tag" title="태그"></select></div>
           </div>
           <div class="ed-form-err"></div>
           ${this.renderPropForm(w)}`;
@@ -1978,23 +2329,17 @@
             <input type="text" data-s="bgText" value="${esc(d.background || DEFAULT_BG)}" spellcheck="false"></span></label>
           <label class="ed-check wide"><input type="checkbox" data-s="start"${isStart ? ' checked disabled' : ''}> 시작 화면${isStart ? ' (현재 시작 화면)' : '으로 지정'}</label>
         </div>
-        <div class="ed-form-err"></div>
+        <div class="ed-form-err is-collapsible"></div>
         ${outside ? `<p class="ed-warn">⚠ 화면 밖으로 나간 위젯 ${outside}개 — 화면을 키우거나 위젯을 안쪽으로 옮기세요.</p>` : ''}
-        <p class="ed-hint">크기를 바꿔도 위젯 위치·크기는 그대로입니다. 제목·크기·배경은 [저장]해야 반영되고, 시작 화면은 바로 반영됩니다.</p>
-        <dl class="ed-kv">
-          <dt>위젯</dt><dd>${d.widgets.length}개</dd>
-          <dt>revision</dt><dd>${this.revision}</dd>
-        </dl>
-        <p class="ed-hint">
-          클릭: 선택 · Shift/Ctrl+클릭: 추가 선택<br>
-          빈 곳 드래그 / Alt+드래그: 영역 선택<br>
-          방향키: 1px 이동 · Shift+방향키: 격자 간격<br>
-          Ctrl+A: 전체 선택 · Esc: 선택 해제<br>
-          위젯 목록: 클릭하면 가운데 추가, 끌어다 놓기<br>
-          Del: 삭제 · Ctrl+D: 복제 · Ctrl+C/X/V: 복사/잘라내기/붙여넣기<br>
-          Ctrl+Z / Ctrl+Y: 실행 취소 / 다시 실행<br>
-          Ctrl+] / Ctrl+[: 앞으로 / 뒤로 (Shift: 맨 앞 / 맨 뒤)
-        </p>`;
+        <div class="ed-stats">
+          <div><span>위젯</span><b>${d.widgets.length}</b></div>
+          <div><span>Revision</span><b>${this.revision ?? '-'}</b></div>
+        </div>
+        <div class="ed-keys">
+          <div class="ed-keys-title">조작</div>
+          ${KEY_HELP.map(([what, keys]) => `<div class="ed-key"><span>${what}</span><span>${keys.map((k) => `<kbd>${k}</kbd>`).join(' ')}</span></div>`).join('')}
+        </div>`;
+      this.inspector.classList.add('is-screen');   // 조작 안내를 속성 창 아래쪽에 붙인다
     }
 
     destroy() {

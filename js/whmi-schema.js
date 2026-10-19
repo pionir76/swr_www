@@ -12,6 +12,7 @@
 //         select   선택(options: [[값, 표시]])
 //         screen   화면 선택(프로젝트 화면 목록)
 //         value    쓰기/판정 값 — true / false / 숫자 / 글자
+//         image    그림 파일 고르기(줄여서 data URL로 src에, 원래 비율은 ratio에) — 여러 개 편집에선 빠짐
 //         enable   쓰기 허용 조건(위젯 필드 enableWhen: { tag, equals }) — props가 아님
 //         anim     애니메이션 — "사용" 체크 + 시간(ms). 끄면 0(위젯은 0이면 바로 그림)
 //         list     객체 목록(행 추가/삭제). columns: [{ key, label, type: num|text|color|value|bool, required? }],
@@ -57,11 +58,25 @@
 
   const TYPES = {
     label: [
+      { key: 'preset', label: '스타일', type: 'select', group: 'basic', options: [['', '기본'], ['title', '제목'], ['subtitle', '소제목'], ['caption', '설명'], ['info', '정보'], ['caution', '주의'], ['danger', '경고'], ['neon', '네온']] },
       { key: 'text', label: '글자', type: 'text', group: 'basic' },
       fontSize,
       { key: 'bold', label: '굵게', type: 'bool', group: 'basic' },
+      { key: 'italic', label: '기울임', type: 'bool', group: 'basic' },
       { key: 'align', label: '정렬', type: 'select', group: 'basic', options: [['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽']] },
+      { key: 'padding', label: '안쪽 여백', type: 'num', group: 'basic', min: 0, max: 200 },
       { key: 'color', label: '글자색', type: 'color', group: 'color' },
+      { key: 'bg', label: '배경색', type: 'optcolor', group: 'color', placeholder: '없음' },
+      { key: 'border', label: '테두리색', type: 'optcolor', group: 'color', placeholder: '없음' },
+      { key: 'radius', label: '모서리 둥글기', type: 'num', group: 'color', min: 0, max: 500, when: (p) => p.bg || p.border },
+      { key: 'glow', label: '글자 발광', type: 'bool', group: 'effect' },
+      { key: 'shadow', label: '글자 그림자', type: 'bool', group: 'effect' },
+    ],
+    image: [
+      { key: 'src', label: '이미지', type: 'image', group: 'basic' },
+      { key: 'fit', label: '크기 맞춤', type: 'select', group: 'basic', options: [['ratio', '비율 고정'], ['stretch', '상자에 맞춤']] },
+      { key: 'radius', label: '모서리 둥글기', type: 'num', group: 'basic', min: 0, max: 500 },
+      { key: 'opacity', label: '투명도(0~1)', type: 'num', group: 'effect', min: 0, max: 1, step: 0.05 },
     ],
     rect: [
       { key: 'radius', label: '모서리 둥글기', type: 'num', group: 'basic', min: 0, max: 500 },
@@ -70,6 +85,8 @@
       { key: 'stroke', label: '테두리색', type: 'color', group: 'color' },
     ],
     lamp: [
+      { key: 'preset', label: '스타일', type: 'select', group: 'basic', options: [['', '기본'], ['warning', '경고'], ['error', '오류'], ['info', '정보'], ['ok', '확인'], ['alarm', '경보창']] },
+      { key: 'shape', label: '모양', type: 'select', group: 'basic', options: [['circle', '원형'], ['square', '사각'], ['warning', '경고 (삼각형 !)'], ['error', '오류 (원 ×)'], ['info', '정보 (원 i)'], ['ok', '확인 (원 체크)'], ['panel', '알림창 (상자 전체)']] },
       { key: 'text', label: '글자', type: 'text', group: 'basic' },
       fontSize,
       { key: 'blink', label: '켜지면 깜빡임', type: 'bool', group: 'basic' },
@@ -200,6 +217,7 @@
     { key: 'fontSize', label: '글자 크기', type: 'optnum', group: 'basic', min: 6, max: 300 },
     { key: 'italic', label: '기울임', type: 'bool', group: 'basic' },
     { key: 'align', label: '정렬', type: 'select', group: 'basic', options: [['end', '오른쪽'], ['center', '가운데'], ['start', '왼쪽']] },
+    { key: 'padding', label: '안쪽 여백', type: 'num', group: 'basic', min: 0, max: 200 },
     { key: 'radius', label: '모서리 둥글기', type: 'num', group: 'basic', min: 0, max: 100 },
     { key: 'borderWidth', label: '테두리 두께', type: 'num', group: 'basic', min: 0, max: 20, step: 0.5 },
     ...valueOverride,
@@ -234,5 +252,5 @@
   for (const t of ['gauge', 'tank', 'bar']) TYPES[t].unshift(...valueOverride);
   for (const t of ['button', 'switch', 'selector']) TYPES[t].push(enableWhen);
 
-  window.WHMI.schema = { groups: GROUPS, types: TYPES };
+  if (window.WHMI) window.WHMI.schema = { groups: GROUPS, types: TYPES };   // 페이지를 떠나며 정리됐으면 건너뜀
 })();

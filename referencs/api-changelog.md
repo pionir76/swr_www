@@ -26,6 +26,47 @@
 
 ---
 
+## 2026-10-19 — HMI 태그 `source`에 장비·레지스터 정보 추가
+
+요청서(`docs/backend-hmi-tag-source-request.md`)대로 구현했습니다. 장치에 배포되어 있습니다. **필드 이름 하나만 바꿨습니다(아래 "요청서와 다른 점").**
+
+### 변경
+
+HMI 태그를 돌려주는 모든 응답(`GET /api/hmi/tags`, `GET/POST/PUT /api/hmi/tags/{id}`)의 `source`에 응답 전용 필드 7개가 추가됩니다.
+
+```json
+"source": {
+  "registerId": 70,
+  "deviceId": 18,
+  "deviceCode": "SPORLAN",
+  "deviceDisplayName": "보조룸 온도제어기",
+  "registerTagName": "SPORLAN_ALARM_STATUS",
+  "registerDisplayName": "알람 상태",
+  "localAddress": 10,
+  "unifiedAddress": 16
+}
+```
+
+- 저장하지 않고 응답할 때마다 현재 장비·레지스터에서 채웁니다. 장비 이름을 바꾸면 다음 응답에 바로 반영되는 것을 확인했습니다.
+- 생성·수정 요청 바디는 지금과 같습니다. `source`에 위 필드가 들어와도 무시합니다(확인함).
+- 소스 레지스터를 찾을 수 없으면 `registerId` 외 필드는 모두 `null`이고, 필드 자체는 항상 들어갑니다.
+- 비활성 장비의 태그도 똑같이 채워집니다.
+- `GET /api/hmi/values`, 백업 형식은 바뀌지 않습니다.
+
+### 요청서와 다른 점: `deviceName` → `deviceDisplayName`
+
+요청서 표에는 `deviceName` ← 장비 `name`으로 돼 있었는데, 예시 값 "메인챔버 온습도조절기"는 장비의 `displayName`입니다(이 장비의 `name`은 `TP2KMF`). 쓰는 곳(2단계 선택의 장비 목록, "태그 보기"의 장비명)이 사용자에게 보이는 이름이라 **`displayName`을 `deviceDisplayName`으로** 내려 드립니다. 레지스터 쪽 `registerTagName` / `registerDisplayName`과 짝도 맞습니다. 장비 `name`도 필요하면 알려주세요. `deviceName`으로 추가하겠습니다.
+
+### 질문 답변
+
+**1. 소스 레지스터를 삭제하면 HMI 태그는?** → **함께 삭제됩니다.** 장치에서 임시 장비·레지스터·태그를 만들어 레지스터를 지워 보니 태그도 바로 사라졌습니다(조회 시 404). 장비를 지우면 그 장비의 태그도 모두 지워집니다. 따라서 `null` 응답은 정상 동작에서는 나오지 않고, 만일을 대비한 것입니다.
+
+> **권장**: 태그가 지워지면 그 태그를 쓰던 HMI 화면 위젯은 경고 없이 값을 잃습니다. 레지스터나 장비를 삭제하기 전에 "이 레지스터를 쓰는 HMI 태그 N개도 함께 삭제됩니다"라고 알려주시는 것을 권합니다. 새 `source.deviceId` / `source.registerId`로 바로 셀 수 있습니다.
+
+**2. 필드 이름** → 위의 `deviceDisplayName` 외에는 이견 없습니다. `api-spec.md` §14 HmiTag 정의에 반영했습니다.
+
+---
+
 ## 2026-10-16 (2차) — `/api/dashboard` 지연 수정
 
 프론트가 알려준 대시보드 지연(평균 1.6초, 최대 3.2초)을 고쳤습니다. API 계약 변경은 없고 응답 형식도 같습니다.
