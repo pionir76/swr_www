@@ -16,6 +16,7 @@
 //         anim     애니메이션 — "사용" 체크 + 시간(ms). 끄면 0(위젯은 0이면 바로 그림)
 //         list     객체 목록(행 추가/삭제). columns: [{ key, label, type: num|text|color|value|bool, required? }],
 //                  newRow(현재 목록) → 새 행. 비우면 기본값
+//                  warn(현재 목록) → 주의 문구(저장은 막지 않음) 또는 ''
 //   when  현재 속성(p, 기본값 포함)을 받아 false면 숨김
 (function () {
   'use strict';
@@ -36,10 +37,22 @@
   const angle    = (key, label) => ({ key, label, type: 'num', group: 'basic', min: -360, max: 360 });
 
   // 값 구간별 색 — 앞에서부터 처음 맞는 구간을 쓴다(from/to 비우면 끝없음)
+  // 새 행: 앞 구간이 끝나는 곳부터. 앞 구간이 위로 끝없으면 그 아래 구간(…~앞 구간 시작)
+  const rangeRow = (rows) => {
+    const p = rows[rows.length - 1];
+    const r = !p ? { from: 0 } : p.to != null ? { from: p.to } : p.from != null ? { to: p.from } : {};
+    return { ...r, color: '#e5534b' };
+  };
+  // 앞 구간이 위로 끝없고 시작도 같거나 낮으면 뒤 구간은 절대 맞지 않는다(처음 맞는 구간만 쓰므로)
+  const rangeWarn = (rows) => {
+    const k = rows.findIndex((r, i) => rows.slice(0, i).some((p) =>
+      p.to == null && (p.from == null || (r.from != null && r.from >= p.from))));
+    return k < 0 ? '' : `${k + 1}번째 구간은 앞 구간에 가려 쓰이지 않습니다. 앞 구간의 "까지"를 채우세요.`;
+  };
   const ranges = {
     key: 'ranges', label: '구간 색', type: 'list', group: 'value',
     columns: [{ key: 'from', label: '부터', type: 'num' }, { key: 'to', label: '까지', type: 'num' }, { key: 'color', label: '색', type: 'color', required: true }],
-    newRow: (rows) => ({ from: rows.length ? rows[rows.length - 1].to ?? 0 : 0, color: '#e5534b' }),
+    newRow: rangeRow, warn: rangeWarn,
   };
 
   const TYPES = {
@@ -208,7 +221,7 @@
     ...box,
     { key: 'ranges', label: '구간 색', type: 'list', group: 'value',
       columns: [{ key: 'from', label: '부터', type: 'num' }, { key: 'to', label: '까지', type: 'num' }, { key: 'color', label: '색', type: 'color', required: true }, { key: 'blink', label: '깜빡', type: 'bool' }],
-      newRow: (rows) => ({ from: rows.length ? rows[rows.length - 1].to ?? 0 : 0, color: '#e5534b' }) },
+      newRow: rangeRow, warn: rangeWarn },
     { key: 'rangeTarget', label: '구간 색 적용', type: 'select', group: 'value', options: [['text', '숫자'], ['bg', '배경'], ['border', '테두리']], when: (p) => p.ranges && p.ranges.length },
     { key: 'flashOnChange', label: '값이 바뀌면 반짝임', type: 'bool', group: 'effect' },
     { key: 'showTrend', label: '증감 표시(▲▼)', type: 'bool', group: 'effect' },

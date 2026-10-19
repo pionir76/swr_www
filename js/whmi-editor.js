@@ -30,11 +30,13 @@
   };
   const NEW_WIDGET_FALLBACK = { w: 120, h: 60 };
   const HISTORY_MAX = 50;
-  // 속성 창 입력란으로 편집하는 위젯 필드 — 나머지(props, enableWhen 등)는 JSON으로 편집
+  // 위젯 기본 필드(속성 창 위쪽 입력란) — 나머지(props, enableWhen)는 속성 폼으로 편집
   const BASE_KEYS = ['id', 'type', 'x', 'y', 'w', 'h', 'tag'];
   const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;   // HMI 태그·화면 id와 같은 규칙
   const MAX_SCREEN_BYTES = 256 * 1024;      // 서버 화면 content 상한(413)
-  const ANIM_DEFAULT_MS = 400;              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
+  const ANIM_DEFAULT_MS = 400;
+  const MIXED = '__mixed__';                // 여러 개 선택에서 값이 서로 다른 선택 상자의 표시 항목
+  const MULTI_SKIP = ['list', 'enable'];    // 여러 개 동시 편집에서 빼는 필드(하나씩 편집)              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
   const DRAFT_DELAY_MS = 400;               // 임시 저장(localStorage) 지연
   const TITLE_MAX = 64;                     // 화면 제목 최대 길이(서버 규칙)
   const SCREEN_MIN = 100, SCREEN_MAX = 7680; // 화면 크기(기준 해상도) 범위
@@ -63,6 +65,25 @@
     ['h',  '높이 같게',     icon(line(3, 1, 13, 1) + line(3, 15, 13, 15) + line(8, 3, 8, 13) + '<path d="M8 3l-2.5 2.5M8 3l2.5 2.5M8 13l-2.5-2.5M8 13l2.5-2.5" stroke="currentColor" stroke-width="1.4" fill="none"/>')],
     ['wh', '크기 같게',     icon('<rect x="2" y="2" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 1.5"/>' + bar(5, 5, 6, 6))],
   ];     // 실행 취소 단계 수(화면 JSON 통째 저장 — 화면 하나 약 20KB)
+
+  // 도구줄 아이콘 — ⛶ ↶ ↷ 같은 기호도 글꼴이 없으면 □로 보이므로 SVG로
+  const stroke = (d) => `<path d="${d}" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const TB_ICONS = {
+    undo: icon(stroke('M5 3.5L2 6.5l3 3M2 6.5h8a3.5 3.5 0 0 1 0 7H7')),
+    redo: icon(stroke('M11 3.5l3 3-3 3M14 6.5H6a3.5 3.5 0 0 0 0 7h3')),
+    fullscreen: icon(stroke('M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4')),
+  };
+  const CARET = '<svg class="ed-caret" viewBox="0 0 8 8" width="8" height="8" aria-hidden="true"><path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>';
+
+  // 도구줄 드롭다운 — 버튼으로 펼치고, 항목을 고르거나 바깥을 누르거나 Esc면 닫힌다.
+  // 항목은 data-act라 도구줄 버튼과 같은 action()으로 처리된다.
+  const menu = (label, title, body, needSel) => `
+    <div class="ed-menu">
+      <button class="ed-btn" type="button" data-menu title="${title}"${needSel ? ' data-need-sel' : ''} aria-haspopup="true" aria-expanded="false">${label} ${CARET}</button>
+      <div class="ed-menu-pop" hidden>${body}</div>
+    </div>`;
+  const menuItem = (act, label, hint) =>
+    `<button class="ed-menu-item" type="button" data-act="${act}"><span>${label}</span>${hint ? `<small>${hint}</small>` : ''}</button>`;
 
   const MIN_SIZE = 8;        // 크기 조절 최소 w/h(화면 좌표)
   const HANDLE_PX = 9;       // 손잡이 크기(실제 픽셀 — 확대/축소와 무관하게 일정)
@@ -117,7 +138,7 @@
       this.past = [];         // 실행 취소용 이전 상태(JSON 문자열)
       this.future = [];       // 다시 실행용
       this.clipboard = null;  // 복사한 위젯들(JSON 문자열) — 화면을 바꿔도 유지
-      this.groupOpen = { adv: false };   // 속성 창 그룹 접힘 상태(기본: 펼침, 고급 JSON만 접힘)
+      this.groupOpen = {};   // 속성 창 그룹 접힘 상태(기본: 펼침)
       this.grid = { show: true, snap: true, size: 10 };  // 보기와 맞춤은 따로 켜고 끈다
       this.buildDom();
       this.onKey = (e) => this.handleKey(e);
@@ -142,32 +163,36 @@
           <select class="ed-screen-sel" title="편집할 화면">
             ${screens.map((s) => `<option value="${esc(s.id)}">${esc(s.title || s.id)} (${esc(s.id)})</option>`).join('')}
           </select>
-          <button class="ed-btn" type="button" data-act="newScreen" title="새 화면 만들기">+ 새 화면</button>
-          <button class="ed-btn" type="button" data-act="manage" title="화면 순서·시작 화면·삭제">화면 관리</button>
+          ${menu('화면', '화면 만들기·관리', `
+            ${menuItem('newScreen', '+ 새 화면')}
+            ${menuItem('manage', '화면 관리', '순서·시작 화면·삭제')}`)}
           <button class="ed-btn" type="button" data-act="tags" title="HMI 태그 목록·만들기·수정">태그 관리</button>
           <span class="ed-sep"></span>
-          <label class="ed-check" title="격자선 표시"><input type="checkbox" data-opt="gridShow" checked> 격자 보기</label>
-          <label class="ed-check" title="이동·크기 조절 시 격자에 맞춤"><input type="checkbox" data-opt="gridSnap" checked> 격자 맞춤</label>
-          <select class="ed-grid-size" title="격자 간격">
-            ${[5, 10, 20, 40].map((n) => `<option value="${n}"${n === this.grid.size ? ' selected' : ''}>${n}px</option>`).join('')}
-          </select>
+          ${menu('격자', '격자 보기·맞춤·간격', `
+            <label class="ed-check" title="격자선 표시"><input type="checkbox" data-opt="gridShow" checked> 격자 보기</label>
+            <label class="ed-check" title="이동·크기 조절 시 격자에 맞춤"><input type="checkbox" data-opt="gridSnap" checked> 격자 맞춤</label>
+            <label class="ed-check">간격
+              <select class="ed-grid-size" title="격자 간격">
+                ${[5, 10, 20, 40].map((n) => `<option value="${n}"${n === this.grid.size ? ' selected' : ''}>${n}px</option>`).join('')}
+              </select>
+            </label>`)}
           <span class="ed-sep"></span>
-          <button class="ed-btn" type="button" data-act="undo" title="실행 취소 (Ctrl+Z)">↶</button>
-          <button class="ed-btn" type="button" data-act="redo" title="다시 실행 (Ctrl+Y)">↷</button>
+          <button class="ed-btn ed-icon-btn" type="button" data-act="undo" title="실행 취소 (Ctrl+Z)">${TB_ICONS.undo}</button>
+          <button class="ed-btn ed-icon-btn" type="button" data-act="redo" title="다시 실행 (Ctrl+Y)">${TB_ICONS.redo}</button>
           <span class="ed-sep"></span>
           <button class="ed-btn" type="button" data-act="dup" data-need-sel title="복제 (Ctrl+D)">복제</button>
           <button class="ed-btn" type="button" data-act="del" data-need-sel title="삭제 (Del)">삭제</button>
-          <span class="ed-sep"></span>
-          <button class="ed-btn" type="button" data-act="front" data-need-sel title="맨 앞으로 (Ctrl+Shift+])">맨 앞</button>
-          <button class="ed-btn" type="button" data-act="forward" data-need-sel title="앞으로 (Ctrl+])">앞으로</button>
-          <button class="ed-btn" type="button" data-act="backward" data-need-sel title="뒤로 (Ctrl+[)">뒤로</button>
-          <button class="ed-btn" type="button" data-act="back" data-need-sel title="맨 뒤로 (Ctrl+Shift+[)">맨 뒤</button>
+          ${menu('순서', '그리는 순서', `
+            ${menuItem('front', '맨 앞으로', 'Ctrl+Shift+]')}
+            ${menuItem('forward', '앞으로', 'Ctrl+]')}
+            ${menuItem('backward', '뒤로', 'Ctrl+[')}
+            ${menuItem('back', '맨 뒤로', 'Ctrl+Shift+[')}`, true)}
           <span class="ed-spacer"></span>
           <span class="ed-pos" title="커서 위치(화면 좌표)"></span>
           <span class="ed-dirty" hidden>● 변경됨</span>
           <span class="ed-msg"></span>
           <button class="ed-btn save" type="button" data-act="save" title="저장 (Ctrl+S)" disabled>저장</button>
-          <button class="ed-btn" type="button" data-act="fs" title="전체 화면">⛶</button>
+          <button class="ed-btn ed-icon-btn" type="button" data-act="fs" title="전체 화면">${TB_ICONS.fullscreen}</button>
           <button class="ed-btn primary" type="button" data-act="exit">▶ 실행 모드</button>
         </div>
         <div class="ed-body">
@@ -207,7 +232,10 @@
         this.updateGrid();
       });
       this.root.querySelector('.ed-toolbar').addEventListener('click', (e) => {
+        const mb = e.target.closest('[data-menu]');
+        if (mb) { this.toggleMenu(mb); return; }
         const act = e.target.closest('[data-act]')?.dataset.act;
+        if (act) this.closeMenus();
         if (act === 'exit') this.requestExit();
         else if (act === 'fs') this.onFullscreen && this.onFullscreen();
         else if (act) this.action(act);
@@ -222,23 +250,15 @@
         else if (e.target.dataset.ew) this.onEnableChange(e.target.closest('.ed-pf'));
       });
       this.inspector.addEventListener('input', (e) => {
-        if (e.target.classList.contains('ed-json')) this.jsonDirty = true;
         // 색 선택기는 끄는 동안 바로 반영(연속 변경은 실행 취소 한 단계로 묶임)
-        else if (e.target.dataset.p && e.target.type === 'color') this.onPropChange(e.target, true);
+        if (e.target.dataset.p && e.target.type === 'color') this.onPropChange(e.target, true);
         else if (e.target.dataset.lc && e.target.type === 'color') this.onListChange(e.target.closest('[data-list]'), true);
       });
       // 속성 그룹 접힘 상태는 위젯을 바꿔도 유지
       this.inspector.addEventListener('toggle', (e) => {
         const g = e.target.dataset && e.target.dataset.g;
-        // 속성 폼이 없어 고급(JSON)을 강제로 펼친 경우는 기억하지 않는다
-        if (g && !e.target.dataset.forced) this.groupOpen[g] = e.target.open;
+        if (g) this.groupOpen[g] = e.target.open;
       }, true);
-      this.inspector.addEventListener('keydown', (e) => {
-        if (e.target.classList.contains('ed-json') && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-          e.preventDefault();
-          this.applyJson();
-        }
-      });
       this.inspector.addEventListener('click', (e) => {
         const rs = e.target.closest('[data-reset]');
         if (rs) { this.resetProp(rs.dataset.reset); return; }
@@ -246,8 +266,6 @@
         if (la) { this.addListRow(la.dataset.listAdd); return; }
         const ld = e.target.closest('[data-list-del]');
         if (ld) { this.delListRow(ld.closest('[data-list]').dataset.list, Number(ld.dataset.listDel)); return; }
-        const j = e.target.closest('[data-json]');
-        if (j) { j.dataset.json === 'apply' ? this.applyJson() : this.resetJson(); return; }
         const b = e.target.closest('.ed-tool');
         if (!b || b.disabled) return;
         if (b.dataset.align) this.align(b.dataset.align);
@@ -275,12 +293,39 @@
       }
     }
 
+    toggleMenu(btn) {
+      const pop = btn.nextElementSibling;
+      const open = pop.hidden;
+      this.closeMenus();
+      if (!open) return;
+      pop.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      // 바깥을 누르면 닫는다(열린 메뉴 안에서의 조작은 유지)
+      this.onMenuOutside = (e) => { if (!btn.parentElement.contains(e.target)) this.closeMenus(); };
+      document.addEventListener('pointerdown', this.onMenuOutside, true);
+    }
+
+    closeMenus() {
+      if (!this.root) return false;
+      let closed = false;
+      this.root.querySelectorAll('.ed-menu-pop:not([hidden])').forEach((pop) => {
+        pop.hidden = true;
+        pop.previousElementSibling.setAttribute('aria-expanded', 'false');
+        closed = true;
+      });
+      if (this.onMenuOutside) document.removeEventListener('pointerdown', this.onMenuOutside, true);
+      this.onMenuOutside = null;
+      return closed;
+    }
+
     updateToolbar() {
       const q = (sel) => this.root.querySelector(sel);
       q('[data-act="save"]').disabled = !this.dirty || !!this.saving;
       q('[data-act="undo"]').disabled = !this.past.length;
       q('[data-act="redo"]').disabled = !this.future.length;
       this.root.querySelectorAll('[data-need-sel]').forEach((b) => { b.disabled = !this.sel.size; });
+      // 선택이 풀려 메뉴 버튼이 꺼지면 열려 있던 그 메뉴도 닫는다
+      if (!this.sel.size && this.root.querySelector('[data-menu][data-need-sel] + .ed-menu-pop:not([hidden])')) this.closeMenus();
     }
 
     msg(text, state) {
@@ -1138,7 +1183,9 @@
 
     // ---- 키보드 -----------------------------------------------------------
     handleKey(e) {
-      if (!this.doc || document.querySelector('.dlg-backdrop:not([hidden])')) return;
+      if (document.querySelector('.dlg-backdrop:not([hidden])')) return;
+      if (e.key === 'Escape' && this.closeMenus()) { e.preventDefault(); return; }
+      if (!this.doc) return;
       // Ctrl+S는 입력란 안에서도 — 입력 중인 값을 먼저 반영(blur → change)하고 저장
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
@@ -1440,13 +1487,6 @@
       }
     }
 
-    // 입력란 외 필드(props, enableWhen 등) — props를 맨 앞에, 없으면 빈 객체로 보여준다
-    extraOf(w) {
-      const o = { props: w.props || {} };
-      for (const k of Object.keys(w)) if (!BASE_KEYS.includes(k) && k !== 'props') o[k] = w[k];
-      return o;
-    }
-
     // 위젯 객체 키 순서를 id,type,x,y,w,h,tag,… 로 고정(같은 내용이면 같은 JSON이 되도록)
     canonical(w) {
       const entries = Object.entries(w);
@@ -1457,11 +1497,6 @@
 
     formError(text) {
       const el = this.inspector.querySelector('.ed-form-err');
-      if (el) el.textContent = text || '';
-    }
-
-    jsonError(text) {
-      const el = this.inspector.querySelector('.ed-json-err');
       if (el) el.textContent = text || '';
     }
 
@@ -1520,66 +1555,6 @@
       this.commit();
     }
 
-    resetJson() {
-      const w = this.selected()[0];
-      const ta = this.inspector.querySelector('.ed-json');
-      if (!w || !ta) return;
-      ta.value = JSON.stringify(this.extraOf(w), null, 2);
-      this.jsonDirty = false;
-      this.jsonError('');
-    }
-
-    applyJson() {
-      const w = this.selected()[0];
-      const ta = this.inspector.querySelector('.ed-json');
-      if (!w || !ta) return;
-      let obj;
-      try {
-        obj = JSON.parse(ta.value);
-      } catch (e) {
-        // 오류 위치(문자 번호)를 줄 번호로 바꿔 보여준다
-        const m = /position (\d+)/.exec(e.message);
-        const line = m ? ta.value.slice(0, Number(m[1])).split('\n').length : null;
-        this.jsonError(`JSON 오류${line ? ` (${line}번째 줄)` : ''}: ${e.message}`);
-        return;
-      }
-      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) { this.jsonError('{ … } 형태의 객체여야 합니다.'); return; }
-      const fixed = BASE_KEYS.filter((k) => k in obj);
-      if (fixed.length) { this.jsonError(`${fixed.join(', ')}은(는) 위 입력란에서 바꾸세요.`); return; }
-      if ('props' in obj && (!obj.props || typeof obj.props !== 'object' || Array.isArray(obj.props))) { this.jsonError('props는 { … } 객체여야 합니다.'); return; }
-      if (obj.enableWhen != null && (typeof obj.enableWhen !== 'object' || !obj.enableWhen.tag)) {
-        this.jsonError('enableWhen은 { "tag": "태그id", "equals": 값 } 형태여야 합니다.');
-        return;
-      }
-
-      const backup = clone(w);
-      const replace = (src) => {
-        for (const k of Object.keys(w)) delete w[k];
-        Object.assign(w, src);
-      };
-      const next = {};
-      for (const k of BASE_KEYS) if (k in w) next[k] = w[k];
-      for (const [k, v] of Object.entries(obj)) {
-        if (k === 'props' && !Object.keys(v).length) continue;   // 빈 props는 저장하지 않음
-        if (v != null) next[k] = v;
-      }
-      replace(next);
-      this.canonical(w);
-      try {
-        this.redrawOne(w);
-      } catch (e) {
-        replace(backup);
-        this.render();    // 실패한 묶음 자리까지 깨끗하게 다시 그린다
-        this.jsonError(`위젯을 그리지 못했습니다: ${e.message}`);
-        return;
-      }
-      this.jsonDirty = false;
-      this.jsonError('');
-      this.drawSelection();
-      this.commit();
-      this.flash('속성 적용됨');
-    }
-
     // ---- 속성 폼(whmi-schema.js) -------------------------------------------
     propFields(w) {
       const sc = window.WHMI.schema;
@@ -1594,8 +1569,9 @@
       return Object.assign({}, impl.defaults, preset);
     }
 
-    renderPropForm(w) {
-      const fields = this.propFields(w);
+    // multi: 같은 종류 여러 개 — 목록·쓰기 허용 조건은 빼고 보여 준다
+    renderPropForm(w, multi) {
+      const fields = this.propFields(w).filter((f) => !multi || !MULTI_SKIP.includes(f.type));
       if (!fields.length) return '';
       const groups = window.WHMI.schema.groups.filter(([g]) => fields.some((f) => f.group === g));
       const screens = (this.project.screens || []).map((x) =>
@@ -1643,25 +1619,33 @@
       return v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v);
     }
 
-    // 위젯 속성 → 폼(입력 중인 칸은 건드리지 않음)
-    syncPropForm(w) {
-      const fields = this.propFields(w);
+    // 위젯 속성 → 폼(입력 중인 칸은 건드리지 않음). ws: 하나 또는 같은 종류 여러 개 —
+    // 값이 서로 다르면 "여러 값"으로 표시하고, 바꾸면 전부에 같은 값이 들어간다.
+    syncPropForm(ws) {
+      const fields = this.propFields(ws[0]);
       if (!fields.length) return;
-      const props = w.props || {};
-      const defs = this.propDefaults(w);
-      const eff = Object.assign({}, defs, props);
+      const items = ws.map((w) => {
+        const props = w.props || {};
+        const defs = this.propDefaults(w);
+        return { w, props, defs, eff: Object.assign({}, defs, props) };
+      });
       const active = document.activeElement;
       for (const f of fields) {
         const box = this.inspector.querySelector(`.ed-pf[data-pk="${f.key}"]`);
         if (!box) continue;
-        const set = Object.prototype.hasOwnProperty.call(props, f.key);
-        const cur = set ? props[f.key] : undefined;
-        const def = defs[f.key];
-        box.hidden = !!(f.when && !f.when(eff));
+        const has = (it) => Object.prototype.hasOwnProperty.call(it.props, f.key);
+        const set = items.some(has);
+        // 표시 기준: 값을 바꾼 위젯이 있으면 그 값, 없으면 기본값
+        const ref = items.find(has) || items[0];
+        const cur = has(ref) ? ref.props[f.key] : undefined;
+        const def = ref.defs[f.key];
+        const mixed = items.some((it) => JSON.stringify(it.eff[f.key]) !== JSON.stringify(ref.eff[f.key]));
+        box.hidden = !!(f.when && !items.every((it) => f.when(it.eff)));
         box.querySelector('.ed-reset').hidden = !set;
         box.classList.toggle('is-set', set);
+        box.classList.toggle('is-mixed', mixed);
         if (f.type === 'enable') {
-          const ew = w.enableWhen || null;
+          const ew = ws[0].enableWhen || null;
           const tagSel = box.querySelector('[data-ew="tag"]');
           const eq = box.querySelector('[data-ew="equals"]');
           box.querySelector('.ed-reset').hidden = !ew;
@@ -1675,15 +1659,19 @@
           continue;
         }
         if (f.type === 'anim') {
-          // 켜짐 = 시간 > 0. 꺼져 있으면 시간 칸은 비활성(흐리게)
-          const ms = set ? cur : def;
-          const on = ms > 0;
+          // 켜짐 = 시간 > 0. 꺼져 있으면 시간 칸은 비활성(흐리게). 켜짐 여부가 섞이면 체크는 —
+          const ons = items.map((it) => it.eff[f.key] > 0);
+          const on = ons.every(Boolean);
           const cb = box.querySelector('[data-anim]');
           const num = box.querySelector('input[type="number"]');
-          if (cb !== active) cb.checked = on;
+          cb.checked = on;
+          cb.indeterminate = !on && ons.some(Boolean);
           num.disabled = !on;
           box.querySelector('.ed-anim-ms').classList.toggle('is-off', !on);
-          if (num !== active) { num.value = set && on ? cur : ''; num.placeholder = def > 0 ? def : ANIM_DEFAULT_MS; }
+          if (num !== active) {
+            num.value = on && !mixed && set ? cur : '';
+            num.placeholder = on && mixed ? '여러 값' : def > 0 ? def : ANIM_DEFAULT_MS;
+          }
           continue;
         }
         if (f.type === 'list') {
@@ -1693,12 +1681,20 @@
           continue;
         }
         for (const el of box.querySelectorAll('[data-p]')) {
-          if (el === active) continue;
-          if (f.type === 'bool') el.checked = !!(set ? cur : def);
+          if (el === active && isTyping(el)) continue;   // 체크 상자는 포커스가 있어도 갱신(실행 취소 반영)
+          if (f.type === 'bool') { el.checked = !mixed && !!(set ? cur : def); el.indeterminate = mixed; }
           else if (el.type === 'color') el.value = (set ? cur : def) || '#000000';
-          else if (f.type === 'select') { const v = set ? cur : def; el.value = v == null ? '' : String(v); }
-          else if (f.type === 'screen') el.value = set ? cur : '';
-          else {
+          else if (f.type === 'select' || f.type === 'screen') {
+            // 값이 섞이면 고를 수 없는 "(여러 값)" 항목을 잠시 넣어 보여 준다
+            let mx = el.querySelector(`option[value="${MIXED}"]`);
+            if (mixed && !mx) { mx = new Option('(여러 값)', MIXED); mx.disabled = true; el.add(mx, 0); }
+            if (!mixed && mx) mx.remove();
+            const v = f.type === 'screen' ? (set ? cur : '') : (set ? cur : def);
+            el.value = mixed ? MIXED : v == null ? '' : String(v);
+          } else if (mixed) {
+            el.value = '';
+            el.placeholder = '여러 값';
+          } else {
             el.value = set ? this.fmtVal(cur) : '';
             el.placeholder = f.placeholder || (def == null || def === '' ? (f.type === 'optnum' ? '자동' : '') : this.fmtVal(def));
           }
@@ -1706,7 +1702,6 @@
       }
       // 그룹 안 필드가 모두 숨으면 그룹도 숨김
       this.inspector.querySelectorAll('.ed-group[data-g]').forEach((g) => {
-        if (g.dataset.g === 'adv') return;
         g.hidden = ![...g.querySelectorAll('.ed-pf')].some((b) => !b.hidden);
       });
     }
@@ -1746,8 +1741,10 @@
       };
       const head = rows.length
         ? `<div class="ed-lrow ed-lhead" style="${tpl}">${cols.map((c) => `<span>${esc(c.label)}</span>`).join('')}<span></span></div>` : '';
+      const warn = f.warn ? f.warn(rows) : '';
       return head + rows.map((row, i) => `<div class="ed-lrow" style="${tpl}">${cols.map((c) => cell(c, row)).join('')}` +
-        `<button class="ed-list-del" type="button" data-list-del="${i}" title="행 삭제">×</button></div>`).join('');
+        `<button class="ed-list-del" type="button" data-list-del="${i}" title="행 삭제">×</button></div>`).join('') +
+        (warn ? `<div class="ed-list-warn">${esc(warn)}</div>` : '');
     }
 
     parseValue(raw) {
@@ -1778,7 +1775,7 @@
       const missing = rows.some((o) => f.columns.some((c) => c.required && o[c.key] === undefined));
       if (missing) { this.formError(`${f.label}: 비어 있으면 안 되는 칸이 있습니다.`); return; }
       this.formError('');
-      this.setProp(w, f.key, rows.length ? rows : undefined, this.propDefaults(w)[f.key], live);
+      this.setProp(w, f.key, rows.length ? rows : undefined, live);
     }
 
     currentList(w, key) {
@@ -1792,7 +1789,7 @@
       if (!f) return;
       const rows = this.currentList(w, key);
       rows.push(f.newRow ? f.newRow(rows) : {});
-      this.setProp(w, key, rows, this.propDefaults(w)[key]);
+      this.setProp(w, key, rows);
     }
 
     delListRow(key, i) {
@@ -1800,14 +1797,15 @@
       if (!w) return;
       const rows = this.currentList(w, key);
       rows.splice(i, 1);
-      this.setProp(w, key, rows.length ? rows : undefined, this.propDefaults(w)[key]);
+      this.setProp(w, key, rows.length ? rows : undefined);
     }
 
-    // 폼 입력 → 속성. 기본값과 같으면 지워서 화면 JSON을 가볍게 유지한다.
+    // 폼 입력 → 속성(여러 개 선택이면 전부에 같은 값).
     // live: 색 선택기를 끄는 중(연속 변경을 실행 취소 한 단계로 묶음)
     onPropChange(el, live) {
-      const w = this.selected()[0];
-      if (!w || this.sel.size !== 1) return;
+      const ws = this.propTargets();
+      if (!ws) return;
+      const w = ws[0];
       const f = this.propFields(w).find((x) => x.key === el.dataset.p);
       if (!f) return;
       const def = this.propDefaults(w)[f.key];
@@ -1823,59 +1821,74 @@
             v = def > 0 ? undefined : ANIM_DEFAULT_MS;   // 비우면 기본 시간(켜진 상태 유지)
           } else {
             const n = Number(raw);
-            if (!Number.isFinite(n)) { this.syncPropForm(w); return; }
+            if (!Number.isFinite(n)) { this.syncPropForm(ws); return; }
             v = Math.min(f.max, Math.max(f.min, Math.round(n)));
           }
           break;
         case 'bool': v = el.checked; break;
-        case 'select': v = el.value === '' ? undefined : typeof def === 'number' ? Number(el.value) : el.value; break;
-        case 'screen': v = raw || undefined; break;
+        case 'select':
+          if (el.value === MIXED) return;
+          v = el.value === '' ? undefined : typeof def === 'number' ? Number(el.value) : el.value;
+          break;
+        case 'screen': if (el.value === MIXED) return; v = raw || undefined; break;
         case 'num': case 'optnum': {
           if (raw === '') { v = undefined; break; }
           const n = Number(raw);
-          if (!Number.isFinite(n)) { this.syncPropForm(w); return; }
+          if (!Number.isFinite(n)) { this.syncPropForm(ws); return; }
           v = Math.min(f.max ?? Infinity, Math.max(f.min ?? -Infinity, n));
           el.value = v;
           break;
         }
         case 'color': case 'optcolor':
           if (raw === '') { v = undefined; break; }
-          if (!/^#[0-9a-fA-F]{6}$/.test(raw)) { this.formError(`${f.label}: #RRGGBB 형식이어야 합니다.`); this.syncPropForm(w); return; }
+          if (!/^#[0-9a-fA-F]{6}$/.test(raw)) { this.formError(`${f.label}: #RRGGBB 형식이어야 합니다.`); this.syncPropForm(ws); return; }
           v = raw.toLowerCase();
           break;
         case 'value': v = raw === '' ? undefined : this.parseValue(raw); break;
         default: v = raw === '' ? undefined : el.value;   // text / opttext
       }
-      this.setProp(w, f.key, v, def, live);
+      this.setProp(ws, f.key, v, live);
     }
 
     resetProp(key) {
-      const w = this.selected()[0];
-      if (!w) return;
-      if (key === 'enableWhen') { this.setEnableWhen(w, null); return; }
-      this.setProp(w, key, undefined, this.propDefaults(w)[key]);
+      const ws = this.propTargets();
+      if (!ws) return;
+      if (key === 'enableWhen') { this.setEnableWhen(ws[0], null); return; }
+      this.setProp(ws, key, undefined);
     }
 
-    setProp(w, key, v, def, live) {
-      const props = Object.assign({}, w.props);
-      if (v === undefined || JSON.stringify(v) === JSON.stringify(def)) delete props[key];
-      else props[key] = v;
-      if (key === 'preset') {
-        // 스타일이 바뀌면 기본값이 달라지므로, 새 기본값과 같아진 속성은 정리한다
-        const impl = window.WHMI.impl(w.type);
-        const defs = Object.assign({}, impl && impl.defaults, impl && impl.presets && impl.presets[props.preset]);
-        for (const k of Object.keys(props)) if (k !== 'preset' && JSON.stringify(props[k]) === JSON.stringify(defs[k])) delete props[k];
+    // 속성 하나를 위젯 하나 또는 같은 종류 여러 개에 같은 값으로 — 실행 취소는 한 단계.
+    // 기본값과 같으면 지워서 화면 JSON을 가볍게 유지한다(기본값은 위젯마다: 스타일 프리셋).
+    setProp(target, key, v, live) {
+      const ws = Array.isArray(target) ? target : [target];
+      for (const w of ws) {
+        const props = Object.assign({}, w.props);
+        if (v === undefined || JSON.stringify(v) === JSON.stringify(this.propDefaults(w)[key])) delete props[key];
+        else props[key] = v;
+        if (key === 'preset') {
+          // 스타일이 바뀌면 기본값이 달라지므로, 새 기본값과 같아진 속성은 정리한다
+          const impl = window.WHMI.impl(w.type);
+          const defs = Object.assign({}, impl && impl.defaults, impl && impl.presets && impl.presets[props.preset]);
+          for (const k of Object.keys(props)) if (k !== 'preset' && JSON.stringify(props[k]) === JSON.stringify(defs[k])) delete props[k];
+        }
+        if (Object.keys(props).length) w.props = props; else delete w.props;
+        this.canonical(w);
+        this.redrawOne(w);
       }
-      if (Object.keys(props).length) w.props = props; else delete w.props;
-      this.canonical(w);
-      this.redrawOne(w);
       this.drawSelection();
       // 색 선택기를 끄는 동안의 연속 변경만 한 단계로 묶는다(끝나는 change 이벤트도 같은 단계)
-      const mk = `prop:${w.id}:${key}`;
+      const mk = `prop:${ws.map((w) => w.id).join(',')}:${key}`;
       this.commit(live || (this.lastMerge && this.lastMerge.key === mk) ? mk : undefined);
     }
 
-    // 같은 위젯이 계속 선택돼 있으면 입력란 값만 갱신 — 작성 중인 JSON이 날아가지 않게
+    // 속성 폼이 편집하는 위젯들 — 하나, 또는 같은 종류 여러 개. 아니면 null
+    propTargets() {
+      const ws = this.selected();
+      if (!ws.length || ws.some((w) => w.type !== ws[0].type)) return null;
+      return ws;
+    }
+
+    // 같은 위젯이 계속 선택돼 있으면 입력란 값만 갱신(입력 중인 칸 유지)
     updateFields(w) {
       for (const f of ['id', 'x', 'y', 'w', 'h']) {
         const el = this.inspector.querySelector(`[data-f="${f}"]`);
@@ -1888,8 +1901,7 @@
         }
         sel.value = w.tag || '';
       }
-      if (!this.jsonDirty) this.resetJson();
-      this.syncPropForm(w);
+      this.syncPropForm([w]);
     }
 
     renderInspector() {
@@ -1910,7 +1922,6 @@
         const key = `one:${w.id}`;
         if (this.inspKey === key) { this.updateFields(w); return; }
         this.inspKey = key;
-        this.jsonDirty = false;
         const tagOpts = Object.values(this.tags).sort((a, b) => a.id.localeCompare(b.id))
           .map((t) => `<option value="${esc(t.id)}">${esc(t.id)}${t.name ? ` — ${esc(t.name)}` : ''}</option>`).join('');
         const num = (f) => `<label class="ed-field"><span>${f}</span><input type="number" step="1" data-f="${f}"></label>`;
@@ -1923,29 +1934,27 @@
             <label class="ed-field wide"><span>tag</span><select data-f="tag"><option value="">(없음)</option>${tagOpts}<option value="__new__">+ 새 태그…</option></select></label>
           </div>
           <div class="ed-form-err"></div>
-          ${this.renderPropForm(w)}
-          <details class="ed-group" data-g="adv"${!this.propFields(w).length ? ' open data-forced="1"' : this.groupOpen.adv ? ' open' : ''}>
-            <summary>고급 (JSON)</summary>
-            <div class="ed-group-body">
-              <textarea class="ed-json" spellcheck="false" rows="12"></textarea>
-              <div class="ed-json-err"></div>
-              <div class="ed-json-btns">
-                <button class="ed-btn" type="button" data-json="reset">되돌리기</button>
-                <button class="ed-btn primary" type="button" data-json="apply">적용</button>
-              </div>
-            </div>
-          </details>`;
+          ${this.renderPropForm(w)}`;
         this.updateFields(w);
         return;
       }
-      this.inspKey = null;
       if (list.length > 1) {
+        // 같은 종류면 속성 폼도 — 값을 바꾸면 전부에 같은 값(syncPropForm/setProp)
+        const same = this.propTargets() && this.propFields(list[0]).length ? list[0].type : null;
+        const key = `multi:${this.primaryId()}:${list.map((w) => w.id).sort().join(',')}`;
+        if (same && this.inspKey === key) { this.syncPropForm(list); return; }
+        this.inspKey = same ? key : null;
         this.inspector.innerHTML = `
           <div class="ed-insp-section">${list.length}개 선택</div>
           ${alignBlock(list.length)}
-          <p class="ed-hint">${list.map((w) => esc(w.id)).join(', ')}</p>`;
+          ${same ? `
+          <div class="ed-insp-section">${esc(TYPE_LABEL[same] || same)} <small class="ed-type">${esc(same)}</small></div>
+          <div class="ed-form-err is-collapsible"></div>
+          ${this.renderPropForm(list[0], true)}` : ''}`;
+        if (same) this.syncPropForm(list);
         return;
       }
+      this.inspKey = null;
       const d = this.doc;
       const { w: W, h: H } = d.size;
       const outside = d.widgets.filter((w) => w.x + w.w > W || w.y + w.h > H || w.x < 0 || w.y < 0).length;
@@ -1994,6 +2003,7 @@
       clearTimeout(this.draftTimer);
       clearTimeout(this.flashTimer);
       document.removeEventListener('keydown', this.onKey);
+      this.closeMenus();
       this.resizeObs.disconnect();
       this.root.innerHTML = '';
     }

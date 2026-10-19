@@ -53,6 +53,9 @@
 
 /* ── 실행 모드 전체 화면 ─────────────────────────────────────── */
 .hmi-fs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: 8px;
   height: 30px;
   padding: 0 12px;
@@ -199,6 +202,49 @@
 .ed-btn:disabled { opacity: .4; cursor: default; }
 .ed-btn.primary { background: #2d6cdf; border-color: #2d6cdf; }
 .ed-btn.save:not(:disabled) { background: #2b7a4b; border-color: #2b7a4b; font-weight: 700; }
+.ed-btn svg { display: block; }
+.ed-icon-btn { padding: 0 7px; display: inline-flex; align-items: center; }
+
+/* 도구줄 드롭다운(화면 / 격자 / 순서) */
+.ed-menu { position: relative; }
+.ed-menu > .ed-btn { display: inline-flex; align-items: center; gap: 5px; }
+.ed-menu > .ed-btn[aria-expanded="true"] { background: #2a3442; border-color: #3fa7ff; }
+.ed-caret { opacity: .7; }
+.ed-menu-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 170px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #1b222c;
+  border: 1px solid #2e3846;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+.ed-menu-pop[hidden] { display: none; }
+.ed-menu-pop > .ed-check { padding: 6px 8px; border-radius: 6px; white-space: nowrap; }
+.ed-menu-pop > .ed-check:hover { background: #222a35; }
+.ed-menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #e6e9ef;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ed-menu-item:hover { background: #2a3442; }
+.ed-menu-item small { color: #66707f; font-size: 11px; }
 
 .ed-body { flex: 1; min-height: 0; display: flex; }
 
@@ -250,7 +296,7 @@
 
 .ed-sep { width: 1px; height: 20px; background: #2e3846; margin: 0 4px; }
 .ed-check { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
-.ed-grid-size { padding: 0 4px; }
+.ed-grid-size { padding: 0 4px; margin-left: auto; }
 .ed-pos { color: #66707f; font-size: 12px; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
 .ed-dirty { color: #ffb020; font-size: 12px; font-weight: 700; }
 
@@ -307,8 +353,7 @@
 .ed-field.wide { grid-column: 1 / -1; }
 .ed-field span { font-size: 11px; color: #8a93a3; }
 .ed-field input,
-.ed-field select,
-.ed-json {
+.ed-field select {
   width: 100%;
   box-sizing: border-box;
   padding: 4px 6px;
@@ -320,25 +365,17 @@
   font-size: 12px;
 }
 .ed-field input:focus,
-.ed-field select:focus,
-.ed-json:focus { outline: none; border-color: #3fa7ff; }
-.ed-json {
-  display: block;
-  resize: vertical;
-  font-family: "Consolas", "D2Coding", ui-monospace, monospace;
-  font-size: 11.5px;
-  line-height: 1.45;
-  tab-size: 2;
-  white-space: pre;
-}
-.ed-form-err,
-.ed-json-err { color: #e5534b; font-size: 12px; min-height: 16px; margin-top: 3px; word-break: break-all; }
-.ed-json-btns { display: flex; justify-content: flex-end; gap: 6px; }
+.ed-field select:focus { outline: none; border-color: #3fa7ff; }
+.ed-form-err { color: #e5534b; font-size: 12px; min-height: 16px; margin-top: 3px; word-break: break-all; }
+.ed-form-err.is-collapsible:empty { min-height: 0; margin: 0; }   /* 여러 개 편집: 오류가 없으면 자리 차지 안 함 */
 
 /* 화면 설정(속성 창) */
 .ed-form .wide { grid-column: 1 / -1; }
 .ed-color { display: flex; gap: 6px; }
 .ed-color input[type="color"] { width: 36px; padding: 0 2px; flex-shrink: 0; }
+/* 여러 개 선택에서 색이 서로 다름 — 색 칸을 빗금으로 */
+.ed-pf.is-mixed input[type="color"]::-webkit-color-swatch { background: repeating-linear-gradient(45deg, #3a4555 0 3px, #222a35 3px 6px) !important; }
+.ed-pf.is-mixed input[type="color"]::-moz-color-swatch { background: repeating-linear-gradient(45deg, #3a4555 0 3px, #222a35 3px 6px) !important; }
 .ed-warn { color: #ffb020; font-size: 12px; margin: 6px 0; }
 
 /* 편집기 대화상자(새 화면 / 화면 관리) — 기본 .dlg input(큰 숫자 입력용)보다 작게 */
@@ -442,6 +479,7 @@
 .ed-lrow input::placeholder { color: #4d5664; }
 .ed-list-del { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #8a93a3; font-size: 15px; cursor: pointer; }
 .ed-list-del:hover { background: rgba(229, 83, 75, 0.18); color: #ff8c87; }
+.ed-list-warn { margin-top: 4px; color: #ffb020; font-size: 11px; line-height: 1.4; }
 .ed-list-add {
   align-self: flex-start;
   margin-top: 3px;

@@ -6,8 +6,14 @@
   const dot         = $('#hmiDot');
   const msg         = $('#hmiMsg');
 
+  // 오류 문구(화면 전환·쓰기 실패 등)는 다음 폴링의 "갱신 …"에 바로 덮이지 않게 잠시 유지한다.
+  // 점은 항상 현재 상태를 따른다.
+  const ERR_HOLD_MS = 5000;
+  let errUntil = 0;
   function status(state, text) {
     if (dot) dot.className = `hmi-status-dot ${state}`;
+    if (state === 'err') errUntil = Date.now() + ERR_HOLD_MS;
+    else if (Date.now() < errUntil) return;
     if (msg) msg.textContent = text;
   }
 

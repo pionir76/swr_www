@@ -118,6 +118,5 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 - 필드: `{ key, label, type, group, min?, max?, step?, options?, placeholder?, when?(p) }`
 - 입력 종류: `text`, `opttext`, `num`, `optnum`, `color`, `optcolor`, `bool`, `select`, `screen`, `value`(true/false/숫자/글자), `list`(행 추가/삭제), `anim`(사용 체크 + ms), `enable`(위젯 필드 `enableWhen`)
 - 그룹: 기본 / 눈금 / 값 / 색상 / 동작 / 효과
-- 폼에 없는 속성은 속성 창 맨 아래 "고급 (JSON)"으로 편집한다.
 
-**위젯에 속성을 추가하면 `whmi-schema.js`에도 필드를 추가한다.** 빠뜨리면 편집기에서는 JSON으로만 바꿀 수 있다.
+**위젯에 속성을 추가하면 `whmi-schema.js`에도 필드를 추가한다.** 편집기에는 JSON 편집 칸이 없으므로, 빠뜨리면 그 속성은 편집기에서 바꿀 수 없다(화면 JSON에 들어 있는 값은 그대로 동작·보존).
