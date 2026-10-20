@@ -99,7 +99,8 @@
 .w .scale { font-size: 11px; fill: #8a93a3; }
 .w .img-empty { fill: rgba(255, 255, 255, 0.03); stroke: #4a5566; stroke-dasharray: 4 3; }
 .w .img-empty-text { font-size: 12px; fill: #66707f; }
-.w .outlined { font-weight: 700; fill: #fff; stroke: #0b0f14; stroke-width: 4px; paint-order: stroke; }
+/* 막대·탱크 위 값 글자 — 외곽선 없이 흰 글자 + 부드러운 그림자(밝은 채움 위에서도 읽히게) */
+.w .outlined { font-weight: 600; fill: #fff; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 1px rgba(0, 0, 0, 0.5)); }
 .w .level { transition: transform .6s ease, fill .3s; }
 .w .knob { transition: transform .2s ease; }
 .w.q-bad { opacity: .45; }
@@ -108,12 +109,15 @@
 .w-button, .w-switch, .w-input, .w-screenlink, .w-selector { cursor: pointer; }
 .w-button:active rect { filter: brightness(1.35); }
 .w.readonly { cursor: not-allowed; }
-.lamp.blink, .w-lamp .blink { animation: hmi-blink 1s steps(1) infinite; }
+.lamp.blink, .w-lamp .blink, .w-status .blink { animation: hmi-blink 1s steps(1) infinite; }
 @keyframes hmi-blink { 50% { opacity: .25; } }
 
 /* 숫자 상자(numeric) — 구간 깜빡임 / 값 변화 시 하이라이트 */
 .w .blink-on { animation: hmi-blink 1s steps(1) infinite; }
 .w .num-bg.flash { animation: hmi-flash .6s ease-out; }
+/* 디자인 모드(편집 화면·끌어오는 위젯)는 정지 화면 — 깜빡임·반짝임을 멈추고 켜진 모습 그대로 보인다 */
+.ed-widgets .blink, .ed-widgets .blink-on, .ed-widgets .flash,
+.ed-ghost .blink, .ed-ghost .blink-on, .ed-ghost .flash { animation: none !important; }
 @keyframes hmi-flash { 0% { filter: brightness(2.6); } 100% { filter: brightness(1); } }
 
 /* 7세그먼트 폰트(DSEG7, SIL OFL — assets/fonts/DSEG-LICENSE.txt) */
@@ -273,16 +277,21 @@
   border-bottom: 1px solid #222a35;
 }
 .ed-palette-list { list-style: none; margin: 0; padding: 4px; }
+.ed-palette-group { padding: 8px 8px 2px; font-size: 10px; font-weight: 700; letter-spacing: .04em; color: #5b6574; user-select: none; }
 .ed-palette-item {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 9px;
   padding: 6px 8px;
   border-radius: 6px;
   cursor: grab;
   user-select: none;
 }
 .ed-palette-item:hover { background: #222a35; }
-.ed-palette-item small { color: #66707f; font-size: 10px; }
+.ed-wicon {
+  width: 20px; height: 20px; flex-shrink: 0; color: #7fb8ff;
+  fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
 
 .ed-canvas {
   flex: 1;
@@ -352,9 +361,10 @@
   z-index: 50;
   display: grid;
   place-items: center;
-  border: 1.5px dashed #3fa7ff;
+  border: 1px dashed rgba(63, 167, 255, 0.7);
   border-radius: 4px;
-  background: rgba(63, 167, 255, 0.12);
+  background: rgba(63, 167, 255, 0.06);
+  opacity: 0.7;   /* 실제 위젯을 반투명으로 */
   color: #cfe6ff;
   font-size: 12px;
   pointer-events: none;
@@ -387,6 +397,15 @@
 .ed-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
 .ed-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ed-field.wide { grid-column: 1 / -1; }
+/* 비트 고르기: 0~15 격자 */
+.ed-bits { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
+.ed-bits button {
+  height: 24px; padding: 0; border: 1px solid #2e3846; border-radius: 4px;
+  background: #0b0f14; color: #8a93a3; font: inherit; font-size: 11px; cursor: pointer;
+}
+.ed-bits button:hover { border-color: #3fa7ff; }
+.ed-bits button.on { background: #2d6cdf; border-color: #2d6cdf; color: #fff; font-weight: 700; }
+.ed-bits-sum { margin-top: 3px; font-size: 11px; color: #8a93a3; }
 /* 이미지 위젯: 미리보기 + 파일 선택/지우기 */
 .ed-img { display: flex; align-items: center; gap: 6px; }
 .ed-img-thumb {
@@ -516,7 +535,8 @@
 .ed-lrow { display: grid; gap: 4px; align-items: center; }
 .ed-lhead span { font-size: 10px; color: #66707f; }
 .ed-lrow input[type="text"],
-.ed-lrow input[type="number"] {
+.ed-lrow input[type="number"],
+.ed-lrow select {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;

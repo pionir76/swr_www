@@ -431,11 +431,48 @@
     return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 150 ? '#111111' : '#ffffff';
   }
 
+  // 상태 표시 — 값(또는 비트)에 따라 글자·색이 바뀌는 상자(운전 모드, 상태 워드 등)
+  //  mode     "value"(기본, 값이 같은 줄) | "bit"(그 비트가 1인 줄)
+  //  states   [{ value?, bit?, text, color?, bg?, blink? }] — 위에서부터 처음 맞는 줄을 표시(줄 순서 = 우선순위)
+  //  noneText/noneColor/noneBg  맞는 줄이 없을 때, border/radius/padding/fontSize/bold/align 상자·글자
+  const STATUS_DEFAULTS = {
+    mode: 'value',
+    states: [
+      { value: 0, text: '정지', color: '#c4ccd8', bg: '#2a313c' },
+      { value: 1, text: '운전', color: '#ffffff', bg: '#1f8f4e' },
+    ],
+    noneText: '—', noneColor: '#8a93a3', noneBg: '#1b212b', border: '#2e3846',
+    fontSize: 15, bold: true, align: 'center', radius: 6, padding: 8,
+  };
+  register('status', {
+    defaults: STATUS_DEFAULTS,
+    create(g, w, p) {
+      const box = svg('g', {}, g);   // 깜빡임은 상자째
+      const bg = svg('rect', { x: 0.5, y: 0.5, width: Math.max(0, w.w - 1), height: Math.max(0, w.h - 1), rx: p.radius, stroke: p.border }, box);
+      const x = { left: p.padding, center: w.w / 2, right: w.w - p.padding }[p.align];
+      const anchor = { left: 'start', center: 'middle', right: 'end' }[p.align];
+      const t = svg('text', { x, y: w.h / 2, 'text-anchor': anchor, 'dominant-baseline': 'central', 'font-size': p.fontSize, 'font-weight': p.bold ? 700 : 400 }, box);
+      return {
+        update(info) {
+          const v = info.value;
+          const hit = !info.ok ? null : (p.states || []).find((s) => (p.mode === 'bit'
+            ? s.bit != null && typeof v === 'number' && ((Math.trunc(v) >> s.bit) & 1) === 1
+            : s.value != null && v == s.value));   // 값 일치는 숫자·참거짓·글자 모두(느슨한 비교)
+          t.textContent = !info.ok ? '----' : hit ? (hit.text ?? '') : p.noneText;
+          t.setAttribute('fill', hit ? hit.color || '#e6e9ef' : p.noneColor);
+          bg.setAttribute('fill', hit ? hit.bg || p.noneBg : p.noneBg);
+          box.classList.toggle('blink', !!(hit && hit.blink));
+        },
+      };
+    },
+  });
+
   //  shape   circle(기본) | square | warning(▲ + !) | error(● + ×) | info(● + i) | ok(● + ✓)
   //          | panel(알림창 — 위젯 상자 전체가 표시등, 글자는 안쪽 가운데)
   //          기호는 SVG로 그린다(글꼴에 없는 기호가 □로 보이지 않게). 기호·알림창 글자 색은 바탕 밝기로 자동.
   //  preset  스타일 묶음(LAMP_PRESETS) — 모양·색을 한 번에
   //  bit     지정하면 값을 그대로 쓰지 않고 (value >> bit) & 1로 해당 비트만 뽑아 판정한다.
+  //          목록([1, 2])이면 그중 하나라도 1이면 켜짐(예: 상태 워드에서 "정치 또는 프로그램 운전").
   //          레지스터 하나가 여러 상태를 비트로 묶어 담고 있을 때 쓴다(scale:1인 정수 태그 전제).
   const LAMP_DEFAULTS = {
     preset: null, shape: 'circle', onColor: '#2ecc71', offColor: '#3a4250', onValue: null, bit: null, blink: false,
@@ -499,7 +536,9 @@
       return {
         update(info) {
           let v = info.value;
-          if (info.ok && p.bit != null && typeof v === 'number') v = (Math.trunc(v) >> p.bit) & 1;
+          // bit: 숫자 하나 또는 목록 — 목록이면 그중 하나라도 1이면 1
+          const bits = p.bit == null ? null : [].concat(p.bit).map(Number).filter(Number.isInteger);
+          if (info.ok && bits && bits.length && typeof v === 'number') v = bits.some((b) => (Math.trunc(v) >> b) & 1) ? 1 : 0;
           const on = info.ok && (p.onValue != null ? v == p.onValue : !!v);
           const color = on ? p.onColor : p.offColor;
           const ink = inkOn(color);
@@ -590,15 +629,37 @@
   //  origin     채우기 기준값(예: 0이면 음수는 반대쪽으로). 생략 시 min부터
   //  showRanges ranges 구간을 트랙 옆 색 띠로 표시
   //  markers    [{ value, color? }] 고정값 기준선
+  //  segments   2 이상이면 LED처럼 칸으로 나눠 그림(칸 수), segmentGap 칸 사이 간격
+  //  colorRamp  "traffic"(초록→노랑→빨강) | "blue" | "heat" — 범위 전체에 깔리는 색 띠(gradient가 있으면 그쪽 우선)
+  //  glow       채움 발광
+  const BAR_RAMPS = {
+    traffic: ['#2ecc71', '#f1c40f', '#e5534b'],
+    blue: ['#9adcff', '#3fa7ff', '#1d5fc4'],
+    heat: ['#ffd166', '#ff8c42', '#e5384b'],
+  };
+  //  preset     스타일 묶음(BAR_PRESETS) — 고른 스타일 값이 기본값, props가 덮어씀
+  const BAR_DEFAULTS = {
+    preset: null, orientation: 'v', fillColor: '#3fa7ff', bgColor: '#0b0f14', border: '#2e3846', ranges: null,
+    thickness: null, radius: 3, segments: 0, segmentGap: 2, colorRamp: null, glow: false,
+    showScale: false, ticks: 5, minorTicks: 0, tickLabels: true, showMinMax: false, scalePosition: 'after',
+    gradient: null, shade: false, showValue: false, origin: null, showRanges: false, markers: null,
+    tickColor: '#4a5566', labelColor: '#8a93a3', fontSize: 11, animMs: 400, valueAlign: 'end',
+  };
+  const NO_LINE = '#00000000';   // 테두리 없음(투명)
+  const BAR_PRESETS = {
+    meter:   { showScale: true, minorTicks: 4, showValue: true, shade: true, radius: 2 },
+    traffic: { colorRamp: 'traffic', shade: true, showValue: true, valueAlign: 'center', radius: 4 },
+    led:     { segments: 20, segmentGap: 2, colorRamp: 'traffic', bgColor: '#1c222b', border: NO_LINE, radius: 1 },
+    neon:    { thickness: 12, radius: 6, fillColor: '#46f0e0', bgColor: '#0f2a30', border: '#1b5a62', glow: true },
+    slim:    { thickness: 6, radius: 3, bgColor: '#2a313c', border: NO_LINE },
+    blue:    { colorRamp: 'blue', showScale: true, showValue: true, valueAlign: 'follow', radius: 3 },
+    heat:    { segments: 12, segmentGap: 3, colorRamp: 'heat', bgColor: '#21180f', border: NO_LINE, radius: 2, glow: true },
+  };
   register('bar', {
-    defaults: {
-      orientation: 'v', fillColor: '#3fa7ff', bgColor: '#0b0f14', border: '#2e3846', ranges: null,
-      thickness: null, radius: 3,
-      showScale: false, ticks: 5, minorTicks: 0, tickLabels: true, showMinMax: false, scalePosition: 'after',
-      gradient: null, shade: false, showValue: false, origin: null, showRanges: false, markers: null,
-      tickColor: '#4a5566', labelColor: '#8a93a3', fontSize: 11, animMs: 400, valueAlign: 'end',
-    },
-    create(g0, w, p, ctx) {
+    defaults: BAR_DEFAULTS,
+    presets: BAR_PRESETS,
+    create(g0, w, _p, ctx) {
+      const p = withPreset(BAR_DEFAULTS, w.props, BAR_PRESETS);
       const H = p.orientation === 'h';
       // 세로 막대는 맨 위·아래 숫자가 가운데 맞춤이라 반 글자씩 튀어나온다 — 그만큼 주축을 줄이고
       // 전체를 내려 그린다(가로는 양 끝 숫자를 안쪽으로 맞춰 그리므로 필요 없음)
@@ -611,7 +672,8 @@
       const hasSide = p.showScale || p.showMinMax || p.showRanges || p.origin != null;
       const th = Math.min(C, p.thickness ?? (hasSide ? Math.round(C * 0.5) : C));
       const after = p.scalePosition !== 'before';
-      const t0 = after ? 0 : C - th;                 // 트랙 시작(교차축)
+      // 트랙 시작(교차축). 옆에 붙는 것(눈금 등)이 없으면 가운데 — 두께를 지정한 얇은 막대가 가운데 오게
+      const t0 = hasSide ? (after ? 0 : C - th) : (C - th) / 2;
       const dir = after ? 1 : -1;                    // 트랙에서 눈금 쪽으로 나가는 방향
       const edge = after ? t0 + th : t0;             // 눈금 쪽 트랙 가장자리
       const bandAt = edge + dir * 2;                 // 구간 띠(두께 4)
@@ -632,18 +694,35 @@
 
       const clipId = `clip-${w.id}`;
       const track = box(0, L, t0, th);
-      svg('rect', { ...track, rx: p.radius }, svg('clipPath', { id: clipId }, ctx.defs));
-      svg('rect', { ...track, rx: p.radius, fill: p.bgColor, stroke: p.border }, g);
-      const level = svg('rect', box(0, 0, t0, th), svg('g', { 'clip-path': `url(#${clipId})` }, g));
+      // 세그먼트: 트랙을 칸으로 나눠 배경도 칸, 채움도 칸 모양으로 잘라 보인다
+      const nSeg = p.segments >= 2 ? Math.floor(p.segments) : 0;
+      const clip = svg('clipPath', { id: clipId }, ctx.defs);
+      if (nSeg) {
+        const gap = Math.max(0, p.segmentGap);
+        const sl = Math.max(1, (L - gap * (nSeg - 1)) / nSeg);
+        const rx = Math.min(p.radius, sl / 2, th / 2);
+        for (let i = 0; i < nSeg; i++) {
+          const cell = box(i * (sl + gap), sl, t0, th);
+          svg('rect', { ...cell, rx }, clip);
+          svg('rect', { ...cell, rx, fill: p.bgColor, stroke: p.border }, g);
+        }
+      } else {
+        svg('rect', { ...track, rx: p.radius }, clip);
+        svg('rect', { ...track, rx: p.radius, fill: p.bgColor, stroke: p.border }, g);
+      }
+      const glowG = svg('g', {}, g);   // 발광은 잘리지 않게 잘림 묶음 바깥에
+      const level = svg('rect', box(0, 0, t0, th), svg('g', { 'clip-path': `url(#${clipId})` }, glowG));
       if (p.shade) {
-        svg('rect', { ...track, rx: p.radius, fill: `url(#${shadeGradient(ctx.defs, H)})`, 'pointer-events': 'none' }, g);
+        svg('rect', { ...track, rx: p.radius, fill: `url(#${shadeGradient(ctx.defs, H)})`, 'pointer-events': 'none', 'clip-path': `url(#${clipId})` }, g);
       }
       // 그라데이션은 트랙 전체 길이에 고정 — 채워진 만큼만 색이 드러난다(userSpaceOnUse)
       const gradId = `grad-${w.id}`;
-      const grad = p.gradient
+      const ramp = !p.gradient && BAR_RAMPS[p.colorRamp];
+      const grad = p.gradient || ramp
         ? svg('linearGradient', { id: gradId, gradientUnits: 'userSpaceOnUse',
             ...(H ? { x1: 0, y1: 0, x2: L, y2: 0 } : { x1: 0, y1: L, x2: 0, y2: 0 }) }, ctx.defs)
         : null;
+      if (ramp) ramp.forEach((c, i) => svg('stop', { offset: i / (ramp.length - 1), 'stop-color': c }, grad));
       const scaleG = svg('g', {}, g);  // 눈금/라벨/구간 띠/마커 — min/max가 바뀌면 다시 그림
       const fs = Math.max(10, Math.min(16, Math.round(th * 0.55)));
       // valueAlign: "start"(가로=왼쪽, 세로=아래) | "center" | "end"(가로=오른쪽, 세로=위, 기본)
@@ -680,7 +759,7 @@
         scaleG.innerHTML = '';
         const labeled = [];  // 이미 라벨을 그린 값 — origin 라벨이 눈금/min/max와 겹치면 생략
         const lbl = (v) => { label(v, mainOf(v, mn, mx), dec); labeled.push(v); };
-        if (grad) {
+        if (grad && p.gradient) {
           grad.innerHTML = '';
           [...p.gradient].sort((a, b) => a.at - b.at).forEach((s) => {
             svg('stop', { offset: clamp((s.at - mn) / ((mx - mn) || 1), 0, 1), 'stop-color': s.color }, grad);
@@ -736,7 +815,12 @@
             const ml = Math.abs(a - b);
             const r = box(m0, ml, t0, th);
             for (const k in r) level.setAttribute(k, r[k]);
-            level.setAttribute('fill', grad ? `url(#${gradId})` : rangeColor(p.ranges, v, p.fillColor));
+            const solid = rangeColor(p.ranges, v, p.fillColor);
+            level.setAttribute('fill', grad ? `url(#${gradId})` : solid);
+            if (p.glow) {
+              const gc = ramp ? ramp[Math.min(ramp.length - 1, Math.floor((ml / (L || 1)) * ramp.length))] : solid;
+              glowG.style.filter = v == null || ml < 0.5 ? '' : `drop-shadow(0 0 ${Math.min(8, Math.max(3, th * 0.3))}px ${gc})`;
+            }
             if (valText) {
               const s = v == null ? '----' : Number(v).toFixed(info.decimals);
               valText.textContent = info.unit ? `${s} ${info.unit}` : s;
@@ -866,7 +950,9 @@
     // 숫자형이면서 on/off 의미가 반전된 태그(예: 0=운전,1=정지)도 올바르게 토글된다).
     // onText/offText: 지정하면 현재 상태(onValue 일치 여부)에 따라 버튼 라벨도 바뀐다
     // (예: "운전"/"정지"). 생략 시 text 고정 — 기존 화면은 그대로 동작.
-    defaults: { text: '버튼', action: 'set', value: true, onValue: true, offValue: false, onText: null, offText: null, color: '#2d6cdf', activeColor: null, textColor: '#fff', fontSize: 16, confirm: null },
+    // value: 쓸 값 — 기본값 없음(비어 있으면 쓰지 않고 상태줄에 알림). 예전엔 true(1)가 기본이라
+    // 값을 안 넣은 "정지" 버튼이 1(운전)을 쓰는 실수가 있었다.
+    defaults: { text: '버튼', action: 'set', value: null, onValue: true, offValue: false, onText: null, offText: null, color: '#2d6cdf', activeColor: null, textColor: '#fff', fontSize: 16, confirm: null, confirmOff: null },
     create(g, w, p, ctx) {
       const bg = svg('rect', { width: w.w, height: w.h, rx: 6, fill: p.color }, g);
       const label = svg('text', { x: w.w / 2, y: w.h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': p.fontSize, 'font-weight': 600, fill: p.textColor }, g);
@@ -874,8 +960,10 @@
       let cur;
       g.addEventListener('click', () => {
         if (g.classList.contains('readonly')) return;
-        const next = p.action === 'toggle' ? (cur == p.onValue ? p.offValue : p.onValue) : p.value;
-        ctx.write(w, next, p.confirm);
+        const toOff = p.action === 'toggle' && cur == p.onValue;
+        const next = p.action === 'toggle' ? (toOff ? p.offValue : p.onValue) : p.value;
+        // 전환 버튼: 끌 때 문구(confirmOff)가 있으면 그것, 없으면 확인 문구 하나를 양쪽에
+        ctx.write(w, next, toOff ? p.confirmOff ?? p.confirm : p.confirm);
       });
       return {
         update(info) {
@@ -892,7 +980,8 @@
   });
 
   register('switch', {
-    defaults: { onColor: '#2b7a4b', offColor: '#3a4250', onText: 'ON', offText: 'OFF', onValue: true, offValue: false, confirm: null },
+    // confirm: 켤 때(꺼짐 문구가 없으면 끌 때도) 확인 문구, confirmOff: 끌 때 확인 문구
+    defaults: { onColor: '#2b7a4b', offColor: '#3a4250', onText: 'ON', offText: 'OFF', onValue: true, offValue: false, confirm: null, confirmOff: null },
     create(g, w, p, ctx) {
       const h = w.h;
       const track = svg('rect', { width: w.w, height: h, rx: h / 2 }, g);
@@ -901,7 +990,7 @@
       let on = false;
       g.addEventListener('click', () => {
         if (g.classList.contains('readonly')) return;
-        ctx.write(w, on ? p.offValue : p.onValue, p.confirm);
+        ctx.write(w, on ? p.offValue : p.onValue, on ? p.confirmOff ?? p.confirm : p.confirm);
       });
       return {
         update(info) {

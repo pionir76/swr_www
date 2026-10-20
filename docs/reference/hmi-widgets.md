@@ -75,9 +75,10 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 | type | 용도 | props (기본값) |
 |---|---|---|
 | `numeric` | 디지털 숫자 표시기 | `color`(`#7cfc9a`), `bg`, `border`, `ranges`/`rangeTarget`(text\|bg\|border, 구간 `blink:true`), `animMs`(0=끔), `flashOnChange`, `showTrend`, 공통 상자 옵션(아래) |
-| `lamp` | 상태 램프(불리언) | `preset`(warning\|error\|info\|ok\|alarm — 모양·색 묶음), `shape`(circle\|square\|warning(▲+!)\|error(●+×)\|info(●+i)\|ok(●+체크)\|panel(알림창: 상자 전체가 표시등, 글자 안쪽 가운데) — 기호는 SVG, 기호·알림창 글자 색은 바탕 밝기로 자동), `onColor`(`#2ecc71`), `offColor`(`#3a4250`), `onValue`(생략 시 truthy 판정), `bit`(지정하면 `(값 >> bit) & 1`로 판정), `blink`(false), `text`, `fontSize`(15), `textColor` |
+| `lamp` | 상태 램프(불리언) | `preset`(warning\|error\|info\|ok\|alarm — 모양·색 묶음), `shape`(circle\|square\|warning(▲+!)\|error(●+×)\|info(●+i)\|ok(●+체크)\|panel(알림창: 상자 전체가 표시등, 글자 안쪽 가운데) — 기호는 SVG, 기호·알림창 글자 색은 바탕 밝기로 자동), `onColor`(`#2ecc71`), `offColor`(`#3a4250`), `onValue`(생략 시 truthy 판정), `bit`(숫자 하나면 `(값 >> bit) & 1`로 판정, 목록 `[1,2]`면 그중 하나라도 1이면 켜짐 — 속성 창은 0~15 비트 격자), `blink`(false), `text`, `fontSize`(15), `textColor` |
+| `status` | 상태 표시(값·비트 → 글자·색) | `mode`(value=값 일치(기본) \| bit=그 비트가 1), `states`(`[{ value?, bit?, text, color?, bg?, blink? }]` — 위에서부터 처음 맞는 줄, 줄 순서 = 우선순위, 기본 0=정지·1=운전), `noneText`(`—`)/`noneColor`/`noneBg`(맞는 줄 없음), `border`, `radius`(6), `fontSize`(15), `bold`(true), `align`(center\|left\|right), `padding`(8). 통신 불량이면 `----` |
 | `tank` | 탱크 수위 | `fillColor`(`#3fa7ff`), `bgColor`, `shellColor`, `ranges`, `showValue`(true), `showScale`(true), `ticks`(5) |
-| `bar` | 막대 게이지 | `orientation`(v\|h), `fillColor`, `bgColor`, `border`, `radius`(3), `ranges`, `thickness`(생략 시 자동), `showScale`(false)/`ticks`(5)/`minorTicks`(0)/`tickLabels`(true), `showMinMax`(false), `scalePosition`(after\|before), `gradient`(`[{at: 값, color}]`, ranges보다 우선), `shade`(false), `showValue`(false), `valueAlign`(start\|center\|end\|follow, 기본 end), `origin`(생략 시 min부터 채움), `showRanges`(false), `markers`(`[{value, color?}]`), `tickColor`/`labelColor`/`fontSize`, `animMs`(400, 0=끔) |
+| `bar` | 막대 게이지 | `preset`(meter 계기\|traffic 신호등\|led LED 세그먼트\|neon 네온\|slim 슬림\|blue 블루 계기\|heat 열 세그먼트), `segments`(0, 2 이상이면 칸으로 나눔)/`segmentGap`(2), `colorRamp`(traffic\|blue\|heat — 범위 전체 색 띠, gradient가 우선), `glow`(false, 채움 발광), `orientation`(v\|h), `fillColor`, `bgColor`, `border`, `radius`(3), `ranges`, `thickness`(생략 시 자동), `showScale`(false)/`ticks`(5)/`minorTicks`(0)/`tickLabels`(true), `showMinMax`(false), `scalePosition`(after\|before), `gradient`(`[{at: 값, color}]`, ranges보다 우선), `shade`(false), `showValue`(false), `valueAlign`(start\|center\|end\|follow, 기본 end), `origin`(생략 시 min부터 채움), 두께를 지정하고 옆 표시(눈금 등)가 없으면 트랙은 상자 가운데, `showRanges`(false), `markers`(`[{value, color?}]`), `tickColor`/`labelColor`/`fontSize`, `animMs`(400, 0=끔) |
 | `gauge` | 원형(아크) 게이지 | `startAngle`(-135), `endAngle`(135), `arcColor`, `trackColor`, `ranges`, `title`, `thickness`, `animMs`(400, 0=끔), `lineCap`(butt\|round) |
 
 **공통 상자 옵션(numeric·input)**: `preset`(led\|lcd\|vfd — 색·효과 묶음, 위젯 props가 우선), `font`(mono\|seg7\|sans), `fontSize`(생략 시 h×0.55), `italic`, `align`(end\|start\|center), `showUnit`(true), `unitAlign`(bottom\|middle\|top, 기본 bottom), `unitColor`, `ghost`/`ghostOpacity`(seg7 잔상), `glow`, `caption`/`captionColor`, `radius`(4), `borderWidth`, `bevel`, `glass`, `padding`(8, 안쪽 여백 — 정렬한 쪽 가장자리와 숫자 사이, 이름표·추세 표시는 2px 더 바깥).
@@ -94,8 +95,8 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 
 | type | 용도 | props (기본값) |
 |---|---|---|
-| `button` | 값 기록 버튼 | `text`, `fontSize`(16), `action`(set\|toggle), `value`(true, set일 때 쓸 값), `onValue`(true)/`offValue`(false, toggle과 켜짐 판정), `onText`/`offText`(켜짐·꺼짐일 때 글자), `color`, `activeColor`(켜짐일 때 색), `textColor`, `confirm` |
-| `switch` | 토글 스위치 | `onValue`(true), `offValue`(false), `onText`/`offText`, `onColor`/`offColor`, `confirm` |
+| `button` | 값 기록 버튼 | `text`, `fontSize`(16), `action`(set\|toggle), `value`(set일 때 쓸 값 — **기본값 없음, 비어 있으면 쓰지 않고 상태줄에 알림**. 쓰고 나면 0으로 돌아가는 명령 레지스터는 toggle이 아니라 set 버튼 두 개로), `onValue`(true)/`offValue`(false, toggle과 켜짐 판정), `onText`/`offText`(켜짐·꺼짐일 때 글자), `color`, `activeColor`(켜짐일 때 색), `textColor`, `confirm`(확인 문구 — 전환이면 켤 때), `confirmOff`(전환에서 끌 때 문구, 비면 confirm을 양쪽에) |
+| `switch` | 토글 스위치 | `onValue`(true), `offValue`(false), `onText`/`offText`, `onColor`/`offColor`, `confirm`(켤 때)/`confirmOff`(끌 때, 비면 confirm) |
 | `input` | 숫자 입력 | `color`, `bg`, `border`, `confirm`, 공통 상자 옵션 — 클릭 시 입력 대화상자, min/max로 검증 |
 | `selector` | 로터리 셀렉터 | `options`(`[{value, text}]`), `startAngle`(-45)/`endAngle`(45), `ringColor`, `knobColor`, `handleColor`, `labelColor`, `activeColor`, `fontSize`(14), `confirm`, `animMs`(300) — 라벨 클릭 시 그 위치로, 노브 클릭 시 다음 위치로 |
 
@@ -130,6 +131,8 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 편집기 속성 창의 폼은 위젯 타입별 필드 목록으로 만든다. 기본값은 여기 두지 않고 위젯 구현의 `defaults`(numeric·input은 `presets`까지)를 그대로 쓴다.
 
 - 필드: `{ key, label, type, group, min?, max?, step?, options?, placeholder?, when?(p) }`
+- 칸 `id`: 같은 속성(key)을 조건(`when`)에 따라 다른 칸으로 보여 줄 때 구분 이름(예: 램프 `onValue` — 비트가 없으면 "켜짐 값" 입력, 있으면 "켜짐 조건" 선택). select 칸 `numeric`(숫자로 저장)·`nullAs`(값이 없을 때 보일 항목)
+- 목록(`list`) 칸: `type`(num\|text\|color\|value\|bool\|select+options), `width?`, `when?(p)`(거짓이면 숨김 — 숨은 칸 값은 보존), `newRow(rows, p)`
 - 입력 종류: `text`, `opttext`, `num`, `optnum`, `color`, `optcolor`, `bool`, `select`, `screen`, `value`(true/false/숫자/글자), `list`(행 추가/삭제), `anim`(사용 체크 + ms), `enable`(위젯 필드 `enableWhen`)
 - 그룹: 기본 / 눈금 / 값 / 색상 / 동작 / 효과
 - 색(`color`/`optcolor`) 값은 `#RRGGBB` 또는 투명도가 있는 `#RRGGBBAA`. 속성 창은 색 + 투명도(%) 칸으로 편집하고, 100%면 6자리로 저장한다. 목록 안의 색(구간 색 등)과 화면 배경색은 투명도 없음.

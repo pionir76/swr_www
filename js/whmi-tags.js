@@ -29,9 +29,10 @@
   const TYPE_NAME = {
     label: '텍스트', rect: '사각형', numeric: '숫자 표시', input: '숫자 입력', lamp: '램프', bar: '바 게이지',
     gauge: '원형 게이지', tank: '탱크', button: '버튼', switch: '스위치', selector: '셀렉터', screenlink: '화면 이동',
+    image: '이미지', status: '상태 표시',
   };   // 점검 단계마다 최소 표시 시간(실제 작업은 수 ms — 진행이 보이도록 약간의 연출)
   const WRITE_TYPES = ['button', 'switch', 'input', 'selector'];
-  const STATIC_TYPES = ['rect', 'label', 'screenlink'];
+  const STATIC_TYPES = ['rect', 'label', 'screenlink', 'image'];
 
   async function getJson(path) {
     const res = await apiFetch(path);
@@ -124,6 +125,8 @@
       return !sid ? '이동할 화면이 지정되지 않았습니다' : !data.projectScreens.has(sid) ? `이동할 화면 '${sid}'가 없습니다` : null;
     }],
     ['warn', (w) => (!STATIC_TYPES.includes(w.type) && !w.tag ? '태그가 지정되지 않아 값이 표시되지 않습니다' : null)],
+    ['error', (w) => (w.type === 'button' && ((w.props && w.props.action) || 'set') === 'set' && (w.props == null || w.props.value == null)
+      ? '값 쓰기 버튼인데 쓸 값이 지정되지 않아 눌러도 아무것도 쓰지 않습니다' : null)],
   ];
 
   function checkTags(data) {

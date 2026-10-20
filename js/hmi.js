@@ -91,12 +91,11 @@
 
   designBtn?.addEventListener('click', async () => {
     if (editor || !result) return;
-    // 전체 화면 요청은 클릭 이벤트 안에서 바로 해야 한다(await 뒤면 사용자 동작으로 인정 안 됨)
+    // 실행 화면 전체 화면은 끝내고 들어간다. 편집기 전체 화면은 사용자가 도구줄 버튼으로 직접 켠다.
     exitFs();
     page.classList.add('designing');
     pageContent.hidden = true;
     editorRoot.hidden = false;
-    enterFs(editorRoot, true);
 
     const screenId = result.screen && result.screen.id;
     result.runtime?.destroy();   // 편집 중엔 폴링 중단

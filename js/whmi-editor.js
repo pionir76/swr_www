@@ -10,9 +10,33 @@
   const TYPE_LABEL = {
     label: '텍스트', rect: '사각형', numeric: '숫자 표시', input: '숫자 입력',
     lamp: '램프', bar: '바 게이지', gauge: '원형 게이지', tank: '탱크',
-    button: '버튼', switch: '스위치', selector: '셀렉터', screenlink: '화면 이동', image: '이미지',
+    button: '버튼', switch: '스위치', selector: '셀렉터', screenlink: '화면 이동', image: '이미지', status: '상태 표시',
   };
-  const TYPE_ORDER = Object.keys(TYPE_LABEL);
+  // 위젯 목록 묶음(순서 그대로 표시). 여기 없는 타입은 "기타"로
+  const PALETTE_GROUPS = [
+    ['꾸미기', ['label', 'rect', 'image']],
+    ['표시', ['numeric', 'lamp', 'status', 'bar', 'gauge', 'tank']],
+    ['조작', ['input', 'button', 'switch', 'selector']],
+    ['이동', ['screenlink']],
+  ];
+  // 위젯 목록 아이콘(24×24 선 아이콘, currentColor) — 글꼴에 의존하지 않게 SVG로
+  const WIDGET_ICONS = {
+    label: '<path d="M6 6h12M12 6v12M9.5 18h5"/>',
+    rect: '<rect x="4" y="5" width="16" height="14" rx="3"/>',
+    image: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-5 4 4 2.5-2.5L20 17"/>',
+    numeric: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7.8 10l1.6-1.2v6.4M12.6 10c.4-1.3 3.6-1.4 3.6.6 0 1.6-3.6 2.8-3.6 4.6h3.8"/>',
+    input: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M6.5 12h5M15.5 9v6M14 9h3M14 15h3"/>',
+    lamp: '<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18"/>',
+    status: '<rect x="3" y="6.5" width="18" height="11" rx="3"/><circle cx="7.5" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M11 12h6.5"/>',
+    bar: '<rect x="3" y="9" width="18" height="6" rx="2"/><rect x="4.6" y="10.6" width="8.5" height="2.8" rx="1" fill="currentColor" stroke="none"/>',
+    gauge: '<path d="M5.2 18.5a8.5 8.5 0 1 1 13.6 0"/><path d="M12 14.5l3.8-4.3"/><circle cx="12" cy="14.5" r="1.5" fill="currentColor" stroke="none"/>',
+    tank: '<rect x="7" y="3.5" width="10" height="17" rx="3"/><path d="M7.9 13.2h8.2v3.8a2.4 2.4 0 0 1-2.4 2.4h-3.4a2.4 2.4 0 0 1-2.4-2.4z" fill="currentColor" stroke="none" opacity=".6"/>',
+    button: '<rect x="3.5" y="7" width="17" height="10" rx="3"/><path d="M9 12h6"/>',
+    switch: '<rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="16.5" cy="12" r="2.4" fill="currentColor" stroke="none"/>',
+    selector: '<circle cx="12" cy="14" r="6"/><path d="M12 14l-3.3-3.3"/><circle cx="4.6" cy="9" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="5" r="1" fill="currentColor" stroke="none"/><circle cx="19.4" cy="9" r="1" fill="currentColor" stroke="none"/>',
+    screenlink: '<rect x="3.5" y="5" width="10.5" height="14" rx="2"/><path d="M10.5 12h10M17 8.5l3.5 3.5-3.5 3.5"/>',
+  };
+  const widgetIcon = (t) => `<svg class="ed-wicon" viewBox="0 0 24 24" aria-hidden="true">${WIDGET_ICONS[t] || '<rect x="5" y="5" width="14" height="14" rx="2" stroke-dasharray="3 2"/>'}</svg>`;
 
   // 새로 넣는 위젯의 기본 크기/속성 — 샘플 화면에서 많이 쓰는 크기 기준
   const NEW_WIDGET = {
@@ -29,6 +53,7 @@
     selector:   { w: 190, h: 130 },
     screenlink: { w: 180, h: 36 },
     image:      { w: 160, h: 90 },
+    status:     { w: 160, h: 36 },
   };
   const NEW_WIDGET_FALLBACK = { w: 120, h: 60 };
   const HISTORY_MAX = 50;
@@ -38,7 +63,7 @@
   const MAX_SCREEN_BYTES = 256 * 1024;      // 서버 화면 content 상한(413)
   const ANIM_DEFAULT_MS = 400;
   const MIXED = '__mixed__';                // 여러 개 선택에서 값이 서로 다른 선택 상자의 표시 항목
-  const MULTI_SKIP = ['list', 'enable', 'image'];   // 여러 개 동시 편집에서 빼는 필드(하나씩 편집)
+  const MULTI_SKIP = ['list', 'enable', 'image', 'bits'];   // 여러 개 동시 편집에서 빼는 필드(하나씩 편집)
   const IMAGE_MAX_BYTES = 150 * 1024;       // 이미지 위젯: 화면 데이터에 넣는 그림 상한(data URL 길이) — 넘으면 자동으로 더 줄임
   const IMAGE_MAX_SIDE = 1024;              // 이미지 위젯: 긴 변 최대 픽셀
   const TAG_LABEL_PX = 10;                  // 태그 보기 글자 크기(실제 픽셀, 10pt 이하)
@@ -138,6 +163,8 @@
 
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  const fid = (f) => f.id || f.key;   // 속성 칸 이름 — 같은 속성(key)을 조건(when)에 따라 다른 칸으로 보여 줄 때 id로 구분
+  const bitList = (v) => (v == null ? [] : [].concat(v).map(Number).filter((n) => Number.isInteger(n) && n >= 0));
   // 색 + 투명도: 투명도 100%면 #rrggbb(기존 데이터 그대로), 미만이면 #rrggbbaa
   const splitColor = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v)
     ? { rgb: v.slice(0, 7).toLowerCase(), a: v.length === 9 ? Math.round(parseInt(v.slice(7), 16) / 2.55) : 100 } : null);
@@ -224,10 +251,10 @@
 
     buildDom() {
       const screens = this.project.screens || [];
-      const types = window.WHMI.types().slice().sort((a, b) => {
-        const ia = TYPE_ORDER.indexOf(a), ib = TYPE_ORDER.indexOf(b);
-        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-      });
+      const types = window.WHMI.types();
+      const grouped = new Set(PALETTE_GROUPS.flatMap(([, ts]) => ts));
+      const groups = PALETTE_GROUPS.map(([g, ts]) => [g, ts.filter((t) => types.includes(t))])
+        .concat([['기타', types.filter((t) => !grouped.has(t))]]).filter(([, ts]) => ts.length);
       this.root.innerHTML = `
         <div class="ed-toolbar">
           <span class="ed-title">✎ 디자인</span>
@@ -272,7 +299,8 @@
           <aside class="ed-palette">
             <div class="ed-pane-title">위젯</div>
             <ul class="ed-palette-list">
-              ${types.map((t) => `<li class="ed-palette-item" data-type="${esc(t)}">${esc(TYPE_LABEL[t] || t)}<small>${esc(t)}</small></li>`).join('')}
+              ${groups.map(([g, ts]) => `<li class="ed-palette-group">${esc(g)}</li>` + ts.map((t) =>
+                `<li class="ed-palette-item" data-type="${esc(t)}" title="${esc(t)}">${widgetIcon(t)}<span>${esc(TYPE_LABEL[t] || t)}</span></li>`).join('')).join('')}
             </ul>
           </aside>
           <div class="ed-canvas"></div>
@@ -366,6 +394,18 @@
       this.inspector.addEventListener('click', (e) => {
         const rs = e.target.closest('[data-reset]');
         if (rs) { this.resetProp(rs.dataset.reset); return; }
+        const bb = e.target.closest('[data-bit]');
+        if (bb) {
+          const w = this.selected()[0];
+          const key = bb.parentElement.dataset.bits;
+          if (!w || !key) return;
+          const props = w.props || {};
+          const cur = bitList(Object.prototype.hasOwnProperty.call(props, key) ? props[key] : this.propDefaults(w)[key]);
+          const n = Number(bb.dataset.bit);
+          const next = (cur.includes(n) ? cur.filter((x) => x !== n) : cur.concat(n)).sort((a, b) => a - b);
+          this.setProp(w, key, next.length === 0 ? null : next.length === 1 ? next[0] : next);   // 하나면 숫자(기존 형식)
+          return;
+        }
         const ib = e.target.closest('[data-img]');
         if (ib) {
           if (ib.dataset.img === 'pick') ib.parentElement.querySelector('[data-imgfile]').click();
@@ -883,14 +923,13 @@
       for (const w of list) {
         svg('rect', { x: w.x, y: w.y, width: w.w, height: w.h, 'data-id': w.id, class: `ed-sel${w.id === primary ? ' primary' : ''}` }, this.selLayer);
       }
-      // 크기 조절 손잡이는 하나만 선택했을 때만
-      if (list.length === 1) {
-        const w = list[0];
-        const hs = HANDLE_PX * u;
+      // 크기 조절 손잡이는 고른 위젯마다(파워포인트처럼 — 아무 손잡이나 끌면 고른 위젯이 같은 비율로 함께)
+      const hs = HANDLE_PX * u;
+      for (const w of list) {
         for (const [name, fx, fy, cursor] of HANDLES) {
           svg('rect', {
             x: w.x + w.w * fx - hs / 2, y: w.y + w.h * fy - hs / 2, width: hs, height: hs,
-            class: 'ed-handle', 'data-h': name, style: `cursor:${cursor}`,
+            class: 'ed-handle', 'data-h': name, 'data-hid': w.id, style: `cursor:${cursor}`,
           }, this.selLayer);
         }
       }
@@ -1203,6 +1242,7 @@
       if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
       const pos = this.toScreen(e);
       const handle = e.target.dataset && e.target.dataset.h;
+      const handleOf = handle && e.target.dataset.hid;   // 잡은 손잡이의 위젯(여러 개 크기 조절의 기준)
       const additive = e.shiftKey || e.ctrlKey || e.metaKey;
       let kind, collapseTo = null;
 
@@ -1223,7 +1263,11 @@
           }
           kind = this.sel.has(hit.id) ? 'move' : null;
         } else {
-          if (!additive) this.sel.clear();
+          // 화면(스크린) 안 빈 곳을 누르면 선택 해제. 화면 바깥 여백을 누르면 선택을 유지한다
+          // (속성을 고치다 실수로 눌러도 속성 창이 화면 설정으로 바뀌지 않게) — 끌면 영역 선택은 된다.
+          const { w: W, h: H } = this.doc.size;
+          const inside = pos.x >= 0 && pos.y >= 0 && pos.x <= W && pos.y <= H;
+          if (!additive && inside) this.sel.clear();
           kind = 'marquee';
         }
         this.drawSelection();
@@ -1233,7 +1277,7 @@
       e.preventDefault();
       this.svgRoot.setPointerCapture(e.pointerId);
       this.drag = {
-        kind, handle, collapseTo, start: pos, startClient: { x: e.clientX, y: e.clientY }, active: false,
+        kind, handle, handleOf, collapseTo, start: pos, startClient: { x: e.clientX, y: e.clientY }, active: false,
         additive, base: new Set(this.sel),
         // 원래 위치/크기 — 드래그 중엔 이 값 기준으로 계산하고 놓을 때 doc에 반영
         orig: new Map(this.selected().map((w) => [w.id, { x: w.x, y: w.y, w: w.w, h: w.h }])),
@@ -1278,7 +1322,8 @@
     // 손잡이 방향의 변만 움직인다. 다시 그리기는 프레임당 한 번(저사양 기기 고려).
     dragResize(pos) {
       const d = this.drag;
-      const w = this.selected()[0];
+      const list = this.selected();
+      const w = list.find((x) => x.id === d.handleOf) || list[0];
       if (!w) return;
       const r = d.orig.get(w.id);
       const h = d.handle;
@@ -1299,10 +1344,32 @@
         if (h.includes('n')) y1 = y2 - nh; else y2 = y1 + nh;
       }
       Object.assign(w, { x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+      // 함께 고른 위젯: 잡은 위젯과 같은 비율로, 각자 반대쪽 변을 고정해 바꾼다
+      const sx = w.w / r.w, sy = w.h / r.h;
+      const horiz = /[ew]/.test(h), vert = /[ns]/.test(h);
+      for (const o of list) {
+        if (o === w) continue;
+        const ro = d.orig.get(o.id);
+        let nw = horiz ? Math.max(MIN_SIZE, Math.round(ro.w * sx)) : ro.w;
+        let nh = vert ? Math.max(MIN_SIZE, Math.round(ro.h * sy)) : ro.h;
+        const oar = this.lockedRatio(o);
+        if (oar) {   // 비율 고정 이미지는 자기 비율 유지
+          if (horiz && (!vert || Math.abs(sx - 1) >= Math.abs(sy - 1))) nh = Math.max(MIN_SIZE, Math.round(nw / oar));
+          else nw = Math.max(MIN_SIZE, Math.round(nh * oar));
+        }
+        let nx = h.includes('w') ? ro.x + ro.w - nw : ro.x;
+        let ny = h.includes('n') ? ro.y + ro.h - nh : ro.y;
+        // 화면 경계: 넘치는 만큼 크기를 줄인다(고정한 변은 그대로)
+        if (nx < 0) { nw += nx; nx = 0; }
+        if (ny < 0) { nh += ny; ny = 0; }
+        nw = Math.max(MIN_SIZE, Math.min(nw, W - nx));
+        nh = Math.max(MIN_SIZE, Math.min(nh, H - ny));
+        Object.assign(o, { x: nx, y: ny, w: nw, h: nh });
+      }
       this.drawSelection();
       this.showGeometry();
       if (!d.raf) {
-        d.raf = requestAnimationFrame(() => { d.raf = 0; this.redrawOne(w); });
+        d.raf = requestAnimationFrame(() => { d.raf = 0; for (const o of list) this.redrawOne(o); });
       }
     }
 
@@ -1326,7 +1393,7 @@
       if (this.svgRoot.hasPointerCapture(e.pointerId)) this.svgRoot.releasePointerCapture(e.pointerId);
       if (d.raf) cancelAnimationFrame(d.raf);
       // 내용보다 작게 줄였으면 놓는 순간 내용이 들어가는 크기로 되돌린다
-      if (d.active && d.kind === 'resize') { const w = this.selected()[0]; this.redrawOne(w); this.fitBox(w, d.handle); }
+      if (d.active && d.kind === 'resize') for (const w of this.selected()) { this.redrawOne(w); this.fitBox(w, d.handle); }
       if (!d.active && d.collapseTo) this.sel = new Set([d.collapseTo]);
       this.drawSelection();
       if (d.active && (d.kind === 'move' || d.kind === 'resize')) {
@@ -1466,10 +1533,19 @@
           const k = 1 / this.unitPx();
           ghost = document.createElement('div');
           ghost.className = 'ed-ghost';
-          ghost.textContent = TYPE_LABEL[type] || type;
           ghost.style.width = `${d.w * k}px`;
           ghost.style.height = `${d.h * k}px`;
           this.root.appendChild(ghost);
+          // 실제 위젯을 반투명으로(실행·편집과 같은 그리기 코드). 실패하면 이름만
+          try {
+            const gs = svg('svg', { viewBox: `0 0 ${d.w} ${d.h}`, width: '100%', height: '100%', class: 'whmi-screen' }, ghost);
+            const w = { id: `__ghost_${type}`, type, x: 0, y: 0, w: d.w, h: d.h, props: clone(d.props || {}) };
+            const r = window.WHMI.drawWidget(gs, w, { defs: svg('defs', {}, gs), tag: () => undefined, write: () => {}, inputDialog: async () => null, goto: () => {} });
+            if (r.inst.update) r.inst.update(previewInfo(w, r.p, {}, null));
+            r.g.setAttribute('transform', '');
+          } catch (_) {
+            ghost.textContent = TYPE_LABEL[type] || type;
+          }
         }
         ghost.style.transform = `translate(${ev.clientX - ghost.offsetWidth / 2}px, ${ev.clientY - ghost.offsetHeight / 2}px)`;
       };
@@ -1798,7 +1874,7 @@
       const screens = (this.project.screens || []).map((x) =>
         `<option value="${esc(x.id)}">${esc(x.title || x.id)} (${esc(x.id)})</option>`).join('');
       const input = (f) => {
-        const k = esc(f.key);
+        const k = esc(fid(f));   // 칸 이름(같은 속성을 상황별로 다른 칸으로 보여 줄 때는 id)
         const lim = `${f.min != null ? ` min="${f.min}"` : ''}${f.max != null ? ` max="${f.max}"` : ''} step="${f.step || 1}"`;
         switch (f.type) {
           case 'num': case 'optnum': return `<input type="number" data-p="${k}"${lim}>`;
@@ -1811,6 +1887,9 @@
           case 'screen': return `<select data-p="${k}"><option value="">(선택 안 함)</option>${screens}</select>`;
           case 'list':
             return `<div class="ed-list" data-list="${k}"></div><button class="ed-list-add" type="button" data-list-add="${k}">+ 추가</button>`;
+          case 'bits':
+            return `<div class="ed-bits" data-bits="${k}">${Array.from({ length: 16 }, (_, i) => `<button type="button" data-bit="${i}">${i}</button>`).join('')}</div>` +
+              '<div class="ed-bits-sum"></div>';
           case 'image':
             return `<div class="ed-img"><span class="ed-img-thumb"></span>` +
               `<button class="ed-btn" type="button" data-img="pick">파일 선택…</button>` +
@@ -1826,8 +1905,8 @@
         }
       };
       const field = (f) => f.type === 'bool'
-        ? `<div class="ed-pf ed-pf-bool" data-pk="${esc(f.key)}"><label>${input(f)} ${esc(f.label)}</label>${this.resetBtn(f)}</div>`
-        : `<div class="ed-pf" data-pk="${esc(f.key)}"><div class="ed-pf-head"><span>${esc(f.label)}</span>${this.resetBtn(f)}</div>${input(f)}</div>`;
+        ? `<div class="ed-pf ed-pf-bool" data-pk="${esc(fid(f))}"><label>${input(f)} ${esc(f.label)}</label>${this.resetBtn(f)}</div>`
+        : `<div class="ed-pf" data-pk="${esc(fid(f))}"><div class="ed-pf-head"><span>${esc(f.label)}</span>${this.resetBtn(f)}</div>${input(f)}</div>`;
       return groups.map(([g, title]) => `
         <details class="ed-group" data-g="${g}"${this.groupOpen[g] === false ? '' : ' open'}>
           <summary>${esc(title)}</summary>
@@ -1836,7 +1915,7 @@
     }
 
     resetBtn(f) {
-      return `<button class="ed-reset" type="button" data-reset="${esc(f.key)}" title="기본값으로" hidden>↺</button>`;
+      return `<button class="ed-reset" type="button" data-reset="${esc(fid(f))}" title="기본값으로" hidden>↺</button>`;
     }
 
     // 표시용 값 — value 필드의 true/false/숫자/글자
@@ -1856,7 +1935,7 @@
       });
       const active = document.activeElement;
       for (const f of fields) {
-        const box = this.inspector.querySelector(`.ed-pf[data-pk="${f.key}"]`);
+        const box = this.inspector.querySelector(`.ed-pf[data-pk="${fid(f)}"]`);
         if (!box) continue;
         const has = (it) => Object.prototype.hasOwnProperty.call(it.props, f.key);
         const set = items.some(has);
@@ -1878,6 +1957,15 @@
           if (tagSel !== active) this.fillTagPicker(tagSel, ew ? ew.tag : null, false);
           eq.disabled = !ew;
           if (eq !== active) eq.value = ew ? this.fmtVal(ew.equals) : '';
+          continue;
+        }
+        if (f.type === 'bits') {
+          const bits = bitList(set ? cur : def);
+          box.querySelectorAll('[data-bit]').forEach((b) => b.classList.toggle('on', bits.includes(Number(b.dataset.bit))));
+          const low = items[0].eff.onValue != null && Number(items[0].eff.onValue) === 0;   // 켜짐 조건 "비트 = 0일 때"
+          box.querySelector('.ed-bits-sum').textContent = !bits.length ? '사용 안 함 — 값 전체로 판정'
+            : bits.length === 1 ? `비트 ${bits[0]} = ${low ? 0 : 1}이면 켜짐`
+            : low ? `비트 ${bits.join(', ')}가 모두 0이면 켜짐` : `비트 ${bits.join(', ')} 중 하나라도 1이면 켜짐`;
           continue;
         }
         if (f.type === 'image') {
@@ -1906,7 +1994,7 @@
         if (f.type === 'list') {
           // 입력 중인 목록은 다시 그리지 않음(포커스·커서 유지)
           const listEl = box.querySelector('[data-list]');
-          if (!(listEl.contains(active) && active.tagName === 'INPUT')) listEl.innerHTML = this.listRowsHtml(f, (set ? cur : def) || []);
+          if (!(listEl.contains(active) && active.tagName === 'INPUT')) listEl.innerHTML = this.listRowsHtml(f, (set ? cur : def) || [], items[0].eff);
           continue;
         }
         for (const el of box.querySelectorAll('[data-p]')) {
@@ -1927,7 +2015,7 @@
             let mx = el.querySelector(`option[value="${MIXED}"]`);
             if (mixed && !mx) { mx = new Option('(여러 값)', MIXED); mx.disabled = true; el.add(mx, 0); }
             if (!mixed && mx) mx.remove();
-            const v = f.type === 'screen' ? (set ? cur : '') : (set ? cur : def);
+            const v = f.type === 'screen' ? (set ? cur : '') : (set ? cur : def) ?? f.nullAs;   // nullAs: 값이 없을 때 보일 항목
             el.value = mixed ? MIXED : v == null ? '' : String(v);
           } else if (mixed) {
             el.value = '';
@@ -2061,12 +2149,26 @@
     }
 
     // ---- 목록 속성(구간 색 / 기준선 / 그라데이션 / 셀렉터 위치) ----------------------
-    listRowsHtml(f, rows) {
-      const cols = f.columns;
-      const tpl = `grid-template-columns:${cols.map((c) => (c.type === 'color' ? '34px' : c.type === 'bool' ? '30px' : '1fr')).join(' ')} 22px`;
+    // 목록의 보이는 칸 — 칸에 when(p)가 있으면 지금 속성(p, 기본값 포함)에 따라(예: 판정 방식별 조건 칸)
+    listCols(f, eff) {
+      return f.columns.filter((c) => !c.when || c.when(eff));
+    }
+
+    // 위젯의 지금 속성(기본값·스타일 포함)
+    effProps(w) {
+      return Object.assign({}, this.propDefaults(w), w.props);
+    }
+
+    listRowsHtml(f, rows, eff) {
+      const cols = this.listCols(f, eff);
+      const tpl = `grid-template-columns:${cols.map((c) => c.width || (c.type === 'color' ? '34px' : c.type === 'bool' ? '30px' : '1fr')).join(' ')} 22px`;
       const cell = (c, row) => {
         const v = row[c.key];
         const k = esc(c.key);
+        if (c.type === 'select') {
+          return `<select data-lc="${k}"><option value=""${v == null ? ' selected' : ''}>–</option>${c.options.map(([ov, ot]) =>
+            `<option value="${esc(ov)}"${String(v) === String(ov) ? ' selected' : ''}>${esc(ot)}</option>`).join('')}</select>`;
+        }
         if (c.type === 'color') return `<input type="color" data-lc="${k}" value="${esc(v || '#000000')}">`;
         if (c.type === 'bool') return `<input type="checkbox" data-lc="${k}"${v ? ' checked' : ''}>`;
         if (c.type === 'num') return `<input type="number" step="any" data-lc="${k}" value="${v == null ? '' : v}"${c.required ? '' : ' placeholder="끝없음"'}>`;
@@ -2092,12 +2194,17 @@
       if (!w || !listEl) return;
       const f = this.propFields(w).find((x) => x.key === listEl.dataset.list);
       if (!f) return;
-      const rows = [...listEl.querySelectorAll('.ed-lrow:not(.ed-lhead)')].map((r) => {
+      const cols = this.listCols(f, this.effProps(w));
+      const prev = this.currentList(w, f.key);
+      const rows = [...listEl.querySelectorAll('.ed-lrow:not(.ed-lhead)')].map((r, i) => {
+        // 지금 안 보이는 칸(예: 판정 방식을 바꿔 숨은 조건)은 원래 값을 그대로 둔다
         const o = {};
-        for (const c of f.columns) {
+        for (const c of f.columns) if (!cols.includes(c) && prev[i] && prev[i][c.key] !== undefined) o[c.key] = prev[i][c.key];
+        for (const c of cols) {
           const el = r.querySelector(`[data-lc="${c.key}"]`);
           const raw = el.value.trim();
-          if (c.type === 'num') { if (raw !== '' && Number.isFinite(Number(raw))) o[c.key] = Number(raw); }
+          if (c.type === 'select') { if (raw !== '') o[c.key] = Number.isFinite(Number(raw)) ? Number(raw) : raw; }
+          else if (c.type === 'num') { if (raw !== '' && Number.isFinite(Number(raw))) o[c.key] = Number(raw); }
           else if (c.type === 'color') o[c.key] = el.value.toLowerCase();
           else if (c.type === 'bool') { if (el.checked) o[c.key] = true; }
           else if (c.type === 'value') { if (raw !== '') o[c.key] = this.parseValue(raw); }
@@ -2105,7 +2212,7 @@
         }
         return o;
       });
-      const missing = rows.some((o) => f.columns.some((c) => c.required && o[c.key] === undefined));
+      const missing = rows.some((o) => cols.some((c) => c.required && o[c.key] === undefined));
       if (missing) { this.formError(`${f.label}: 비어 있으면 안 되는 칸이 있습니다.`); return; }
       this.formError('');
       this.setProp(w, f.key, rows.length ? rows : undefined, live);
@@ -2121,7 +2228,7 @@
       const f = w && this.propFields(w).find((x) => x.key === key);
       if (!f) return;
       const rows = this.currentList(w, key);
-      rows.push(f.newRow ? f.newRow(rows) : {});
+      rows.push(f.newRow ? f.newRow(rows, this.effProps(w)) : {});
       this.setProp(w, key, rows);
     }
 
@@ -2139,7 +2246,7 @@
       const ws = this.propTargets();
       if (!ws) return;
       const w = ws[0];
-      const f = this.propFields(w).find((x) => x.key === el.dataset.p);
+      const f = this.propFields(w).find((x) => fid(x) === el.dataset.p);
       if (!f) return;
       const def = this.propDefaults(w)[f.key];
       const raw = typeof el.value === 'string' ? el.value.trim() : '';
@@ -2161,7 +2268,7 @@
         case 'bool': v = el.checked; break;
         case 'select':
           if (el.value === MIXED) return;
-          v = el.value === '' ? undefined : typeof def === 'number' ? Number(el.value) : el.value;
+          v = el.value === '' ? undefined : typeof def === 'number' || f.numeric ? Number(el.value) : el.value;
           break;
         case 'screen': if (el.value === MIXED) return; v = raw || undefined; break;
         case 'num': case 'optnum': {
@@ -2197,9 +2304,11 @@
       this.setProp(ws, f.key, v, live);
     }
 
-    resetProp(key) {
+    resetProp(id) {
       const ws = this.propTargets();
       if (!ws) return;
+      const f = this.propFields(ws[0]).find((x) => fid(x) === id);
+      const key = f ? f.key : id;
       if (key === 'enableWhen') { this.setEnableWhen(ws[0], null); return; }
       this.setProp(ws, key, undefined);
     }
@@ -2234,7 +2343,7 @@
     // 글자(text/opttext) 칸 — 칠 때마다 위젯에 반영한다
     isLiveText(el) {
       const ws = this.propTargets();
-      const f = ws && el.type === 'text' && this.propFields(ws[0]).find((x) => x.key === el.dataset.p);
+      const f = ws && el.type === 'text' && this.propFields(ws[0]).find((x) => fid(x) === el.dataset.p);
       return !!f && (f.type === 'text' || f.type === 'opttext');
     }
 

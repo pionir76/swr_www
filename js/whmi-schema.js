@@ -12,13 +12,17 @@
 //         select   선택(options: [[값, 표시]])
 //         screen   화면 선택(프로젝트 화면 목록)
 //         value    쓰기/판정 값 — true / false / 숫자 / 글자
+//         bits     비트 고르기(0~15 격자, 여러 개 = 하나라도 켜지면) — 하나면 숫자, 여러 개면 목록으로 저장
 //         image    그림 파일 고르기(줄여서 data URL로 src에, 원래 비율은 ratio에) — 여러 개 편집에선 빠짐
 //         enable   쓰기 허용 조건(위젯 필드 enableWhen: { tag, equals }) — props가 아님
 //         anim     애니메이션 — "사용" 체크 + 시간(ms). 끄면 0(위젯은 0이면 바로 그림)
 //         list     객체 목록(행 추가/삭제). columns: [{ key, label, type: num|text|color|value|bool, required? }],
-//                  newRow(현재 목록) → 새 행. 비우면 기본값
+//                  newRow(현재 목록, 지금 속성) → 새 행. 비우면 기본값
+//                  칸: type num|text|color|value|bool|select(options), width?(격자 폭), when?(p) — 거짓이면 그 칸 숨김
 //                  warn(현재 목록) → 주의 문구(저장은 막지 않음) 또는 ''
 //   when  현재 속성(p, 기본값 포함)을 받아 false면 숨김
+//   id    같은 속성(key)을 조건(when)에 따라 다른 칸으로 보여 줄 때 칸을 구분하는 이름(예: 램프 켜짐 값 / 켜짐 조건)
+//   numeric(select) 고른 값을 숫자로 저장, nullAs(select) 값이 없을 때 보일 항목
 (function () {
   'use strict';
 
@@ -32,8 +36,12 @@
     ['effect', '효과'],
   ];
 
+  const hasBits = (p) => p.bit != null && [].concat(p.bit).length > 0;
   const fontSize = { key: 'fontSize', label: '글자 크기', type: 'num', group: 'basic', min: 6, max: 200 };
   const confirm  = { key: 'confirm', label: '확인 문구', type: 'opttext', group: 'action', placeholder: '없음' };
+  // 켜고 끄는 위젯: 켤 때 / 끌 때 문구를 따로(끌 때 문구가 비면 켤 때 문구를 양쪽에 — 예전 동작)
+  const confirmOn  = { key: 'confirm', id: 'confirmOn', label: '켤 때 확인 문구', type: 'opttext', group: 'action', placeholder: '없음' };
+  const confirmOff = { key: 'confirmOff', label: '끌 때 확인 문구', type: 'opttext', group: 'action', placeholder: '켤 때 문구와 같음' };
   const animMs   = { key: 'animMs', label: '값 변화 애니메이션', type: 'anim', group: 'effect', min: 50, max: 5000, step: 50 };
   const angle    = (key, label) => ({ key, label, type: 'num', group: 'basic', min: -360, max: 360 });
 
@@ -84,6 +92,31 @@
       { key: 'fill', label: '채움색', type: 'color', group: 'color' },
       { key: 'stroke', label: '테두리색', type: 'color', group: 'color' },
     ],
+    status: [
+      { key: 'mode', label: '판정 방식', type: 'select', group: 'basic', options: [['value', '값 일치'], ['bit', '비트']] },
+      fontSize,
+      { key: 'bold', label: '굵게', type: 'bool', group: 'basic' },
+      { key: 'align', label: '정렬', type: 'select', group: 'basic', options: [['center', '가운데'], ['left', '왼쪽'], ['right', '오른쪽']] },
+      { key: 'padding', label: '안쪽 여백', type: 'num', group: 'basic', min: 0, max: 200, when: (p) => p.align !== 'center' },
+      { key: 'radius', label: '모서리 둥글기', type: 'num', group: 'basic', min: 0, max: 200 },
+      { key: 'states', label: '상태 목록 (위에서부터 처음 맞는 줄)', type: 'list', group: 'value',
+        columns: [
+          { key: 'value', label: '값', type: 'value', required: true, when: (p) => p.mode !== 'bit' },
+          { key: 'bit', label: '비트', type: 'select', required: true, options: Array.from({ length: 16 }, (_, i) => [i, String(i)]), when: (p) => p.mode === 'bit' },
+          { key: 'text', label: '글자', type: 'text', width: '1.8fr' },
+          { key: 'color', label: '글자색', type: 'color' },
+          { key: 'bg', label: '배경색', type: 'color' },
+          { key: 'blink', label: '깜빡', type: 'bool' },
+        ],
+        newRow: (rows, p) => {
+          const next = (k) => rows.reduce((m, r) => (typeof r[k] === 'number' ? Math.max(m, r[k] + 1) : m), 0);
+          return Object.assign(p.mode === 'bit' ? { bit: Math.min(15, next('bit')) } : { value: next('value') }, { text: '상태', color: '#ffffff', bg: '#2d6cdf' });
+        } },
+      { key: 'noneText', label: '해당 없음 글자', type: 'text', group: 'value' },
+      { key: 'noneColor', label: '해당 없음 글자색', type: 'color', group: 'color' },
+      { key: 'noneBg', label: '해당 없음 배경색', type: 'color', group: 'color' },
+      { key: 'border', label: '테두리색', type: 'color', group: 'color' },
+    ],
     lamp: [
       { key: 'preset', label: '스타일', type: 'select', group: 'basic', options: [['', '기본'], ['warning', '경고'], ['error', '오류'], ['info', '정보'], ['ok', '확인'], ['alarm', '경보창']] },
       { key: 'shape', label: '모양', type: 'select', group: 'basic', options: [['circle', '원형'], ['square', '사각'], ['warning', '경고 (삼각형 !)'], ['error', '오류 (원 ×)'], ['info', '정보 (원 i)'], ['ok', '확인 (원 체크)'], ['panel', '알림창 (상자 전체)']] },
@@ -93,8 +126,11 @@
       { key: 'onColor', label: '켜짐 색', type: 'color', group: 'color' },
       { key: 'offColor', label: '꺼짐 색', type: 'color', group: 'color' },
       { key: 'textColor', label: '글자색', type: 'color', group: 'color' },
-      { key: 'onValue', label: '켜짐 값', type: 'value', group: 'value', placeholder: '값이 참이면 켜짐' },
-      { key: 'bit', label: '비트 번호', type: 'optnum', group: 'value', min: 0, max: 31, placeholder: '사용 안 함' },
+      { key: 'bit', label: '비트', type: 'bits', group: 'value' },
+      // 켜짐 값: 비트를 쓰면 0/1만 의미가 있으므로 선택 상자로(같은 속성 onValue, 칸 id만 다름)
+      { key: 'onValue', label: '켜짐 값', type: 'value', group: 'value', placeholder: '값이 참이면 켜짐', when: (p) => !hasBits(p) },
+      { key: 'onValue', id: 'onValueBit', label: '켜짐 조건', type: 'select', group: 'value', numeric: true, nullAs: '1',
+        options: [['1', '비트 = 1일 때'], ['0', '비트 = 0일 때']], when: hasBits },
     ],
     screenlink: [
       { key: 'screen', label: '이동할 화면', type: 'screen', group: 'basic' },
@@ -110,9 +146,15 @@
       { key: 'offColor', label: '꺼짐 색', type: 'color', group: 'color' },
       { key: 'onValue', label: '켜짐 값', type: 'value', group: 'value' },
       { key: 'offValue', label: '꺼짐 값', type: 'value', group: 'value' },
-      confirm,
+      confirmOn,
+      confirmOff,
     ],
+    // 무엇을 쓰는지가 가장 중요하므로 맨 위에. "켜짐 표시 기준 값"은 쓰는 값이 아니라 색·글자를 바꿀 기준
     button: [
+      { key: 'action', label: '누르면', type: 'select', group: 'basic', options: [['set', '값 쓰기'], ['toggle', '켜짐/꺼짐 전환']] },
+      { key: 'value', label: '쓸 값', type: 'value', group: 'basic', placeholder: '꼭 입력하세요 (예: 1)', when: (p) => p.action !== 'toggle' },
+      { key: 'onValue', id: 'onValueToggle', label: '켜짐 값 (켜짐으로 쓸 값)', type: 'value', group: 'basic', when: (p) => p.action === 'toggle' },
+      { key: 'offValue', label: '꺼짐 값 (꺼짐으로 쓸 값)', type: 'value', group: 'basic', when: (p) => p.action === 'toggle' },
       { key: 'text', label: '글자', type: 'text', group: 'basic' },
       { key: 'onText', label: '켜짐일 때 글자', type: 'opttext', group: 'basic', placeholder: '글자와 같음' },
       { key: 'offText', label: '꺼짐일 때 글자', type: 'opttext', group: 'basic', placeholder: '글자와 같음' },
@@ -120,11 +162,12 @@
       { key: 'color', label: '버튼색', type: 'color', group: 'color' },
       { key: 'activeColor', label: '켜짐일 때 색', type: 'optcolor', group: 'color', placeholder: '버튼색과 같음' },
       { key: 'textColor', label: '글자색', type: 'color', group: 'color' },
-      { key: 'onValue', label: '켜짐 판정 값', type: 'value', group: 'value' },
-      { key: 'action', label: '누르면', type: 'select', group: 'action', options: [['set', '값 쓰기'], ['toggle', '켜짐/꺼짐 전환']] },
-      { key: 'value', label: '쓸 값', type: 'value', group: 'action', when: (p) => p.action !== 'toggle' },
-      { key: 'offValue', label: '꺼짐 값', type: 'value', group: 'action', when: (p) => p.action === 'toggle' },
-      confirm,
+      // 값 쓰기 버튼에서 켜짐 글자·색을 쓸 때만 — 현재 값이 이 값이면 "켜짐"으로 표시
+      { key: 'onValue', label: '켜짐 표시 기준 값', type: 'value', group: 'value',
+        when: (p) => p.action !== 'toggle' && (p.onText != null || p.offText != null || p.activeColor != null) },
+      { ...confirm, when: (p) => p.action !== 'toggle' },
+      { ...confirmOn, when: (p) => p.action === 'toggle' },
+      { ...confirmOff, when: (p) => p.action === 'toggle' },
     ],
   };
 
@@ -151,9 +194,12 @@
   ];
 
   TYPES.bar = [
+    { key: 'preset', label: '스타일', type: 'select', group: 'basic', options: [['', '기본'], ['meter', '계기'], ['traffic', '신호등'], ['led', 'LED 세그먼트'], ['neon', '네온'], ['slim', '슬림'], ['blue', '블루 계기'], ['heat', '열 세그먼트']] },
     { key: 'orientation', label: '방향', type: 'select', group: 'basic', options: [['v', '세로'], ['h', '가로']] },
     { key: 'thickness', label: '막대 두께', type: 'optnum', group: 'basic', min: 1, max: 500 },
     { key: 'radius', label: '모서리 둥글기', type: 'num', group: 'basic', min: 0, max: 100 },
+    { key: 'segments', label: '세그먼트 칸 수(0=끔)', type: 'num', group: 'basic', min: 0, max: 100 },
+    { key: 'segmentGap', label: '칸 간격', type: 'num', group: 'basic', min: 0, max: 20, when: (p) => p.segments >= 2 },
     { key: 'showScale', label: '눈금 표시', type: 'bool', group: 'scale' },
     { key: 'ticks', label: '눈금 개수', type: 'num', group: 'scale', min: 2, max: 20, when: (p) => p.showScale },
     { key: 'minorTicks', label: '보조 눈금(사이 개수)', type: 'num', group: 'scale', min: 0, max: 9, when: (p) => p.showScale },
@@ -164,7 +210,7 @@
       when: (p) => p.showScale || p.showMinMax || p.showRanges || p.origin != null },
     { key: 'fontSize', label: '눈금 글자 크기', type: 'num', group: 'scale', min: 6, max: 40 },
     { key: 'showValue', label: '값 표시', type: 'bool', group: 'value' },
-    { key: 'valueAlign', label: '값 위치', type: 'select', group: 'value', options: [['start', '시작(왼쪽 / 아래)'], ['center', '가운데'], ['end', '끝(오른쪽 / 위)']], when: (p) => p.showValue },
+    { key: 'valueAlign', label: '값 위치', type: 'select', group: 'value', options: [['start', '시작(왼쪽 / 아래)'], ['center', '가운데'], ['end', '끝(오른쪽 / 위)'], ['follow', '막대 끝 따라가기']], when: (p) => p.showValue },
     { key: 'origin', label: '채우기 기준값', type: 'optnum', group: 'value', step: 'any', placeholder: '최소값부터' },
     ranges,
     { key: 'markers', label: '기준선', type: 'list', group: 'value',
@@ -173,12 +219,14 @@
     { key: 'gradient', label: '그라데이션(구간 색보다 우선)', type: 'list', group: 'value',
       columns: [{ key: 'at', label: '값', type: 'num', required: true }, { key: 'color', label: '색', type: 'color', required: true }],
       newRow: (rows) => ({ at: rows.length ? (rows[rows.length - 1].at ?? 0) + 50 : 0, color: rows.length ? '#e5534b' : '#2ecc71' }) },
-    { key: 'fillColor', label: '채움색', type: 'color', group: 'color' },
+    { key: 'colorRamp', label: '색 띠(범위 전체)', type: 'select', group: 'color', options: [['', '없음(채움색)'], ['traffic', '신호등'], ['blue', '파랑'], ['heat', '열']] },
+    { key: 'fillColor', label: '채움색', type: 'color', group: 'color', when: (p) => !p.colorRamp },
     { key: 'bgColor', label: '바탕색', type: 'color', group: 'color' },
     { key: 'border', label: '테두리색', type: 'color', group: 'color' },
     { key: 'tickColor', label: '눈금색', type: 'color', group: 'color' },
     { key: 'labelColor', label: '눈금 글자색', type: 'color', group: 'color' },
     { key: 'shade', label: '음영(입체감)', type: 'bool', group: 'effect' },
+    { key: 'glow', label: '채움 발광', type: 'bool', group: 'effect' },
     animMs,
   ];
 

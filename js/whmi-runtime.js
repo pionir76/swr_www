@@ -328,6 +328,7 @@
     }
 
     async write(w, v, confirmMsg) {
+      if (v == null) { this.status('err', `쓸 값이 지정되지 않은 위젯: ${w.id}`); return; }
       const t = this.tags[w.tag];
       // access는 실시간 값 응답으로 갱신될 수 있으므로(§2.1) 최신 폴링 결과를 우선 확인 —
       // 최종 판단은 어차피 서버가 하지만(405), 클라이언트에서도 최신 상태로 먼저 막아준다.
