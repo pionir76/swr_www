@@ -57,13 +57,17 @@
   }
 
   // ranges: [{ from?, to?, color }] — 첫 번째로 일치하는 구간의 색. from/to 생략 시 무한대.
+  // "값 → 결과" 판정은 판정 엔진(whmi-rules.js) 하나로 — 위젯은 규칙을 조건으로 바꿔 넘기기만 한다.
+  // 위젯의 info(값·품질) → 엔진 입력({ v, q })
+  const sampleOf = (info) => ({ v: info.value, q: info.ok ? 'good' : 'bad' });
+  // 자기 값이 켜짐 값과 같은가(버튼·스위치 켜짐) — 판정 불가면 꺼짐
+  const isOnValue = (info, onValue) => WHMI.rules.test({ test: 'eq', value: onValue }, sampleOf(info)) === true;
+
+  // ranges: [{ from?, to?, color }] — 위에서부터 처음 맞는 구간(양 끝 포함, 비우면 끝없음)
   function matchRange(ranges, v) {
-    if (ranges && typeof v === 'number') {
-      for (const r of ranges) {
-        if ((r.from == null || v >= r.from) && (r.to == null || v <= r.to)) return r;
-      }
-    }
-    return null;
+    if (!ranges || typeof v !== 'number') return null;
+    const hit = WHMI.rules.pick(ranges, { v, q: 'good' }, (r) => ({ test: 'range', min: r.from, max: r.to }));
+    return hit && hit.row;
   }
 
   function rangeColor(ranges, v, fallback) {
@@ -454,10 +458,11 @@
       const t = svg('text', { x, y: w.h / 2, 'text-anchor': anchor, 'dominant-baseline': 'central', 'font-size': p.fontSize, 'font-weight': p.bold ? 700 : 400 }, box);
       return {
         update(info) {
-          const v = info.value;
-          const hit = !info.ok ? null : (p.states || []).find((s) => (p.mode === 'bit'
-            ? s.bit != null && typeof v === 'number' && ((Math.trunc(v) >> s.bit) & 1) === 1
-            : s.value != null && v == s.value));   // 값 일치는 숫자·참거짓·글자 모두(느슨한 비교)
+          // 위에서부터 처음 맞는 줄 — 비트 판정이면 그 비트가 1, 값 판정이면 같음(숫자·참거짓·글자, 엔진 규칙)
+          const picked = WHMI.rules.pick(p.states, sampleOf(info), (s) => (p.mode === 'bit'
+            ? { test: 'bitAny', bits: s.bit == null ? [] : [s.bit] }
+            : { test: 'eq', value: s.value === undefined ? null : s.value }));
+          const hit = picked && picked.row;
           t.textContent = !info.ok ? '----' : hit ? (hit.text ?? '') : p.noneText;
           t.setAttribute('fill', hit ? hit.color || '#e6e9ef' : p.noneColor);
           bg.setAttribute('fill', hit ? hit.bg || p.noneBg : p.noneBg);
@@ -535,11 +540,17 @@
       }
       return {
         update(info) {
-          let v = info.value;
-          // bit: 숫자 하나 또는 목록 — 목록이면 그중 하나라도 1이면 1
-          const bits = p.bit == null ? null : [].concat(p.bit).map(Number).filter(Number.isInteger);
-          if (info.ok && bits && bits.length && typeof v === 'number') v = bits.some((b) => (Math.trunc(v) >> b) & 1) ? 1 : 0;
-          const on = info.ok && (p.onValue != null ? v == p.onValue : !!v);
+          // 자기 값으로 켜짐 판정: 비트를 고르면 "그중 하나라도 1"(켜짐 값 0이면 반대), 아니면 켜짐 값과 같음,
+          // 켜짐 값도 없으면 값이 참이면. 켜짐 상태 조건(activeWhen)이 있으면 그것이 우선.
+          const R = WHMI.rules, S = sampleOf(info), bits = R.bitList(p.bit);
+          let own;
+          if (bits.length) {
+            const any = R.test({ test: 'bitAny', bits }, S) === true;
+            own = p.onValue != null ? R.same(any ? 1 : 0, p.onValue) : any;
+          } else {
+            own = p.onValue != null ? R.test({ test: 'eq', value: p.onValue }, S) === true : !!info.value;
+          }
+          const on = info.active !== undefined ? info.active : info.ok && own;
           const color = on ? p.onColor : p.offColor;
           const ink = inkOn(color);
           body.setAttribute('fill', color);
@@ -945,8 +956,9 @@
 
   // ---- 조작 위젯 (쓰기) -------------------------------------------------------
   register('button', {
-    // action: "set" → value 기록, "toggle" → 현재 값이 onValue면 offValue로, 아니면
-    // onValue로 씀(switch 위젯과 동일한 값 비교 방식 — 불리언 전제의 !cur 반전이 아님.
+    // action: "set" → value 기록, "toggle" → 켜짐 상태면 offValue, 아니면 onValue를 씀.
+    // 켜짐 상태는 켜짐 상태 조건(activeWhen, 예: 명령은 OPMODE에 쓰고 상태는 NOW_STS 비트로)이 있으면
+    // 그 판정, 없으면 현재 값 == onValue(switch 위젯과 동일한 값 비교 방식 — 불리언 전제의 !cur 반전이 아님.
     // 숫자형이면서 on/off 의미가 반전된 태그(예: 0=운전,1=정지)도 올바르게 토글된다).
     // onText/offText: 지정하면 현재 상태(onValue 일치 여부)에 따라 버튼 라벨도 바뀐다
     // (예: "운전"/"정지"). 생략 시 text 고정 — 기존 화면은 그대로 동작.
@@ -957,19 +969,18 @@
       const bg = svg('rect', { width: w.w, height: w.h, rx: 6, fill: p.color }, g);
       const label = svg('text', { x: w.w / 2, y: w.h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': p.fontSize, 'font-weight': 600, fill: p.textColor }, g);
       label.textContent = p.text;
-      let cur;
+      let isOn = false;   // 켜짐 상태(조건이 있으면 그 판정, 없으면 자기 값 == 켜짐 값)
       g.addEventListener('click', () => {
         if (g.classList.contains('readonly')) return;
-        const toOff = p.action === 'toggle' && cur == p.onValue;
+        const toOff = p.action === 'toggle' && isOn;
         const next = p.action === 'toggle' ? (toOff ? p.offValue : p.onValue) : p.value;
         // 전환 버튼: 끌 때 문구(confirmOff)가 있으면 그것, 없으면 확인 문구 하나를 양쪽에
         ctx.write(w, next, toOff ? p.confirmOff ?? p.confirm : p.confirm);
       });
       return {
         update(info) {
-          cur = info.value;
           g.classList.toggle('readonly', !info.writable);
-          const isOn = info.ok && info.value == p.onValue;
+          isOn = info.active !== undefined ? info.active : isOnValue(info, p.onValue);
           if (p.onText != null || p.offText != null) {
             label.textContent = isOn ? (p.onText ?? p.text) : (p.offText ?? p.text);
           }
@@ -994,7 +1005,7 @@
       });
       return {
         update(info) {
-          on = info.ok && info.value == p.onValue;
+          on = info.active !== undefined ? info.active : isOnValue(info, p.onValue);
           track.setAttribute('fill', on ? p.onColor : p.offColor);
           knob.style.transform = on ? `translateX(${w.w - h}px)` : '';
           label.setAttribute('x', on ? (w.w - h) / 2 + 4 : (w.w + h) / 2 - 4);
@@ -1044,8 +1055,30 @@
       startAngle: -45, endAngle: 45,
       ringColor: '#1b212b', knobColor: '#3a4250', handleColor: '#5a6678',
       labelColor: '#8a93a3', activeColor: '#2ecc71', fontSize: 14, confirm: null, animMs: 300,
+      title: '', titlePos: 'top', titleGap: 6, titleSize: 14, titleBold: true, titleColor: '#c4ccd8',
     },
-    create(g, w, p, ctx) {
+    // title: 용도 이름(비우면 없음). 상자에서 제목 자리(titlePos 쪽, 글자 + titleGap)를 먼저 떼어 내고
+    // 남은 영역에 노브를 그린다 — 제목도 상자 안이라 바운딩 박스 규칙 그대로
+    create(g0, w0, p, ctx) {
+      let g = g0, w = w0;
+      if (p.title) {
+        const top = p.titlePos === 'top', bottom = p.titlePos === 'bottom', left = p.titlePos === 'left';
+        const side = !top && !bottom;
+        const tw = side ? Math.ceil(textWidth(g0, p.titleSize, p.title) * (p.titleBold ? 1.06 : 1)) : 0;
+        const th = Math.ceil(p.titleSize * 1.25);   // 글꼴 상자 높이(글자 크기보다 큼 — 위아래가 상자 밖으로 나가지 않게)
+        const band = (side ? tw : th) + p.titleGap;
+        const t = svg('text', {
+          x: side ? (left ? 0 : w0.w) : w0.w / 2,
+          y: top ? th / 2 : bottom ? w0.h - th / 2 : w0.h / 2,
+          'text-anchor': side ? (left ? 'start' : 'end') : 'middle',
+          'dominant-baseline': 'central',
+          'font-size': p.titleSize, 'font-weight': p.titleBold ? 700 : 400, fill: p.titleColor,
+        }, g0);
+        t.textContent = p.title;
+        const ox = left ? band : 0, oy = top ? band : 0;
+        g = svg('g', { transform: `translate(${ox},${oy})` }, g0);
+        w = { ...w0, w: Math.max(1, w0.w - (side ? band : 0)), h: Math.max(1, w0.h - (side ? 0 : band)) };
+      }
       const opts = p.options || [];
       const n = opts.length;
       const angleAt = (i) => (n <= 1 ? 0 : p.startAngle + ((p.endAngle - p.startAngle) * i) / (n - 1));
@@ -1085,10 +1118,10 @@
       let curIdx = -1;
 
       const choose = (i) => {
-        if (g.classList.contains('readonly') || i < 0 || i >= n || i === curIdx) return;
-        ctx.write(w, opts[i].value, p.confirm);
+        if (g0.classList.contains('readonly') || i < 0 || i >= n || i === curIdx) return;
+        ctx.write(w0, opts[i].value, p.confirm);
       };
-      g.addEventListener('click', (e) => {
+      g0.addEventListener('click', (e) => {
         const i = e.target.getAttribute && e.target.getAttribute('data-i');
         if (i != null) choose(Number(i));
         else if (n) choose((curIdx + 1) % n);  // 노브/링 클릭 — 다음 위치(현재 미정이면 첫 위치)
@@ -1097,7 +1130,7 @@
       return {
         update(info) {
           cur = info.value;
-          g.classList.toggle('readonly', !info.writable);
+          g0.classList.toggle('readonly', !info.writable);
           curIdx = info.ok ? opts.findIndex((o) => o.value == cur) : -1;
           labels.forEach((t, i) => {
             t.setAttribute('fill', i === curIdx ? p.activeColor : p.labelColor);

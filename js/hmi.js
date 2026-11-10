@@ -41,6 +41,7 @@
       // 디자인 모드에서 돌아올 때 다시 boot()하므로 라이브러리는 한 번만 로드(레지스트리 유지)
       if (!window.WHMI) {
         await loadScript('./js/whmi-runtime.js');
+        await loadScript('./js/whmi-rules.js');     // 판정 엔진(조건·대응표)
         await loadScript('./js/whmi-widgets.js');
       }
       window.WHMI_DEFAULT_PROJECT = 'hmi-project/project.json';
@@ -70,10 +71,11 @@
     Promise.resolve(fn.call(el)).catch((e) => { if (!quiet) status('err', `전체 화면 실패: ${e.message}`); });
   };
 
-  // ── 실행 모드 전체 화면 ───────────────────────────────────────────
-  // 화면 영역(패널)만 전체 화면으로 — 사이드바/상단바 없이 SVG가 화면 크기에 맞춰 확대된다.
-  const panel  = $('.hmi-stage-panel');
-  $('#hmiFullscreenBtn')?.addEventListener('click', () => (fsElement() ? exitFs() : enterFs(panel)));
+  // ── 전체 화면 ─────────────────────────────────────────────────────
+  // 전체 화면 대상은 페이지 묶음(.hmi-page) 하나 — 실행·디자인 모드를 오가도 전체 화면이 그대로 유지된다
+  // (모드마다 다른 요소를 전체 화면으로 하면, 바꿀 때 끝내야 하고 다시 켜려면 사용자 클릭이 필요).
+  // 전체 화면일 때 제목 줄은 CSS로 숨기고 실행 화면 / 편집기만 화면 가득(.hmi-page:fullscreen).
+  $('#hmiFullscreenBtn')?.addEventListener('click', () => (fsElement() ? exitFs() : enterFs(page)));
   $('#hmiFsExit')?.addEventListener('click', exitFs);
 
   // ── 디자인 모드 ───────────────────────────────────────────────────
@@ -91,8 +93,7 @@
 
   designBtn?.addEventListener('click', async () => {
     if (editor || !result) return;
-    // 실행 화면 전체 화면은 끝내고 들어간다. 편집기 전체 화면은 사용자가 도구줄 버튼으로 직접 켠다.
-    exitFs();
+    // 전체 화면이면 그대로 유지(페이지 묶음이 전체 화면 대상). 켜고 끄는 것은 사용자가 직접.
     page.classList.add('designing');
     pageContent.hidden = true;
     editorRoot.hidden = false;
@@ -114,7 +115,7 @@
         screenId,
         onExit: leaveDesign,
       });
-      editor.onFullscreen = () => (fsElement() ? exitFs() : enterFs(editorRoot));
+      editor.onFullscreen = () => (fsElement() ? exitFs() : enterFs(page));
       // 저장 안 한 편집이 있으면 메뉴 이동 전에 확인, 탭 닫기/새로고침은 브라우저 경고 + 임시 저장
       window.setLeaveGuard?.(() => editor.confirmLeave());
       window.addEventListener('beforeunload', onBeforeUnload);
@@ -137,7 +138,7 @@
   function leaveDesign() {
     window.setLeaveGuard?.(null);
     window.removeEventListener('beforeunload', onBeforeUnload);
-    exitFs();
+    // 전체 화면은 유지 — 편집기에서 전체 화면이었으면 실행 화면도 전체 화면으로 이어진다
     const screen = editor?.screenId;
     editor?.destroy();
     editor = null;

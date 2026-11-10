@@ -62,13 +62,21 @@
   font-size: 13px;
 }
 
-.hmi-stage-panel:fullscreen {
+/* 전체 화면 = 페이지 묶음(.hmi-page). 제목 줄은 숨기고 실행 화면 / 편집기만 화면 가득 */
+.hmi-page:fullscreen {
   width: 100vw;
   height: 100vh;
-  border: 0;
-  border-radius: 0;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  display: flex;
+  flex-direction: column;
   background: #0e1116;
+  overflow: hidden;
 }
+.hmi-page:fullscreen > .page-title-row { display: none; }
+.hmi-page:fullscreen .hmi-stage-panel { border: 0; border-radius: 0; background: #0e1116; }
+.hmi-page:fullscreen .hmi-editor { border: 0; border-radius: 0; }
 
 .hmi-fs-exit {
   display: none;
@@ -88,7 +96,7 @@
 }
 
 .hmi-fs-exit:hover { opacity: 1; }
-.hmi-stage-panel:fullscreen .hmi-fs-exit { display: block; }
+.hmi-page:fullscreen .hmi-fs-exit { display: block; }
 
 .whmi-screen { width: 100%; height: 100%; display: block; user-select: none; }
 .whmi-screen text { font-family: inherit; }
@@ -104,6 +112,8 @@
 .w .level { transition: transform .6s ease, fill .3s; }
 .w .knob { transition: transform .2s ease; }
 .w.q-bad { opacity: .45; }
+/* 보이기 조건(visibleWhen)이 거짓 — 숨기고 클릭도 통과 */
+.w.w-hidden { display: none; }
 /* normal(폴링 지연) — 값은 그대로 두고 연한 호박색 글로우로만 경고(흐리게 하지 않음) */
 .w.q-normal { filter: drop-shadow(0 0 4px rgba(224, 160, 48, 0.6)); }
 .w-button, .w-switch, .w-input, .w-screenlink, .w-selector { cursor: pointer; }
@@ -174,7 +184,6 @@
   font-size: 13px;
 }
 .hmi-editor[hidden] { display: none; }
-.hmi-editor:fullscreen { width: 100vw; height: 100vh; border: 0; border-radius: 0; }
 
 .ed-toolbar {
   display: flex;
@@ -397,6 +406,15 @@
 .ed-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
 .ed-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ed-field.wide { grid-column: 1 / -1; }
+/* 동작 조건(보이기·조작 허용·켜짐 상태): 방식 → 장비·태그 → 비교 → 값/범위/비트 */
+.ed-cond { display: flex; flex-direction: column; gap: 4px; }
+.ed-cond-body { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid #222a35; border-radius: 6px; background: rgba(255, 255, 255, 0.02); }
+.ed-cond-body[hidden], .ed-cond-range[hidden], .ed-cond [data-cv][hidden], .ed-cond [data-cbits][hidden] { display: none; }
+.ed-cond-range { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.ed-cond-sum { font-size: 11px; color: #8ab4ff; word-break: break-all; }
+.ed-cond-sum:empty { display: none; }
+/* 편집 화면: 보이기 조건이 지금 값으로 거짓인 위젯(실행 중엔 숨겨짐) — 흐리게, 선택·편집은 가능 */
+.ed-item.ed-cond-hidden { opacity: 0.3; }
 /* 비트 고르기: 0~15 격자 */
 .ed-bits { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
 .ed-bits button {
@@ -405,6 +423,7 @@
 }
 .ed-bits button:hover { border-color: #3fa7ff; }
 .ed-bits button.on { background: #2d6cdf; border-color: #2d6cdf; color: #fff; font-weight: 700; }
+.ed-cond .ed-bits button { height: 22px; }
 .ed-bits-sum { margin-top: 3px; font-size: 11px; color: #8a93a3; }
 /* 이미지 위젯: 미리보기 + 파일 선택/지우기 */
 .ed-img { display: flex; align-items: center; gap: 6px; }

@@ -33,6 +33,20 @@
   };   // 점검 단계마다 최소 표시 시간(실제 작업은 수 ms — 진행이 보이도록 약간의 연출)
   const WRITE_TYPES = ['button', 'switch', 'input', 'selector'];
   const STATIC_TYPES = ['rect', 'label', 'screenlink', 'image'];
+  // 동작 조건(위젯 필드) — 점검·사용처에서 같이 다룬다
+  const COND_KEYS = [['visibleWhen', '보이기'], ['enableWhen', '조작 허용'], ['activeWhen', '켜짐 상태']];
+
+  // 위젯이 태그를 쓰는 곳: 값(tag) + 쓰기 태그 + 동작 조건 — [{ id, role: null | '쓰기' | '보이기 조건' … }]
+  function widgetTagUses(w) {
+    const out = [];
+    if (w.tag) out.push({ id: w.tag, role: null });
+    if (w.writeTag) out.push({ id: w.writeTag, role: '쓰기' });
+    for (const [k, label] of COND_KEYS) {
+      const c = window.WHMI.rules.normalize(w[k]);
+      if (c && c.tag) out.push({ id: c.tag, role: `${label} 조건` });
+    }
+    return out;
+  }
 
   async function getJson(path) {
     const res = await apiFetch(path);
@@ -64,8 +78,7 @@
     const usage = new Map();
     for (const s of screens) {
       for (const w of s.content.widgets || []) {
-        for (const id of [w.tag, w.enableWhen && w.enableWhen.tag]) {
-          if (!id) continue;
+        for (const id of new Set(widgetTagUses(w).map((x) => x.id))) {   // 한 위젯은 한 번만 센다
           const u = usage.get(id) || { screens: new Set(), widgets: 0 };
           u.screens.add(s.title);
           u.widgets++;
@@ -111,20 +124,32 @@
   // 위젯 규칙: (w 위젯, ctx { tags Map, data })
   const WIDGET_RULES = [
     ['error', (w, { tags }) => (w.tag && !tags.has(w.tag) ? `정의되지 않은 태그 '${w.tag}'를 씁니다` : null)],
-    ['error', (w, { tags }) => (w.enableWhen && w.enableWhen.tag && !tags.has(w.enableWhen.tag)
-      ? `쓰기 허용 조건에 정의되지 않은 태그 '${w.enableWhen.tag}'를 씁니다` : null)],
+    // 동작 조건(보이기·조작 허용·켜짐 상태) — 형식, 태그 지정·정의, 비트 비교인데 비트 없음
+    ...COND_KEYS.map(([k, label]) => ['error', (w, { tags }) => {
+      if (!w[k]) return null;
+      const R = window.WHMI.rules, c = R.normalize(w[k]);
+      if (!c) return `${label} 조건 형식이 잘못되었습니다`;
+      if (!c.tag) return `${label} 조건에 태그가 지정되지 않았습니다`;
+      if (!tags.has(c.tag)) return `${label} 조건에 정의되지 않은 태그 '${c.tag}'를 씁니다`;
+      if (c.test.startsWith('bit') && !R.bitList(c.bits).length) return `${label} 조건이 비트 비교인데 비트를 고르지 않아 늘 거짓입니다`;
+      return null;
+    }]),
     ['error', (w, { tags, data }) => {
-      const t = WRITE_TYPES.includes(w.type) && tags.get(w.tag);
+      // 실제로 쓰는 태그(쓰기 태그가 있으면 그것)가 읽기 전용이면 동작 안 함
+      const t = WRITE_TYPES.includes(w.type) && tags.get(w.writeTag || w.tag);
       if (!t) return null;
       const src = data.regs.get(t.source && t.source.registerId);
-      return src && effective(t, src.reg).access !== 'rw' ? `쓰기 위젯인데 태그 '${t.id}'가 읽기 전용이라 동작하지 않습니다` : null;
+      return src && effective(t, src.reg).access !== 'rw'
+        ? `쓰기 위젯인데 ${w.writeTag ? '쓰기 태그' : '태그'} '${t.id}'가 읽기 전용이라 동작하지 않습니다` : null;
     }],
+    ['error', (w, { tags }) => (w.writeTag && !tags.has(w.writeTag) ? `정의되지 않은 쓰기 태그 '${w.writeTag}'를 씁니다` : null)],
     ['error', (w, { data }) => {
       if (w.type !== 'screenlink') return null;
       const sid = w.props && w.props.screen;
       return !sid ? '이동할 화면이 지정되지 않았습니다' : !data.projectScreens.has(sid) ? `이동할 화면 '${sid}'가 없습니다` : null;
     }],
-    ['warn', (w) => (!STATIC_TYPES.includes(w.type) && !w.tag ? '태그가 지정되지 않아 값이 표시되지 않습니다' : null)],
+    // 태그 없는 램프는 켜짐 상태 조건만으로 동작하므로 제외
+    ['warn', (w) => (!STATIC_TYPES.includes(w.type) && !w.tag && !(w.type === 'lamp' && w.activeWhen) ? '태그가 지정되지 않아 값이 표시되지 않습니다' : null)],
     ['error', (w) => (w.type === 'button' && ((w.props && w.props.action) || 'set') === 'set' && (w.props == null || w.props.value == null)
       ? '값 쓰기 버튼인데 쓸 값이 지정되지 않아 눌러도 아무것도 쓰지 않습니다' : null)],
   ];
@@ -340,7 +365,7 @@
     const out = [];
     for (const s of data.screens) {
       for (const w of s.content.widgets || []) {
-        if (w.tag === id || (w.enableWhen && w.enableWhen.tag === id)) out.push(`${s.title}: ${w.id}`);
+        if (widgetTagUses(w).some((x) => x.id === id)) out.push(`${s.title}: ${w.id}`);
       }
     }
     return out;
@@ -764,12 +789,12 @@
       const usageOf = (id) => {
         const by = new Map();
         for (const sc of data.screens) for (const w of sc.content.widgets || []) {
-          const asValue = w.tag === id;
-          const asCond = w.enableWhen && w.enableWhen.tag === id;
-          if (asValue || asCond) {
+          const uses = widgetTagUses(w).filter((x) => x.id === id);
+          if (uses.length) {
             if (!by.has(sc.title)) by.set(sc.title, []);
-            // 용도: 위젯 종류(값 표시/조작), 쓰기 허용 조건으로 쓰면 그 표시
-            by.get(sc.title).push(`${esc(w.id)} <span class="tm-use-type">${esc(TYPE_NAME[w.type] || w.type)}${asCond ? (asValue ? ' · 쓰기 조건' : ' 쓰기 조건') : ''}</span>`);
+            // 용도: 위젯 종류(값 표시/조작), 쓰기 태그·동작 조건으로 쓰면 그 이름(예: "버튼 · 쓰기", "버튼 · 켜짐 상태 조건")
+            const roles = uses.filter((x) => x.role).map((x) => x.role);
+            by.get(sc.title).push(`${esc(w.id)} <span class="tm-use-type">${esc(TYPE_NAME[w.type] || w.type)}${roles.length ? ` · ${esc(roles.join(' · '))}` : ''}</span>`);
           }
         }
         return [...by].map(([title, ws]) => `<div><b>${esc(title)}</b><div class="tm-use-list">${ws.map((x) => `<span>${x}</span>`).join('')}</div></div>`).join('');

@@ -14,7 +14,7 @@
 //         value    쓰기/판정 값 — true / false / 숫자 / 글자
 //         bits     비트 고르기(0~15 격자, 여러 개 = 하나라도 켜지면) — 하나면 숫자, 여러 개면 목록으로 저장
 //         image    그림 파일 고르기(줄여서 data URL로 src에, 원래 비율은 ratio에) — 여러 개 편집에선 빠짐
-//         enable   쓰기 허용 조건(위젯 필드 enableWhen: { tag, equals }) — props가 아님
+//         cond     동작 조건(위젯 필드 visibleWhen/enableWhen/activeWhen — props가 아님): 태그 + 비교(같음·다름·큼·작음·범위·비트)
 //         anim     애니메이션 — "사용" 체크 + 시간(ms). 끄면 0(위젯은 0이면 바로 그림)
 //         list     객체 목록(행 추가/삭제). columns: [{ key, label, type: num|text|color|value|bool, required? }],
 //                  newRow(현재 목록, 지금 속성) → 새 행. 비우면 기본값
@@ -34,6 +34,7 @@
     ['color', '색상'],
     ['action', '동작'],
     ['effect', '효과'],
+    ['cond', '동작 조건'],   // 다른 태그에 따른 보이기·조작 허용·켜짐(위젯 필드, docs/architecture/hmi-conditions.md)
   ];
 
   const hasBits = (p) => p.bit != null && [].concat(p.bit).length > 0;
@@ -231,6 +232,12 @@
   ];
 
   TYPES.selector = [
+    { key: 'title', label: '제목', type: 'opttext', group: 'basic', placeholder: '없음 (예: 운전 모드)' },
+    { key: 'titlePos', label: '제목 위치', type: 'select', group: 'basic', options: [['top', '상단'], ['bottom', '하단'], ['left', '좌측'], ['right', '우측']], when: (p) => !!p.title },
+    { key: 'titleGap', label: '제목 간격', type: 'num', group: 'basic', min: 0, max: 200, when: (p) => !!p.title },
+    { key: 'titleSize', label: '제목 글자 크기', type: 'num', group: 'basic', min: 6, max: 100, when: (p) => !!p.title },
+    { key: 'titleBold', label: '제목 굵게', type: 'bool', group: 'basic', when: (p) => !!p.title },
+    { key: 'titleColor', label: '제목 색', type: 'color', group: 'color', when: (p) => !!p.title },
     { key: 'options', label: '위치', type: 'list', group: 'basic',
       columns: [{ key: 'value', label: '값', type: 'value', required: true }, { key: 'text', label: '글자', type: 'text' }],
       newRow: (rows) => ({ value: rows.length, text: `위치 ${rows.length + 1}` }) },
@@ -253,8 +260,11 @@
     { key: 'unit', label: '단위', type: 'opttext', group: 'value', placeholder: '태그 값 사용' },
     { key: 'decimals', label: '소수점 자리', type: 'optnum', group: 'value', min: 0, max: 6, placeholder: '태그 값 사용' },
   ];
-  // 쓰기 위젯 공통 — 다른 태그 값이 조건과 같을 때만 쓰기 허용
-  const enableWhen = { key: 'enableWhen', label: '쓰기 허용 조건', type: 'enable', group: 'action' };
+  // 동작 조건(위젯 필드 — props가 아님). 조건 하나 = 태그 + 비교(판정 엔진 whmi-rules.js)
+  //  none: 조건을 두지 않았을 때의 동작(선택 상자 첫 항목), effect: 요약 문구 "…일 때 ○○"
+  const visibleWhen = { key: 'visibleWhen', label: '보이기', type: 'cond', group: 'cond', none: '항상 보임', effect: '보임' };
+  const enableWhen  = { key: 'enableWhen', label: '조작 허용', type: 'cond', group: 'cond', none: '항상 허용', effect: '조작 허용' };
+  const activeWhen  = { key: 'activeWhen', label: '켜짐 상태', type: 'cond', group: 'cond', none: '자기 값으로 판단', effect: '켜짐' };
 
   // ── 숫자 표시 / 숫자 입력 상자 공통
   const seg = (p) => p.font === 'seg7';
@@ -294,11 +304,14 @@
     animMs,
   ];
 
-  TYPES.input = [...box, confirm, enableWhen];
+  TYPES.input = [...box, confirm];
 
-  // 값 위젯·쓰기 위젯에 공통 항목 추가
+  // 값 위젯에 공통 항목 추가
   for (const t of ['gauge', 'tank', 'bar']) TYPES[t].unshift(...valueOverride);
-  for (const t of ['button', 'switch', 'selector']) TYPES[t].push(enableWhen);
+  // 동작 조건: 보이기는 모든 위젯, 조작 허용은 쓰기 위젯, 켜짐 상태는 켜짐이 있는 위젯
+  for (const t of Object.keys(TYPES)) TYPES[t].push(visibleWhen);
+  for (const t of ['button', 'switch', 'selector', 'input']) TYPES[t].push(enableWhen);
+  for (const t of ['lamp', 'button', 'switch']) TYPES[t].push(activeWhen);
 
   if (window.WHMI) window.WHMI.schema = { groups: GROUPS, types: TYPES };   // 페이지를 떠나며 정리됐으면 건너뜀
 })();

@@ -63,11 +63,22 @@
   const MAX_SCREEN_BYTES = 256 * 1024;      // 서버 화면 content 상한(413)
   const ANIM_DEFAULT_MS = 400;
   const MIXED = '__mixed__';                // 여러 개 선택에서 값이 서로 다른 선택 상자의 표시 항목
-  const MULTI_SKIP = ['list', 'enable', 'image', 'bits'];   // 여러 개 동시 편집에서 빼는 필드(하나씩 편집)
+  const MULTI_SKIP = ['list', 'cond', 'image', 'bits'];   // 여러 개 동시 편집에서 빼는 필드(하나씩 편집)
   const IMAGE_MAX_BYTES = 150 * 1024;       // 이미지 위젯: 화면 데이터에 넣는 그림 상한(data URL 길이) — 넘으면 자동으로 더 줄임
   const IMAGE_MAX_SIDE = 1024;              // 이미지 위젯: 긴 변 최대 픽셀
   const TAG_LABEL_PX = 10;                  // 태그 보기 글자 크기(실제 픽셀, 10pt 이하)
-  const NO_DEV = 'none';                    // 태그 고르기: 소스 장비를 모르는 태그 묶음
+  // 동작 조건 비교 방식(판정 엔진 whmi-rules.js의 test) — [값, 선택 상자 글자, 요약 문구 만들기]
+  const COND_TESTS = [
+    ['eq', '같음', (c) => `= ${c.value}`],
+    ['ne', '다름', (c) => `≠ ${c.value}`],
+    ['gt', '보다 큼', (c) => `> ${c.value}`],
+    ['lt', '보다 작음', (c) => `< ${c.value}`],
+    ['range', '범위 안', (c) => `${c.min ?? '…'} ~ ${c.max ?? '…'}`],
+    ['bitAny', '비트 중 하나라도 1', (c) => `비트 ${[].concat(c.bits || []).join(', ') || '(없음)'} 중 하나라도 1`],
+    ['bitNone', '비트 모두 0', (c) => `비트 ${[].concat(c.bits || []).join(', ') || '(없음)'} 모두 0`],
+  ];
+  const NO_DEV = 'none';
+  const WRITE_TYPES = ['input', 'button', 'switch', 'selector'];   // 쓰기 위젯 — 쓰기 태그(writeTag) 칸                    // 태그 고르기: 소스 장비를 모르는 태그 묶음
   const KEEP = '__keep__';                  // 태그 고르기: 다른 장비 태그가 연결된 상태(선택 전)              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
   const DRAFT_DELAY_MS = 400;               // 임시 저장(localStorage) 지연
   const TITLE_MAX = 64;                     // 화면 제목 최대 길이(서버 규칙)
@@ -163,7 +174,8 @@
 
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
   const clone = (o) => JSON.parse(JSON.stringify(o));
-  const fid = (f) => f.id || f.key;   // 속성 칸 이름 — 같은 속성(key)을 조건(when)에 따라 다른 칸으로 보여 줄 때 id로 구분
+  const fid = (f) => f.id || f.key;
+  const hasCond = (w) => !!(w.visibleWhen || w.enableWhen || w.activeWhen);   // 동작 조건 그룹을 처음부터 펼칠지   // 속성 칸 이름 — 같은 속성(key)을 조건(when)에 따라 다른 칸으로 보여 줄 때 id로 구분
   const bitList = (v) => (v == null ? [] : [].concat(v).map(Number).filter((n) => Number.isInteger(n) && n >= 0));
   // 색 + 투명도: 투명도 100%면 #rrggbb(기존 데이터 그대로), 미만이면 #rrggbbaa
   const splitColor = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v)
@@ -353,12 +365,13 @@
       this.refreshScreenSel();
       this.inspector.addEventListener('change', (e) => {
         if (e.target.dataset.tagdev) { this.onTagDevChange(e.target); return; }
+        const condEl = e.target.closest('.ed-cond');
+        if (condEl) { this.onCondChange(condEl); return; }
         if (e.target.dataset.imgfile !== undefined) { this.onImageFile(e.target); return; }
         if (e.target.dataset.f) this.onFieldChange(e.target);
         else if (e.target.dataset.s) this.onScreenField(e.target);
         else if (e.target.dataset.p) this.onPropChange(e.target);
         else if (e.target.dataset.lc) this.onListChange(e.target.closest('[data-list]'));
-        else if (e.target.dataset.ew) this.onEnableChange(e.target.closest('.ed-pf'));
       });
       this.inspector.addEventListener('input', (e) => {
         // 색 선택기·글자 칸은 바꾸는 동안 바로 반영(연속 변경은 실행 취소 한 단계로 묶임)
@@ -386,14 +399,20 @@
         if (el.value === el.dataset.filled) el.value = '';
         delete el.dataset.filled;
       });
-      // 속성 그룹 접힘 상태는 위젯을 바꿔도 유지
-      this.inspector.addEventListener('toggle', (e) => {
-        const g = e.target.dataset && e.target.dataset.g;
-        if (g) this.groupOpen[g] = e.target.open;
-      }, true);
+      // 속성 그룹 접힘 상태는 위젯을 바꿔도 유지 — 사용자가 제목을 눌러 바꾼 것만 기억한다
+      // (그릴 때 open 속성으로 생기는 toggle 이벤트까지 기억하면, 조건 있는 위젯에서 자동으로 펼친
+      // "동작 조건" 그룹이 다른 위젯에서도 계속 펼쳐진다)
+      this.inspector.addEventListener('click', (e) => {
+        const sm = e.target.closest('details[data-g] > summary');
+        if (!sm) return;
+        const d = sm.parentElement;
+        setTimeout(() => { this.groupOpen[d.dataset.g] = d.open; });
+      });
       this.inspector.addEventListener('click', (e) => {
         const rs = e.target.closest('[data-reset]');
         if (rs) { this.resetProp(rs.dataset.reset); return; }
+        const cb = e.target.closest('[data-cbit]');
+        if (cb) { this.toggleCondBit(cb.closest('.ed-cond'), Number(cb.dataset.cbit)); return; }
         const bb = e.target.closest('[data-bit]');
         if (bb) {
           const w = this.selected()[0];
@@ -564,12 +583,25 @@
       const mon = [window.screen.width, window.screen.height];
       const presets = [mon, ...SIZE_PRESETS];
       const base = this.doc ? [this.doc.size.w, this.doc.size.h] : mon;
+      // 시작 화면(★) 크기 — 화면끼리 크기가 같아야 넘길 때 글자·위젯 크기가 같아 보인다(기본 선택)
+      const startId = this.project.startScreen;
+      let startSize = null;
+      if (startId && startId === this.screenId && this.doc) startSize = [this.doc.size.w, this.doc.size.h];
+      else if (startId) {
+        try {
+          const res = await apiFetch(`/api/hmi/screens/${encodeURIComponent(startId)}`);
+          const sz = res.ok && (await res.json()).content.size;
+          if (sz) startSize = [sz.w, sz.h];
+        } catch (_) {}
+      }
+      const startTitle = startId && ((screens.find((x) => x.id === startId) || {}).title || startId);
       const d = window.WHMI.dialog.open(`<div class="ed-dlg">
         <p>새 화면</p>
         <label class="ed-dlg-field"><span>id <small>영문·숫자·_·- (주소·화면 이동에 쓰임)</small></span><input type="text" data-n="id" value="screen_${n}" spellcheck="false" autocomplete="off"></label>
         <label class="ed-dlg-field"><span>제목</span><input type="text" data-n="title" value="새 화면" maxlength="${TITLE_MAX}"></label>
         <label class="ed-dlg-field"><span>화면 크기 <small>기준 해상도 — 현장 패널 해상도에 맞추세요</small></span>
           <select data-n="preset">
+            ${startSize ? `<option value="start">시작 화면과 같음 — ${esc(startTitle)} (${startSize[0]} × ${startSize[1]})</option>` : ''}
             ${presets.map(([w, h], i) => `<option value="${w}x${h}">${i === 0 ? `현재 모니터 (${w} × ${h})` : `${w} × ${h}`}</option>`).join('')}
             <option value="custom">직접 입력</option>
           </select></label>
@@ -584,12 +616,15 @@
       const setSize = (w, h) => { q('w').value = w; q('h').value = h; };
       const syncPreset = () => {
         const v = `${q('w').value}x${q('h').value}`;
+        if (startSize && v === `${startSize[0]}x${startSize[1]}`) { q('preset').value = 'start'; return; }
         q('preset').value = [...q('preset').options].some((o) => o.value === v) ? v : 'custom';
       };
-      setSize(mon[0], mon[1]);
+      if (startSize) setSize(startSize[0], startSize[1]); else setSize(mon[0], mon[1]);
       syncPreset();
       q('preset').addEventListener('change', () => {
-        if (q('preset').value !== 'custom') setSize(...q('preset').value.split('x'));
+        const v = q('preset').value;
+        if (v === 'start') setSize(startSize[0], startSize[1]);
+        else if (v !== 'custom') setSize(...v.split('x'));
       });
       q('w').addEventListener('input', syncPreset);
       q('h').addEventListener('input', syncPreset);
@@ -660,7 +695,7 @@
       const d = window.WHMI.dialog.open(`<div class="ed-dlg ed-manage">
         <p>화면 관리</p>
         <div class="ed-scr-list"></div>
-        <div class="dlg-hint">★ 시작 화면 · 순서·시작 화면·삭제는 바로 적용됩니다.</div>
+        <div class="dlg-hint">★ 시작 화면(지울 수 없음 — 다른 화면에 ★를 옮긴 뒤 지우기) · 순서·시작 화면·삭제는 바로 적용됩니다.</div>
         <div class="dlg-err"></div>
         <div class="dlg-btns"><button type="button" data-k="close" class="primary">닫기</button></div>
       </div>`);
@@ -675,7 +710,9 @@
             <span class="ed-scr-name">${esc(x.title || x.id)} <small>${esc(x.id)}</small>${x.id === this.screenId ? ' <em>편집 중</em>' : ''}</span>
             <button type="button" data-a="up" title="위로"${i === 0 ? ' disabled' : ''}>▲</button>
             <button type="button" data-a="down" title="아래로"${i === screens.length - 1 ? ' disabled' : ''}>▼</button>
-            <button type="button" data-a="del" class="ed-scr-del">삭제</button>
+            ${x.id === this.project.startScreen
+              ? '<button type="button" data-a="del" class="ed-scr-del" disabled title="시작 화면(★)은 지울 수 없습니다. 다른 화면에 ★를 지정한 뒤 지우세요.">삭제</button>'
+              : '<button type="button" data-a="del" class="ed-scr-del">삭제</button>'}
           </div>`).join('') : '<div class="dlg-hint">화면이 없습니다.</div>';
       };
       draw();
@@ -722,6 +759,8 @@
     }
 
     async deleteScreen(id) {
+      // 시작 화면은 지우지 않는다(마지막 하나 남은 화면이라도 — 실수로 모든 화면을 지우는 것 방지)
+      if (id === this.project.startScreen) return '시작 화면(★)은 지울 수 없습니다. 다른 화면에 ★를 먼저 지정하세요.';
       try {
         const res = await apiFetch(`/api/hmi/screens/${encodeURIComponent(id)}`, { method: 'DELETE' });
         const data = await res.json().catch(() => ({}));
@@ -819,7 +858,7 @@
     // 미리보기용 현재 값 1회 조회(편집 중엔 폴링하지 않음). 실패해도 편집은 계속한다.
     async readValues() {
       this.values = {};
-      const ids = [...new Set(this.doc.widgets.flatMap((w) => [w.tag, w.enableWhen && w.enableWhen.tag]).filter((t) => t && this.tags[t]))];
+      const ids = [...new Set(this.doc.widgets.flatMap((w) => [w.tag, ...window.WHMI.rules.tagsOf(w.visibleWhen, w.enableWhen, w.activeWhen)]).filter((t) => t && this.tags[t]))];
       if (!ids.length) return;
       try {
         const res = await apiFetch(`/api/hmi/values?tags=${ids.map(encodeURIComponent).join(',')}`);
@@ -878,8 +917,16 @@
         throw e;
       }
       const { g, p, inst } = r;
+      // 동작 조건 미리보기(화면을 열 때 읽은 값으로 한 번 판정): 보이기가 거짓이면 흐리게(선택·편집은 가능),
+      // 켜짐 상태 조건은 위젯에 넘김. 판정 불가면 런타임과 같은 규칙(보임 / 꺼짐)
+      const R = window.WHMI.rules;
+      const at = (cond) => { const n = R.normalize(cond); return n ? R.test(n, this.values[n.tag]) : undefined; };
+      wrap.classList.toggle('ed-cond-hidden', at(w.visibleWhen) === false);
       if (inst.update) {
-        try { inst.update(previewInfo(w, p, this.tags, this.values[w.tag])); } catch (e) { console.warn('[whmi-editor] 미리보기 실패', w.id, e); }
+        const info = previewInfo(w, p, this.tags, this.values[w.tag]);
+        const act = at(w.activeWhen);
+        if (act !== undefined) info.active = act === true;
+        try { inst.update(info); } catch (e) { console.warn('[whmi-editor] 미리보기 실패', w.id, e); }
       }
       this.nodes.set(w.id, { wrap, g });
     }
@@ -1793,6 +1840,15 @@
       const f = el.dataset.f;
       this.formError('');
       if (f === 'id') { this.renameWidget(w, el.value.trim(), el); return; }
+      if (f === 'writeTag') {
+        if (el.value === KEEP) return;
+        if (el.value) w.writeTag = el.value; else delete w.writeTag;
+        this.canonical(w);
+        this.redrawOne(w);
+        this.drawSelection();
+        this.commit();
+        return;
+      }
       if (f === 'tag') {
         // "+ 새 태그…": 선택은 되돌리고 태그 관리의 새 태그 폼을 연다(만들면 이 위젯에 연결)
         if (el.value === '__new__') {
@@ -1895,9 +1951,16 @@
               `<button class="ed-btn" type="button" data-img="pick">파일 선택…</button>` +
               `<button class="ed-btn" type="button" data-img="clear">지우기</button>` +
               `<input type="file" accept="image/*" data-imgfile hidden></div>`;
-          case 'enable':
-            return `<div class="ed-tagpick"><select data-tagdev="ew" title="장비"></select><select data-ew="tag" title="태그"></select></div>` +
-              `<input type="text" data-ew="equals" spellcheck="false" placeholder="이 값일 때 허용">`;
+          case 'cond':
+            return `<div class="ed-cond" data-cond="${k}">` +
+              `<select data-cm><option value="">${esc(f.none)}</option><option value="on">조건 지정</option></select>` +
+              '<div class="ed-cond-body">' +
+              '<div class="ed-tagpick"><select data-tagdev="c" title="장비"></select><select data-ct title="태그"></select></div>' +
+              `<select data-ctest title="비교">${COND_TESTS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>` +
+              '<input type="text" data-cv spellcheck="false" placeholder="값 (예: 1)">' +
+              '<div class="ed-cond-range"><input type="number" step="any" data-cmin placeholder="이상 (비우면 끝없음)"><input type="number" step="any" data-cmax placeholder="이하 (비우면 끝없음)"></div>' +
+              `<div class="ed-bits" data-cbits>${Array.from({ length: 16 }, (_, i) => `<button type="button" data-cbit="${i}">${i}</button>`).join('')}</div>` +
+              '</div><div class="ed-cond-sum"></div></div>';
           case 'anim':
             return `<div class="ed-anim"><label><input type="checkbox" data-p="${k}" data-anim> 사용</label>` +
               `<span class="ed-anim-ms"><input type="number" data-p="${k}"${lim}> ms</span></div>`;
@@ -1908,7 +1971,7 @@
         ? `<div class="ed-pf ed-pf-bool" data-pk="${esc(fid(f))}"><label>${input(f)} ${esc(f.label)}</label>${this.resetBtn(f)}</div>`
         : `<div class="ed-pf" data-pk="${esc(fid(f))}"><div class="ed-pf-head"><span>${esc(f.label)}</span>${this.resetBtn(f)}</div>${input(f)}</div>`;
       return groups.map(([g, title]) => `
-        <details class="ed-group" data-g="${g}"${this.groupOpen[g] === false ? '' : ' open'}>
+        <details class="ed-group" data-g="${g}"${(this.groupOpen[g] ?? (g !== 'cond' || hasCond(w))) ? ' open' : ''}>
           <summary>${esc(title)}</summary>
           <div class="ed-group-body">${fields.filter((f) => f.group === g).map(field).join('')}</div>
         </details>`).join('');
@@ -1948,15 +2011,8 @@
         box.querySelector('.ed-reset').hidden = !set;
         box.classList.toggle('is-set', set);
         box.classList.toggle('is-mixed', mixed);
-        if (f.type === 'enable') {
-          const ew = ws[0].enableWhen || null;
-          const tagSel = box.querySelector('[data-ew="tag"]');
-          const eq = box.querySelector('[data-ew="equals"]');
-          box.querySelector('.ed-reset').hidden = !ew;
-          box.classList.toggle('is-set', !!ew);
-          if (tagSel !== active) this.fillTagPicker(tagSel, ew ? ew.tag : null, false);
-          eq.disabled = !ew;
-          if (eq !== active) eq.value = ew ? this.fmtVal(ew.equals) : '';
+        if (f.type === 'cond') {
+          this.syncCond(box, f, ws[0]);
           continue;
         }
         if (f.type === 'bits') {
@@ -2094,7 +2150,8 @@
     }
 
     // tagSel 바로 앞의 장비 선택 상자와 함께 채운다.
-    //  tagId    현재 연결된 태그(없으면 null)    isWidget  위젯 tag(+ 새 태그…) / 쓰기 허용 조건
+    //  tagId    현재 연결된 태그(없으면 null)    isWidget  true: 위젯 tag(없음 + 새 태그…) / 'cond': 동작 조건(태그 필수)
+    //                                             / 'write': 쓰기 태그(첫 항목 "표시 태그와 같음")
     //  devKey   보여 줄 장비(생략 시 태그의 장비 → 마지막으로 고른 장비 → 첫 장비)
     fillTagPicker(tagSel, tagId, isWidget, devKey) {
       const devSel = tagSel.previousElementSibling;
@@ -2107,12 +2164,12 @@
       devSel.value = key;
       devSel.disabled = !groups.length;
       const g = groups.find((x) => x.key === key);
-      const none = isWidget ? '(없음)' : '(조건 없음 — 항상 허용)';
+      const none = isWidget === 'cond' ? '' : isWidget === 'write' ? '<option value="">(표시 태그와 같음)</option>' : '<option value="">(없음)</option>';
       // 연결된 태그가 다른 장비 것이면, 이 장비 목록에서 고르기 전까지는 연결을 바꾸지 않는다
       const head = tagId && own !== key ? `<option value="${KEEP}" disabled>— 태그 선택 —</option>` : '';
       const opts = (g ? g.tags : []).map((t) => `<option value="${esc(t.id)}">${esc(t.id)}${t.name ? ` — ${esc(t.name)}` : ''}</option>`).join('');
       const undef = tagId && !defined && key === NO_DEV ? `<option value="${esc(tagId)}">${esc(tagId)} (정의되지 않은 태그)</option>` : '';
-      tagSel.innerHTML = `${head}<option value="">${none}</option>${undef}${opts}${isWidget ? '<option value="__new__">+ 새 태그…</option>' : ''}`;
+      tagSel.innerHTML = `${head}${none}${undef}${opts}${isWidget === true ? '<option value="__new__">+ 새 태그…</option>' : ''}`;
       tagSel.value = head ? KEEP : tagId || '';
     }
 
@@ -2123,25 +2180,88 @@
       const w = this.selected()[0];
       if (!w) return;
       if (devSel.dataset.tagdev === 'f') this.fillTagPicker(tagSel, w.tag, true, devSel.value);
-      else this.fillTagPicker(tagSel, w.enableWhen ? w.enableWhen.tag : null, false, devSel.value);
+      else if (devSel.dataset.tagdev === 'w') this.fillTagPicker(tagSel, w.writeTag || null, 'write', devSel.value);
+      else {
+        const c = window.WHMI.rules.normalize(w[devSel.closest('.ed-cond').dataset.cond]);
+        this.fillTagPicker(tagSel, c ? c.tag : null, 'cond', devSel.value);
+      }
     }
 
-    // ---- 쓰기 허용 조건(위젯 필드 enableWhen) -------------------------------------
-    onEnableChange(box) {
+    // ---- 동작 조건(위젯 필드 visibleWhen / enableWhen / activeWhen) ----------------------
+    // 조건 하나 = 태그 + 비교. 판정은 런타임·미리보기 모두 판정 엔진(WHMI.rules)이 한다.
+    syncCond(box, f, w) {
+      const R = window.WHMI.rules;
+      const c = R.normalize(w[f.key]);
+      const el = box.querySelector('.ed-cond');
+      const q = (sel) => el.querySelector(sel);
+      const active = document.activeElement;
+      box.querySelector('.ed-reset').hidden = !c;
+      box.classList.toggle('is-set', !!c);
+      q('[data-cm]').value = c ? 'on' : '';
+      q('.ed-cond-body').hidden = !c;
+      const sum = q('.ed-cond-sum');
+      if (!c) { sum.textContent = ''; return; }
+      if (q('[data-ct]') !== active) this.fillTagPicker(q('[data-ct]'), c.tag || null, 'cond');
+      q('[data-ctest]').value = c.test;
+      const isVal = ['eq', 'ne', 'gt', 'lt'].includes(c.test), isRange = c.test === 'range', isBits = c.test.startsWith('bit');
+      q('[data-cv]').hidden = !isVal;
+      q('.ed-cond-range').hidden = !isRange;
+      q('[data-cbits]').hidden = !isBits;
+      if (isVal && q('[data-cv]') !== active) q('[data-cv]').value = this.fmtVal(c.value);
+      if (isRange) {
+        if (q('[data-cmin]') !== active) q('[data-cmin]').value = c.min ?? '';
+        if (q('[data-cmax]') !== active) q('[data-cmax]').value = c.max ?? '';
+      }
+      const bits = R.bitList(c.bits);
+      el.querySelectorAll('[data-cbit]').forEach((b) => b.classList.toggle('on', bits.includes(Number(b.dataset.cbit))));
+      const t = COND_TESTS.find(([v]) => v === c.test);
+      sum.textContent = `${c.tag || '(태그 없음)'} ${t ? t[2](c) : ''}일 때 ${f.effect}`;
+    }
+
+    onCondChange(el) {
       const w = this.selected()[0];
-      if (!w || !box) return;
-      const tag = box.querySelector('[data-ew="tag"]').value;
-      if (tag === KEEP) return;
-      const raw = box.querySelector('[data-ew="equals"]').value.trim();
-      if (!tag) { this.setEnableWhen(w, null); return; }
-      // 태그를 처음 고르면 조건 값은 1(켜짐)로 시작 — 비워 두면 쓰기가 항상 막히므로
-      const prev = w.enableWhen && w.enableWhen.tag === tag ? w.enableWhen.equals : undefined;
-      const equals = raw === '' ? (prev !== undefined ? prev : 1) : this.parseValue(raw);
-      this.setEnableWhen(w, { tag, equals });
+      if (!w || !el) return;
+      const R = window.WHMI.rules;
+      const key = el.dataset.cond;
+      const q = (sel) => el.querySelector(sel);
+      if (!q('[data-cm]').value) { this.setCond(w, key, undefined); return; }
+      const prev = R.normalize(w[key]);
+      // 태그: 고른 것 → 이전 조건 → 위젯 자기 태그 → 지금 장비의 첫 태그(조건은 태그가 있어야 판정되므로 바로 채움)
+      let tag = q('[data-ct]').value;
+      if (!tag || tag === KEEP) {
+        const groups = this.tagGroups();
+        const g = groups.find((x) => x.key === this.tagDev) || groups[0];
+        tag = (prev && prev.tag) || w.tag || (g && g.tags[0] ? g.tags[0].id : '');
+      }
+      const test = (prev ? q('[data-ctest]').value : null) || 'eq';
+      const c = { tag, test };
+      if (['eq', 'ne', 'gt', 'lt'].includes(test)) {
+        const raw = q('[data-cv]').value.trim();
+        c.value = raw === '' ? (prev && prev.value !== undefined ? prev.value : 1) : this.parseValue(raw);
+      } else if (test === 'range') {
+        const mn = q('[data-cmin]').value.trim(), mx = q('[data-cmax]').value.trim();
+        if (mn !== '' && Number.isFinite(Number(mn))) c.min = Number(mn);
+        if (mx !== '' && Number.isFinite(Number(mx))) c.max = Number(mx);
+      } else {
+        c.bits = prev && prev.test.startsWith('bit') ? R.bitList(prev.bits) : [];
+      }
+      this.setCond(w, key, c);
     }
 
-    setEnableWhen(w, ew) {
-      if (ew) w.enableWhen = ew; else delete w.enableWhen;
+    toggleCondBit(el, n) {
+      const w = this.selected()[0];
+      if (!w || !el) return;
+      const R = window.WHMI.rules;
+      const key = el.dataset.cond;
+      const c = R.normalize(w[key]);
+      if (!c || !c.test.startsWith('bit')) return;
+      const bits = R.bitList(c.bits);
+      const next = (bits.includes(n) ? bits.filter((x) => x !== n) : bits.concat(n)).sort((a, b) => a - b);
+      this.setCond(w, key, { ...c, bits: next });
+    }
+
+    setCond(w, key, c) {
+      if (c) w[key] = c; else delete w[key];
       this.canonical(w);
       this.redrawOne(w);
       this.drawSelection();
@@ -2309,7 +2429,7 @@
       if (!ws) return;
       const f = this.propFields(ws[0]).find((x) => fid(x) === id);
       const key = f ? f.key : id;
-      if (key === 'enableWhen') { this.setEnableWhen(ws[0], null); return; }
+      if (f && f.type === 'cond') { this.setCond(ws[0], key, undefined); return; }
       this.setProp(ws, key, undefined);
     }
 
@@ -2362,6 +2482,8 @@
       }
       const sel = this.inspector.querySelector('[data-f="tag"]');
       if (sel && document.activeElement !== sel) this.fillTagPicker(sel, w.tag, true);
+      const wsel = this.inspector.querySelector('[data-f="writeTag"]');
+      if (wsel && document.activeElement !== wsel) this.fillTagPicker(wsel, w.writeTag || null, 'write');
       this.syncPropForm([w]);
     }
 
@@ -2392,6 +2514,7 @@
             <label class="ed-field wide"><span>id</span><input type="text" data-f="id" spellcheck="false" autocomplete="off"></label>
             ${num('x')}${num('y')}${num('w')}${num('h')}
             <div class="ed-field wide ed-tagpick"><span>tag</span><select data-tagdev="f" title="장비"></select><select data-f="tag" title="태그"></select></div>
+            ${WRITE_TYPES.includes(w.type) ? `<div class="ed-field wide ed-tagpick" title="표시(tag)와 다른 태그에 써야 할 때 — 예: NSP 표시, TSP 쓰기"><span>쓰기 태그</span><select data-tagdev="w" title="장비"></select><select data-f="writeTag" title="쓰기 태그"></select></div>` : ''}
           </div>
           <div class="ed-form-err"></div>
           ${this.renderPropForm(w)}`;

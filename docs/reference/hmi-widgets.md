@@ -21,7 +21,28 @@
 | `x`,`y`,`w`,`h` | ● | 설계 해상도 기준 위치·크기(px) |
 | `tag` | | 바인딩할 **HMI 태그 id**(`referencs/api-spec.md` §14). 정적 위젯(rect/label)은 생략 |
 | `props` | | 타입별 속성. 생략 시 기본값. 편집기는 기본값과 다른 값만 저장한다 |
-| `enableWhen` | | 쓰기 허용 조건 `{ "tag": "MODE", "equals": 1 }` — 다른 태그 값이 `equals`와 같을 때만 쓰기 가능(쓰기 위젯 전용). 조건 태그는 위젯이 없어도 함께 폴링 |
+| `writeTag` | | **쓰기 태그**(쓰기 위젯: input·button·switch·selector). 지정하면 값은 `tag`에서 보여 주고 쓰기는 이 태그에(예: NSP 표시 / TSP 쓰기). 쓰기 가능 여부는 이 태그의 권한·통신 상태로 판단하고 함께 폴링. 비우면 `tag`에 씀 |
+| `visibleWhen` | | **보이기** 조건(모든 위젯). 거짓이면 숨김(클릭 통과), 판정 불가(통신 불량 등)면 보임 |
+| `enableWhen` | | **조작 허용** 조건(쓰기 위젯: button·switch·selector·input). 참일 때만 조작·쓰기 가능(거짓·판정 불가면 막음). 예전 형식 `{ "tag", "equals" }`도 같음 비교로 읽음 |
+| `activeWhen` | | **켜짐 상태** 조건(lamp·button·switch). 참이면 켜짐, 거짓·판정 불가면 꺼짐. 없으면 자기 값(켜짐 값·비트)으로 판단. 전환 버튼·스위치는 켜짐이면 꺼짐 값을 씀(예: 명령은 OPMODE에 쓰고 상태는 NOW_STS로). 태그 없는 램프도 이 조건만으로 동작 |
+
+**동작 조건 형식**(판정 엔진 `js/whmi-rules.js`, 설계 `docs/architecture/hmi-conditions.md`):
+
+```json
+{ "tag": "TP2KMF_NOWSTS", "test": "bitAny", "bits": [1, 2] }
+```
+
+| test | 참이 되는 때 | 필드 |
+|---|---|---|
+| `eq` / `ne` | 같음 / 다름(둘 다 숫자로 읽히면 숫자 비교 — 참거짓은 1/0, 아니면 글자 비교) | `value` |
+| `gt` / `lt` | 큼 / 작음(숫자일 때만) | `value` |
+| `range` | `min ≤ 값 ≤ max`(양 끝 포함, 비우면 끝없음) | `min`, `max` |
+| `bitAny` / `bitNone` | 고른 비트 중 하나라도 1 / 모두 0(정수로 내림, 0~31) | `bits` |
+
+- 조건 하나 = 태그 하나 + 비교 하나. 조건에 쓴 태그는 그 태그를 쓰는 위젯이 없어도 런타임이 함께 폴링한다.
+- 판정은 런타임 한 곳(폴링마다)과 편집기 미리보기(열 때 읽은 값)에서 같은 엔진으로. 편집 화면에서는 보이기 조건이 거짓인 위젯을 흐리게 보여 준다.
+- 위젯 안의 "값 → 모양" 규칙(램프 비트·켜짐 값, 상태 표시 목록, 구간 색)도 같은 엔진으로 판정한다.
+- **안전 인터록이 아니다.** 조작 허용은 화면 편의이며, 실제 보호 로직은 PLC·제어기에 있어야 한다.
 
 그리기 순서 = `widgets` 배열 순서(z-order). 모르는 타입은 빨간 점선 상자로 표시하고 계속 진행(런타임 변경 없이 위젯 확장 가능).
 
@@ -98,9 +119,9 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 | `button` | 값 기록 버튼 | `text`, `fontSize`(16), `action`(set\|toggle), `value`(set일 때 쓸 값 — **기본값 없음, 비어 있으면 쓰지 않고 상태줄에 알림**. 쓰고 나면 0으로 돌아가는 명령 레지스터는 toggle이 아니라 set 버튼 두 개로), `onValue`(true)/`offValue`(false, toggle과 켜짐 판정), `onText`/`offText`(켜짐·꺼짐일 때 글자), `color`, `activeColor`(켜짐일 때 색), `textColor`, `confirm`(확인 문구 — 전환이면 켤 때), `confirmOff`(전환에서 끌 때 문구, 비면 confirm을 양쪽에) |
 | `switch` | 토글 스위치 | `onValue`(true), `offValue`(false), `onText`/`offText`, `onColor`/`offColor`, `confirm`(켤 때)/`confirmOff`(끌 때, 비면 confirm) |
 | `input` | 숫자 입력 | `color`, `bg`, `border`, `confirm`, 공통 상자 옵션 — 클릭 시 입력 대화상자, min/max로 검증 |
-| `selector` | 로터리 셀렉터 | `options`(`[{value, text}]`), `startAngle`(-45)/`endAngle`(45), `ringColor`, `knobColor`, `handleColor`, `labelColor`, `activeColor`, `fontSize`(14), `confirm`, `animMs`(300) — 라벨 클릭 시 그 위치로, 노브 클릭 시 다음 위치로 |
+| `selector` | 로터리 셀렉터 | `title`(용도 이름, 비우면 없음)/`titlePos`(top\|bottom\|left\|right)/`titleGap`(6)/`titleSize`(14)/`titleBold`(true)/`titleColor` — 제목 자리를 상자에서 떼어 내고 남은 영역에 노브를 그림, `options`(`[{value, text}]`), `startAngle`(-45)/`endAngle`(45), `ringColor`, `knobColor`, `handleColor`, `labelColor`, `activeColor`, `fontSize`(14), `confirm`, `animMs`(300) — 라벨 클릭 시 그 위치로, 노브 클릭 시 다음 위치로 |
 
-- 쓰기 위젯(button·switch·input·selector)은 위젯 필드 `enableWhen`(§1)으로 쓰기 허용 조건을 걸 수 있다
+- 쓰기 위젯(button·switch·input·selector)은 위젯 필드 `enableWhen`(§1)으로 조작 허용 조건을 걸 수 있다
 - 태그가 `access:"rw"`가 아니면 자동으로 비활성(클릭 무시) — `access`는 매 폴링 갱신되므로, 운영 중 권한이 바뀌면(관리자가 태그를 r로 변경 등) 화면도 다음 폴링에 바로 반영됨
 - **순간 동작(누르고 있는 동안 1, 떼면 0) 미지원** — HTTP 지연/연결 끊김 시 값이 눌린 상태로 남을 위험 때문에 1차 범위에서 제외(WHMI §7 그대로 유지)
 - 쓰기 값 타입: **불리언 태그는 `v`에 JSON boolean(`true`/`false`)을 그대로 전송** — 숫자 태그는 엔지니어링 단위 숫자 그대로(서버가 `raw = round(v/scale)` 변환)
@@ -133,7 +154,7 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 - 필드: `{ key, label, type, group, min?, max?, step?, options?, placeholder?, when?(p) }`
 - 칸 `id`: 같은 속성(key)을 조건(`when`)에 따라 다른 칸으로 보여 줄 때 구분 이름(예: 램프 `onValue` — 비트가 없으면 "켜짐 값" 입력, 있으면 "켜짐 조건" 선택). select 칸 `numeric`(숫자로 저장)·`nullAs`(값이 없을 때 보일 항목)
 - 목록(`list`) 칸: `type`(num\|text\|color\|value\|bool\|select+options), `width?`, `when?(p)`(거짓이면 숨김 — 숨은 칸 값은 보존), `newRow(rows, p)`
-- 입력 종류: `text`, `opttext`, `num`, `optnum`, `color`, `optcolor`, `bool`, `select`, `screen`, `value`(true/false/숫자/글자), `list`(행 추가/삭제), `anim`(사용 체크 + ms), `enable`(위젯 필드 `enableWhen`)
+- 입력 종류: `text`, `opttext`, `num`, `optnum`, `color`, `optcolor`, `bool`, `select`, `screen`, `value`(true/false/숫자/글자), `list`(행 추가/삭제), `anim`(사용 체크 + ms), `cond`(위젯 필드 `visibleWhen`/`enableWhen`/`activeWhen` — "동작 조건" 그룹, 조건 편집 부품: 방식 → 장비·태그 → 비교 → 값/범위/비트)
 - 그룹: 기본 / 눈금 / 값 / 색상 / 동작 / 효과
 - 색(`color`/`optcolor`) 값은 `#RRGGBB` 또는 투명도가 있는 `#RRGGBBAA`. 속성 창은 색 + 투명도(%) 칸으로 편집하고, 100%면 6자리로 저장한다. 목록 안의 색(구간 색 등)과 화면 배경색은 투명도 없음.
 

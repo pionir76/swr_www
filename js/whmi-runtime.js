@@ -212,8 +212,9 @@
       this.status = status;
       this.nav = nav || {}; // { goto(screenId) } — screenlink 위젯이 쓰는 화면 전환 진입점
       this.bindings = new Map(); // tagId -> [{ w, p, inst, g }]
+      this.items = [];           // 모든 위젯(태그 없는 위젯 포함) — 상태 칸(보이기 등)은 위젯마다 판정
       this.values = {};          // tagId -> { v, q, min?, max? }
-      this.extraPollTags = new Set(); // enableWhen이 참조하지만 자체 위젯이 없는 태그
+      this.extraPollTags = new Set(); // 상태 칸 조건(visibleWhen/enableWhen/activeWhen)이 보는 태그
       this.timer = null;
       this.render(container);
     }
@@ -244,17 +245,52 @@
       for (const w of this.screen.widgets) {
         if (!registry[w.type]) { drawWidget(root, w, ctx); continue; }
         if (w.tag && !this.tags[w.tag]) console.warn(`[whmi] 정의되지 않은 태그: ${w.tag} (${w.id})`);
-        // enableWhen: { tag, equals } — 다른 태그 값이 조건과 같을 때만 쓰기 가능하게 한다
-        // (예: 수동출력 입력은 제어모드가 수동일 때만). 조건 태그에 바인딩된 위젯이
-        // 따로 없어도 값을 받아야 하므로 폴링 대상에 추가해둔다.
-        if (w.enableWhen && w.enableWhen.tag) this.extraPollTags.add(w.enableWhen.tag);
+        // 상태 칸 조건이 보는 태그는 그 태그에 연결된 위젯이 없어도 값을 받아야 하므로 폴링 대상에 넣는다
+        for (const t of WHMI.rules.tagsOf(w.visibleWhen, w.enableWhen, w.activeWhen)) this.extraPollTags.add(t);
+        // 쓰기 태그(표시와 다른 곳에 쓰는 위젯, 예: NSP 표시 / TSP 쓰기) — 쓰기 권한·통신 상태를 알아야 하므로 폴링
+        if (w.writeTag) this.extraPollTags.add(w.writeTag);
         const { g, p, inst } = drawWidget(root, w, ctx);
+        const item = { w, p, inst, g };
+        this.items.push(item);
         if (w.tag && inst.update) {
           if (!this.bindings.has(w.tag)) this.bindings.set(w.tag, []);
-          this.bindings.get(w.tag).push({ w, p, inst, g });
-          inst.update(this.info(w, p, undefined));
+          this.bindings.get(w.tag).push(item);
         }
+        this.refresh(item, true);   // 값이 오기 전 첫 모습(판정 불가 상태)
       }
+    }
+
+    // 상태 칸 3개 판정 — 판정 엔진(WHMI.rules) 결과를 칸별 규칙으로(docs/architecture/hmi-conditions.md §3.2)
+    //  visible  조건 거짓이면 숨김, 판정 불가(통신 불량 등)면 보임 — 정보를 감추지 않는 쪽
+    //  enabled  조건이 참일 때만 조작 허용(거짓·판정 불가면 막음)
+    //  active   조건 참이면 켜짐, 거짓·판정 불가면 꺼짐. 조건이 없으면 undefined(위젯이 자기 값으로 판단)
+    states(w) {
+      const R = WHMI.rules;
+      const at = (c) => { const n = R.normalize(c); return n ? R.test(n, this.values[n.tag]) : undefined; };
+      const vis = at(w.visibleWhen), en = at(w.enableWhen), act = at(w.activeWhen);
+      return {
+        visible: vis !== false,
+        enabled: en === undefined ? true : en === true,
+        active: act === undefined ? undefined : act === true,
+      };
+    }
+
+    // 위젯 하나를 지금 값으로 다시 반영. initial: 첫 폴링 전(품질 표시는 값이 온 뒤부터)
+    refresh(item, initial) {
+      const { w, p, inst, g } = item;
+      const st = this.states(w);
+      g.classList.toggle('w-hidden', !st.visible);
+      // 자기 태그가 없어도 켜짐 상태 조건이 있으면(예: 태그 없는 램프가 다른 태그로 켜짐) 갱신 —
+      // 이때 값·품질은 조건 태그의 것을 쓴다(조건 태그가 통신 불량이면 흐리게)
+      const src = w.tag || (st.active !== undefined && WHMI.rules.normalize(w.activeWhen).tag);
+      if (!inst.update || !src) return;
+      const info = this.info(w, p, this.values[src], st);
+      if (!initial) {
+        // bad: 흐리게+값 자리 대체(기존). normal: 값은 그대로 두고 연한 경고 표시만(§2.2).
+        g.classList.toggle('q-bad', info.quality === 'bad');
+        g.classList.toggle('q-normal', info.quality === 'normal');
+      }
+      inst.update(info);
     }
 
     // 위젯이 보는 값 정보.
@@ -262,23 +298,18 @@
     // unit/decimals/access는 실시간 값 응답이 상속·오버라이드 적용 완료 상태로 내려주므로:
     //   위젯 props(명시한 경우만) > 실시간 값 응답 > 태그 정의
     // (docs/reference/hmi-widgets.md §2.1)
-    // enableWhen 조건을 만족하는지 — 조건 태그 자체가 아직 안 왔거나(q 불량 등) 값이
-    // 다르면 비활성. 조건이 없는 위젯은 항상 true(기존 동작 그대로).
-    checkEnableWhen(w) {
-      if (!w.enableWhen || !w.enableWhen.tag) return true;
-      const cond = this.values[w.enableWhen.tag];
-      return !!cond && cond.v === w.enableWhen.equals;
-    }
-
-    info(w, p, raw) {
+    // st: 상태 칸 판정 결과(states) — 조작 허용이 거짓이면 쓰기 불가, 켜짐 상태는 info.active로 위젯에
+    info(w, p, raw, st = this.states(w)) {
       const t = this.tags[w.tag] || {};
       const pick = (...xs) => xs.find((x) => x != null);
       // quality는 3단계(good/normal/bad) — 값이 아예 없으면(통신 실패 등) bad로 간주.
       // 'disabled'(소스 장비가 통신 비활성, v는 null)도 bad와 똑같이 그리고 쓰기를 막는다.
       const disabled = !!raw && raw.q === 'disabled';
       const quality = disabled ? 'bad' : raw ? (raw.q || 'good') : 'bad';
-      let writable = !disabled && pick(raw && raw.access, t.access) === 'rw';
-      if (writable && !this.checkEnableWhen(w)) writable = false;
+      // 쓰기 가능 여부는 실제로 쓰는 태그(쓰기 태그가 있으면 그것) 기준
+      const wraw = w.writeTag ? this.values[w.writeTag] : raw;
+      const wt = w.writeTag ? this.tags[w.writeTag] || {} : t;
+      const writable = !(wraw && wraw.q === 'disabled') && pick(wraw && wraw.access, wt.access) === 'rw' && st.enabled;
       return {
         value: raw ? raw.v : undefined,
         ok: quality !== 'bad',
@@ -288,6 +319,7 @@
         unit: pick(p.unit, raw && raw.unit, t.unit, ''),
         decimals: pick(p.decimals, raw && raw.decimals, t.decimals, 0),
         writable,
+        active: st.active,
         tag: t,
       };
     }
@@ -300,17 +332,8 @@
       for (const id of this.bindings.keys()) this.values[id] = values[id];
       for (const id of this.extraPollTags) this.values[id] = values[id];
 
-      // 2단계: 값이 다 반영된 상태에서 위젯 갱신
-      for (const [id, list] of this.bindings) {
-        const raw = this.values[id];
-        for (const b of list) {
-          const info = this.info(b.w, b.p, raw);
-          // bad: 흐리게+값 자리 대체(기존). normal: 값은 그대로 두고 연한 경고 표시만(§2.2).
-          b.g.classList.toggle('q-bad', info.quality === 'bad');
-          b.g.classList.toggle('q-normal', info.quality === 'normal');
-          b.inst.update(info);
-        }
-      }
+      // 2단계: 값이 다 반영된 상태에서 모든 위젯 갱신(태그 없는 위젯도 상태 칸 판정)
+      for (const item of this.items) this.refresh(item);
     }
 
     async poll() {
@@ -329,20 +352,21 @@
 
     async write(w, v, confirmMsg) {
       if (v == null) { this.status('err', `쓸 값이 지정되지 않은 위젯: ${w.id}`); return; }
-      const t = this.tags[w.tag];
+      const target = w.writeTag || w.tag;   // 쓰기 태그가 있으면 그곳에(표시는 tag)
+      const t = this.tags[target];
       // access는 실시간 값 응답으로 갱신될 수 있으므로(§2.1) 최신 폴링 결과를 우선 확인 —
       // 최종 판단은 어차피 서버가 하지만(405), 클라이언트에서도 최신 상태로 먼저 막아준다.
-      const access = this.values[w.tag]?.access ?? t?.access;
-      if (!t || access !== 'rw' || !this.checkEnableWhen(w)) {
-        this.status('err', `쓰기 불가 태그: ${w.tag}`);
+      const access = this.values[target]?.access ?? t?.access;
+      if (!t || access !== 'rw' || !this.states(w).enabled) {
+        this.status('err', `쓰기 불가 태그: ${target}`);
         return;
       }
       if (confirmMsg && !(await confirmDialog(confirmMsg))) return;
       try {
-        await this.source.write(w.tag, v);
+        await this.source.write(target, v);
         this.poll(); // 쓰기 결과를 바로 반영
       } catch (e) {
-        this.status('err', `쓰기 실패 (${w.tag}): ${e.message}`);
+        this.status('err', `쓰기 실패 (${target}): ${e.message}`);
       }
     }
   }
