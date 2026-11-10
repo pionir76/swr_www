@@ -308,7 +308,9 @@
       el = document.createElement('div');
       el.id = 'settingsMsg';
     }
-    const anchor = $('.settings-action-bar') ?? $('.tab-content:not([hidden])');
+    // 지금 보이는 탭 기준 — 첫 번째 action-bar는 숨겨진 다른 탭에 있을 수 있다
+    const tab = $('.tab-content:not([hidden])');
+    const anchor = tab?.querySelector('.settings-action-bar') ?? tab;
     anchor?.insertAdjacentElement('beforebegin', el);
 
     el.className = `banner${type === 'error' ? ' warn' : ''}`;
