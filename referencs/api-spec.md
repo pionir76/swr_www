@@ -998,6 +998,10 @@
 { "ok": true, "ntpEnabled": true }
 ```
 
+> 장치에서 약 10초 걸립니다(ntpd 시작/중지 완료 후 응답).
+
+**에러** 500: `timedatectl` 실패 또는 20초 안에 끝나지 않음 (`"timedatectl set-ntp timed out"`)
+
 ---
 
 ### PUT /api/system/timezone
@@ -1039,7 +1043,8 @@ NTP 활성 여부와 무관하게 적용됩니다.
 { "ok": true, "localTime": "2026-10-13T21:00:00" }
 ```
 
-**에러** 409: NTP 활성 상태
+**에러** 409: NTP 활성 상태  
+**에러** 400: OS 빌드 날짜보다 이른 시간 `{ "error": "Time is earlier than the OS build date. Enter a later date and time." }` (기준일은 OS 이미지마다 다름, 현재 2026-03-13)
 
 ---
 
