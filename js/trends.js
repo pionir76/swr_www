@@ -24,8 +24,7 @@
   let _liveTimer   = null;   // setInterval ID (live polling)
   let _statusTimer = null;   // setTimeout ID (재귀 상태 폴링 — freq에 맞춰 주기 재계산)
   let _diskTimer   = null;   // setInterval ID (시스템 디스크 사용량 폴링)
-  let _lastLiveBuf = null;   // Uint8Array — 마지막 수신 레코드 (중복 감지용)
-  let _lastLiveTs  = 0;      // 마지막 live 레코드 타임스탬프 (unix sec)
+  let _liveBusy    = false;  // live 요청 진행 중(응답이 주기보다 늦을 때 같은 구간 중복 요청 방지)
   let _viewFrom    = 0;      // 현재 뷰 시작 (unix sec)
   let _viewTo      = 0;      // 현재 뷰 종료 (unix sec)
   let _loadingFull = false;  // 파일 전체 적재 중(pollLatest와 경쟁 방지)
@@ -234,11 +233,32 @@
     try {
       const res = await apiFetch('/api/tfile/status');
       if (_destroyed || !res.ok) return;
+      const prev = _status;
       _status = await res.json();
       if (_destroyed) return;
       updateStatusUI(_status);
       renderFileList();
+      followRecordingChange(prev, _status);
     } catch {}
+  }
+
+  // 다른 브라우저·사용자가 녹화를 시작·중지해도 따라간다(이 화면의 녹화 버튼도 같은 경로를
+  // 지나지만 중복 호출은 무해 — selectFile은 마지막 선택만 반영).
+  // 새 녹화로 넘어가는 건 사용자가 최신 파일(또는 녹화 중이던 파일)을 보고 있을 때만 —
+  // 지난 파일을 일부러 열어 보는 중이면 화면을 바꾸지 않고 목록만 갱신한다.
+  async function followRecordingChange(prev, cur) {
+    if (!prev) return;                                   // 첫 조회
+    const prevRec = prev.recording ? prev.filename : null;
+    const curRec  = cur.recording  ? cur.filename  : null;
+    if (prevRec === curRec) return;
+
+    const latest = _files.reduce((a, f) => (!a || f.startTime > a.startTime ? f : a), null);
+    const following = !_file || _file.filename === prevRec || _file.filename === latest?.filename;
+
+    if (prevRec && !curRec && _isLive && _file?.filename === prevRec) stopLive();   // 녹화 끝남
+    await fetchFiles();
+    if (_destroyed) return;
+    if (curRec && following && _file?.filename !== curRec) selectFile(curRec);      // 새 녹화
   }
 
   async function fetchFiles() {
@@ -651,7 +671,6 @@
       if (_destroyed || myToken !== _selectToken) return; // 페이지 이탈 or 다른 파일 선택됨 — 중단
 
       _file = { filename, ...parsed };
-      _lastLiveBuf = null; // 이전에 선택했던(다른) 파일의 중복 감지 상태 초기화
 
       // 채널별 색상 배정 (처음 한 번)
       for (let i = 0; i < _file.chCnt; i++) {
@@ -665,7 +684,12 @@
 
       const isRecFile = _status?.recording && _status?.filename === filename;
       const fi = _files.find((f) => f.filename === filename);
-      const estimatedEnd = isRecFile ? Math.floor(Date.now() / 1000) : (fi?.endTime ?? _file.startTime);
+      // 끝 시각은 장치가 알려준 기록 수로 정한다(마지막 레코드 = 시작 + (기록 수 - 1) × 주기).
+      // 브라우저 시계를 쓰면 PC 시계가 앞선 만큼 요청 구간이 길어져, 받은 개수로 간격을
+      // 역산하는 parseSample이 간격을 잘못 잡고(점이 미래로 늘어짐) LIVE가 멈춘다.
+      const estimatedEnd = isRecFile
+        ? _file.startTime + Math.max(0, (_status.recordCount || 0) - 1) * _file.freq
+        : (fi?.endTime ?? _file.startTime);
 
       // 파일 전체를 메모리에 적재 (서버 호출은 이 1번뿐 — 이후 이동/줌은 전부 로컬 연산)
       await loadFullFile(filename, estimatedEnd);
@@ -737,31 +761,36 @@
     setNavDisabled(false);
   }
 
-  // 라이브 파일의 최신 레코드 1개만 받아 _allPts에 이어붙인다(추가 서버 호출은
-  // 이것뿐). _allPtsStep이 1이 아니면(초대용량 파일이라 전체 적재 시 서버가
-  // step을 올린 경우) 간격이 안 맞아 이어붙일 수 없으므로 생략한다 — 드문 경우.
+  // 라이브 파일에 새로 기록된 레코드를 sample 한 번으로 받아 _allPts에 이어붙인다.
+  // 레코드 번호 = (시각 - startTime) / freq 이고 서버는 실제 기록된 마지막 레코드까지만
+  // 돌려주므로, "지금 가진 다음 칸부터"를 요청하면 새 레코드가 0개·1개·밀린 여러 개로
+  // 그대로 온다 — 값 비교가 필요 없어 값이 안 변해도 점이 빠지지 않고, 요청이 하나라
+  // 상태 조회와의 경쟁도 없다. 시각은 서버 응답 개수로 간격을 짐작하는
+  // parseSample을 쓰지 않고 from + i × 간격으로 직접 계산한다(to를 넉넉히 잡으므로).
+  // 전체 적재 때 서버가 step을 올렸으면(_allPtsStep > 1) 같은 간격으로 이어 받는다.
+  const LIVE_SPAN_SEC = 3600;   // 한 번에 받을 최대 구간 — 밀리면 다음 주기에 나눠 따라잡음
   async function pollLatest() {
-    if (_destroyed || !_file || _loadingFull || _allPtsStep !== 1) return;
+    if (_destroyed || !_file || _loadingFull || _liveBusy) return;
+    const file = _file;
+    const step = _allPtsStep;
+    const gap  = step * file.freq;                       // 이어붙일 점 사이 간격(초)
+    const from = _allPts.length ? dataEndSec() + gap : file.startTime;
+    const to   = from + Math.max(LIVE_SPAN_SEC, gap);
+    _liveBusy = true;
     try {
-      const res = await apiFetch(`/api/tfile/latest?file=${encodeURIComponent(_file.filename)}`);
-      if (_destroyed || !res.ok) return;
+      const res = await apiFetch(`/api/tfile/sample?file=${encodeURIComponent(file.filename)}&from=${from}&to=${to}&step=${step}`);
+      if (_destroyed || _file !== file || _loadingFull || !res.ok) return;
       const buf = await res.arrayBuffer();
-      if (_destroyed || buf.byteLength < 32) return;
+      if (_destroyed || _file !== file || _loadingFull) return;
+      const n = Math.floor(buf.byteLength / 32);
+      if (n === 0) return;                               // 아직 새 레코드 없음
 
-      const u8 = new Uint8Array(buf);
-
-      // 이전과 동일한 레코드면 스킵 (아직 새 레코드 미기록)
-      if (_lastLiveBuf && _lastLiveBuf.length === u8.length &&
-          _lastLiveBuf.every((v, i) => v === u8[i])) return;
-      _lastLiveBuf = u8;
-
-      _lastLiveTs = dataEndSec() + _file.freq;
-
-      const vals = new Array(16);
-      const dv   = new DataView(buf);
-      for (let ch = 0; ch < 16; ch++) vals[ch] = dv.getUint16(ch * 2, true);
-
-      _allPts.push({ ts: _lastLiveTs, vals });
+      const dv = new DataView(buf);
+      for (let i = 0; i < n; i++) {
+        const vals = new Array(16);
+        for (let ch = 0; ch < 16; ch++) vals[ch] = dv.getUint16(i * 32 + ch * 2, true);
+        _allPts.push({ ts: from + i * gap, vals });
+      }
 
       // 휠/드래그 팬 한계도 함께 전진시켜 새로 들어온 구간까지 접근 가능하게 함
       if (_chart) _chart.options.plugins.zoom.limits.x.max = dataEndSec() * 1000;
@@ -775,7 +804,11 @@
       renderViewFromMemory(_viewFrom, _viewTo, { keepWidth: true });
       updateStatsLastValue();
 
-    } catch {}
+    } catch {
+      // 일시적 통신 오류 — 다음 주기에 같은 칸부터 다시 요청한다
+    } finally {
+      _liveBusy = false;
+    }
   }
 
   // ── 차트 데이터 업데이트 ─────────────────────────────────────
