@@ -35,7 +35,7 @@ Web UI (정적 HTML/CSS/JS)
 
 | 구분 | 내용 |
 |---|---|
-| 하드웨어 | NXP i.MX6ULL, RS485 × 1, Ethernet × 2 (switching hub) |
+| 하드웨어 | NXP i.MX6ULL, RS485 × 1, Ethernet × 2 (독립 포트) |
 | 백엔드 | Qt (QCoreApplication headless), QHttpServer, SQLite |
 | 웹서버 | lighttpd (정적 파일 서빙, `/api/*` → Qt App 프록시) |
 | 프론트엔드 | Vanilla HTML / CSS / JavaScript (프레임워크 없음) |

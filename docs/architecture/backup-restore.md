@@ -1045,32 +1045,38 @@ API 흐름:
 
 ### 로그 연동 확인
 
-- [ ] 백업 다운로드 요청 — `Logger::info`
-- [ ] 백업 생성 성공 — `Logger::info` (장비 수, 레지스터 수 포함)
-- [ ] 백업 생성 실패 — `Logger::error`
-- [ ] 복원 파일 업로드 — `Logger::info`
-- [ ] 복원 validate 성공 — `Logger::info`
-- [ ] 복원 validate 실패 — `Logger::warning`
-- [ ] 복원 apply 시작 — `Logger::info`
-- [ ] 복원 성공 — `Logger::info`
-- [ ] 복원 실패 — `Logger::error`
-- [ ] rollback 수행 — `Logger::warning`
-- [ ] 복원 후 재시작 요청 — `Logger::info`
+> 2026-11-11 장치에서 확인(웹 백업·복원 시험 중 `GET /api/logs`). 실패 경로 중 일부러 만들 수 없는 것은 미확인으로 둔다.
+
+- [x] 백업 다운로드 요청 — 요청과 성공이 한 줄로 기록됨(`Backup created by admin: <bytes>`)
+- [x] 백업 생성 성공 — `INFO Backup created by admin: 4264 bytes` (장비·레지스터 수는 없음)
+- [ ] 백업 생성 실패 — `Logger::error` (실패 상황을 만들 수 없어 미확인)
+- [x] 복원 파일 업로드 — `INFO Restore validate requested by admin: <bytes>`
+- [x] 복원 validate 성공 — `INFO Restore validated: id=… devices=4 registers=31 users=3`
+- [x] 복원 validate 실패 — `WARN Restore validate failed: <사유>`
+- [x] 복원 apply 시작 — `INFO Restore apply started: id=…`
+- [x] 복원 성공 — `INFO Restore apply completed: id=…`, `INFO Restore applied by admin`
+- [ ] 복원 실패 — `Logger::error` (미확인)
+- [ ] rollback 수행 — `Logger::warning` (미확인)
+- [x] 복원 후 재시작 요청 — `INFO System restart requested via API.`
 
 ---
 
 ### 테스트 항목
 
-- [ ] 같은 장비에서 백업 → 복원 정상 동작 확인
-- [ ] 다른 SWR 장비로 복원 (hostname 불일치 경고 포함)
-- [ ] 잘못된 형식 파일 업로드 시 차단 확인
-- [ ] checksum 불일치 파일 복원 차단 확인
-- [ ] schemaVersion 불일치 시 복원 차단 확인
-- [ ] 네트워크 설정 기본 OFF 확인
-- [ ] 폴링 중 복원 차단 확인
-- [ ] DB transaction 실패 시 rollback 확인 (현재 설정 유지)
-- [ ] admin 계정 삭제 차단 확인
-- [ ] path traversal 공격 방어 확인
+> 2026-11-11 장치(192.168.0.150)에서 시험. 같은 장치에서 받은 백업으로 복원했으므로 데이터는 그대로이고, 재시작 때문에 트렌드 녹화만 멈춰 다시 시작했다.
+
+- [x] 같은 장비에서 백업 → 복원 정상 동작 확인 — 복원·재시작(약 8초) 후 장비 4·레지스터 31·사용자·HMI(화면·태그)·폴링 상태 모두 같음
+- [ ] 다른 SWR 장비로 복원 (hostname 불일치 경고 포함) — 장비가 하나라 실제 이전은 미확인. manifest의 hostname만 바꾼 파일로 경고(`Backup was created on 'other-swr', current device is 'smartroute'`) 확인
+- [x] 잘못된 형식 파일 업로드 시 차단 확인 — 422 `Missing required files (manifest.json, checksum.sha256)`
+- [x] checksum 불일치 파일 복원 차단 확인 — 422 `Checksum mismatch: devices.json`
+- [x] schemaVersion 불일치 시 복원 차단 확인 — 422 `Incompatible schemaVersion: backup=999, device=1`
+- [x] 네트워크 설정 기본 OFF 확인 — validate 응답 경고 `Network settings will NOT be restored unless explicitly enabled`, apply는 `network: false`로 시험
+- [x] 폴링 중 복원 차단 확인 — 409 `Polling is running…`. 409를 받아도 복원 세션은 유지되어, 폴링 정지 후 같은 `restoreId`로 적용됨(화면 흐름과 일치)
+- [ ] DB transaction 실패 시 rollback 확인 (현재 설정 유지) — 실패 상황을 만들 수 없어 미확인
+- [x] admin 계정 삭제 차단 확인 — `DELETE /api/users/admin` 403
+- [x] path traversal 공격 방어 확인 — `../../etc/zt_evil` 항목이 든 ZIP은 422 `Invalid file path in ZIP`, 장치에 파일 생성 안 됨
+
+참고: 복원 세션은 **가장 마지막 validate 하나만** 유효하고 **한 번 적용하면 사라진다**(이전 id나 같은 id 재적용은 500 `Restore session not found or expired`). 화면은 파일 하나를 올리고 바로 적용하므로 문제없다.
 
 ---
 

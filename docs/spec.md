@@ -2,7 +2,7 @@ SmartRoute 는 임베디드 통신변환 디바이스이며, 다수의 범용 �
 
 본 디바이스는 NXP 사의 I.MX6ULL CPU를 사용하며 개발 언어는 Qt 를 사용한다.
 
-1. 범용 장비로부터 Modbus RTU/TCP 프로토콜을 통해 데이터를 읽어 들인다. 본 디바이스는 하나의 RS485 포트와 2개의 Ethernet switching hub 포트를 가지고 있다.
+1. 범용 장비로부터 Modbus RTU/TCP 프로토콜을 통해 데이터를 읽어 들인다. 본 디바이스는 하나의 RS485 포트와 2개의 독립 Ethernet 포트를 가지고 있다.
 
 2. 본 디바이스는 다수의 장비에 RS485 / Ethernet 포트를 통해 한번에 연결할 수 있다.
 
