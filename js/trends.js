@@ -31,6 +31,12 @@
   let _isLive      = false;
   let _destroyed   = false;  // 다른 페이지로 이동해 이 페이지 스크립트가 정리된 상태
   let _rangeSelectActive = false; // 구간 보기 모드(드래그 = 팬 대신 영역 선택 후 확대)
+  // 바늘(기록계 펜): 그래프와 오른쪽 y축 눈금 사이 공간에 채널별 맨 오른쪽 값을 표시.
+  // 'overlap' = 모두 한 줄에 겹쳐, 'spread' = 보이는 채널마다 칸을 따로(그만큼 그래프 폭 줄어듦)
+  const NEEDLE_KEY = 'swr.trendNeedleMode';
+  const NEEDLE_OVERLAP_PX = 18;
+  const NEEDLE_LANE_PX = 12;
+  let _needleMode = (() => { try { return localStorage.getItem(NEEDLE_KEY) === 'spread' ? 'spread' : 'overlap'; } catch (_) { return 'overlap'; } })();
 
   // ── DOM ─────────────────────────────────────────────────────
   const recDot      = $('#tfileRecDot');
@@ -63,6 +69,7 @@
   const zoomOutBtn  = $('#tfileZoomOutBtn');
   const rangeSelectBtn = $('#tfileRangeSelectBtn');
   const fitAllBtn      = $('#tfileFitAllBtn');
+  const needleBtn      = $('#tfileNeedleBtn');
   const timeLabelEl = $('#tfileTimeLabel');
   const statsRow    = $('#tfileStatsRow');
 
@@ -291,57 +298,64 @@
     return _allPts[_allPts.length - 1].ts;
   }
 
-  // 뷰 범위를 실제 로드된 데이터 경계 안으로 클램프 (폭은 최대한 유지)
-  // PREV/NEXT/줌/휠·드래그처럼 "파일 밖으로 못 나가게" 막는 탐색용 — 요청한 폭이
-  // 실제 데이터 범위보다 넓으면 폭 자체를 줄여서 있는 데이터에 맞춘다.
+  // 뷰 범위 규칙(LIVE·지난 파일·드래그·확대·버튼 모두 이 하나로):
+  //  - 창 폭은 [최소 폭, 최대 폭]. 최대 폭 = max(1:1 폭, 데이터 길이) — 데이터가 1:1 창보다
+  //    짧으면 1:1 폭까지만(늘려 보이지 않음), 길면 전체 보기(데이터 전체)까지.
+  //  - 창이 데이터보다 넓으면 기록계처럼 데이터를 오른쪽 끝에 붙이고 왼쪽은 비운다.
+  //  - 데이터가 창보다 길면 데이터 범위 안에서만 움직인다.
+  function maxViewWidthSec() {
+    return Math.max(oneToOneWidthSec(), dataEndSec() - dataStartSec());
+  }
+
   function clampView(from, to) {
     if (!_file) return [from, to];
     const minWidth = Math.max(1, _file.freq * MIN_VIEW_POINTS);
-    let width = Math.max(minWidth, to - from);
-    const start = dataStartSec();
-    const end   = Math.max(start + minWidth, dataEndSec());
-
-    if (width > end - start) width = end - start;
-    if (from < start) { from = start; to = from + width; }
-    if (to > end)      { to = end;    from = to - width; }
-    if (from < start)  { from = start; }
-    return [from, to];
+    const start = dataStartSec(), end = dataEndSec();
+    const width = Math.min(maxViewWidthSec(), Math.max(minWidth, to - from));
+    if (width >= end - start) return [end - width, end];      // 짧은 데이터: 오른쪽 정렬
+    from = Math.min(Math.max(from, start), end - width);
+    return [from, from + width];
   }
 
-  // 시작 경계만 고정하고 폭은 줄이지 않는 클램프 — "1픽셀=데이터 1개" 기본 뷰처럼
-  // 데이터가 창을 다 못 채워도 늘려서 보여주지 않고 나머지를 빈 채로 둬야 할 때 사용.
-  function clampViewKeepWidth(from, to) {
-    if (!_file) return [from, to];
-    const start = dataStartSec();
-    const width = Math.max(1, to - from);
-    if (from < start) { from = start; to = from + width; }
-    return [from, to];
+  // 휠 줌·드래그 팬(플러그인) 한계를 같은 규칙으로 — 오른쪽 정렬된 빈 왼쪽까지 허용
+  function updateZoomLimits() {
+    if (!_chart || !_file) return;
+    const end = dataEndSec();
+    _chart.options.plugins.zoom.limits.x = {
+      min: (end - maxViewWidthSec()) * 1000,
+      max: end * 1000,
+      minRange: Math.max(1000, _file.freq * MIN_VIEW_POINTS * 1000),
+    };
   }
 
   // "1픽셀 = 데이터 1개" 기본 뷰 폭(초 단위) — 캔버스 폭(px) × 레코딩 주기(초)
+  // 실제 그래프 영역 폭(px) — 오른쪽 바늘 공간·y축 눈금을 뺀 폭
+  function plotWidthPx() {
+    const a = _chart?.chartArea;
+    return a ? Math.max(50, Math.round(a.right - a.left)) : (_chart?.canvas?.clientWidth || 1200);
+  }
+
   function oneToOneWidthSec() {
-    const canvasW = _chart?.canvas?.clientWidth || 1200;
+    const canvasW = plotWidthPx();
     // [from, to] 구간은 양끝 포함이라 폭을 canvasW*freq로 두면 실제로는
     // (canvasW+1)개 레코드가 걸쳐 computeViewPts의 stride가 2로 올림돼(=포인트
     // 절반 손실) 진짜 1:1이 깨진다. canvasW-1로 정확히 canvasW개가 되게 맞춘다.
     return Math.max(1, (canvasW - 1) * _file.freq);
   }
 
-  // 정지된(레코딩 중이 아닌) 파일의 기본 뷰: 파일 시작점부터 1:1로, 데이터가 캔버스
-  // 폭보다 적으면 나머지 오른쪽은 빈 채로 둔다.
+  // 정지된(레코딩 중이 아닌) 파일의 기본 뷰: 파일 시작점부터 1:1. 데이터가 창보다
+  // 짧으면 clampView가 오른쪽 정렬로 바꾼다.
   function computeOneToOneStartWindow() {
     const from = dataStartSec();
     return [from, from + oneToOneWidthSec()];
   }
 
-  // 레코딩 중인(라이브) 파일의 뷰: 아직 창을 다 못 채웠으면 시작점에 고정된 채
-  // 오른쪽이 한 픽셀씩 채워지고, 창을 다 채우고 나면 최신 데이터가 오른쪽 끝에
-  // 고정되는 슬라이딩 창으로 자연스럽게 전환된다.
+  // 레코딩 중인(라이브) 파일의 뷰: 종이 기록계처럼 최신 데이터가 늘 오른쪽 끝(바늘
+  // 자리)에 있고 그래프가 왼쪽으로 흘러간다. 데이터가 창보다 적으면 왼쪽은 빈 채로 둔다.
   function computeLiveWindow() {
     const width = oneToOneWidthSec();
     const to    = dataEndSec();
-    const from  = Math.max(dataStartSec(), to - width);
-    return [from, from + width];
+    return [to - width, to];
   }
 
   // _allPts에서 지정 구간을 잘라 캔버스 폭에 맞게 다운샘플링(순수 함수 — 부수효과 없음)
@@ -353,9 +367,11 @@
     riStart = Math.max(0, Math.min(_allPts.length - 1, riStart));
     riEnd   = Math.max(riStart, Math.min(_allPts.length - 1, riEnd));
     const slice = _allPts.slice(riStart, riEnd + 1);
-    const canvasW = _chart?.canvas?.clientWidth || 1200;
-    const stride  = Math.max(1, Math.ceil(slice.length / canvasW));
-    return stride === 1 ? slice : slice.filter((_, i) => i % stride === 0);
+    const stride  = Math.max(1, Math.ceil(slice.length / plotWidthPx()));
+    if (stride === 1) return slice;
+    const out = slice.filter((_, i) => i % stride === 0);
+    if (out[out.length - 1] !== slice[slice.length - 1]) out.push(slice[slice.length - 1]);  // 바늘 위치
+    return out;
   }
 
   // hex 색상을 지정 투명도의 rgba로 변환 — 선택되지 않은 채널을 흐리게 표시할 때 사용
@@ -394,6 +410,7 @@
         pointRadius:      0,
         pointHoverRadius: 4,
         tension:          0.3,
+        yAxisID:          'y',   // 'needle'(바늘 공간용 빈 축)이 아니라 값 축에
         _chIdx:           i,
       };
       if (selected) selectedDataset = dataset;
@@ -407,11 +424,11 @@
   // 즉시(애니메이션 없이) 지정 구간으로 뷰를 갱신 — 초기 로드/라이브 폴링/LIVE 토글/
   // 마우스 휠·드래그(플러그인이 스케일을 이미 실시간으로 옮겨주고 있으므로 데이터만
   // 동기화하면 됨)에서 사용. 전부 로컬 메모리 연산이라 네트워크 왕복이 없다.
-  // keepWidth: true면 폭을 줄이지 않는 클램프 사용 — 1:1 기본 뷰처럼 데이터가
-  // 창을 다 못 채워도 늘리지 않고 나머지를 빈 채로 둬야 할 때(초기 로드/라이브).
-  function renderViewFromMemory(fromSec, toSec, { keepWidth = false } = {}) {
+  // 범위는 항상 clampView 규칙(짧은 데이터는 오른쪽 정렬, 늘려 보이지 않음).
+  function renderViewFromMemory(fromSec, toSec) {
     if (!_file) return;
-    const [f, t] = keepWidth ? clampViewKeepWidth(fromSec, toSec) : clampView(fromSec, toSec);
+    updateZoomLimits();
+    const [f, t] = clampView(fromSec, toSec);
     _viewFrom = f;
     _viewTo   = t;
     setChartDatasets(computeViewPts(f, t));
@@ -453,6 +470,7 @@
 
   let _navAnimFrame = null;
   function animateViewTo(newFrom, newTo) {
+    updateZoomLimits();
     const [f, t] = clampView(newFrom, newTo);
     const startFrom = _viewFrom, startTo = _viewTo;
 
@@ -555,6 +573,10 @@
     const canFitAll = (dataEndSec() - dataStartSec()) > oneToOneWidthSec();
     fitAllBtn.disabled = _isLive || !canFitAll;
     fitAllBtn.classList.toggle('active', isFitAllView());
+    // 이전/다음: 더 갈 곳이 없으면 비활성(짧은 데이터는 둘 다)
+    const eps = (_file.freq || 1) / 2;
+    if (prevBtn) prevBtn.disabled = _isLive || _viewFrom <= dataStartSec() + eps;
+    if (nextBtn) nextBtn.disabled = _isLive || _viewTo >= dataEndSec() - eps;
   }
 
   // LIVE 모드 동안 수동 네비게이션(버튼) 비활성화. 마우스 휠/드래그는 2안에서
@@ -695,23 +717,18 @@
       await loadFullFile(filename, estimatedEnd);
       if (_destroyed || myToken !== _selectToken) return; // 페이지 이탈 or 다른 파일 선택됨 — 이 결과는 버림
 
-      // 휠 줌/드래그 팬 한계를 실제 로드된 데이터 경계로 갱신
-      if (_chart) {
-        _chart.options.plugins.zoom.limits.x = {
-          min: dataStartSec() * 1000,
-          max: dataEndSec() * 1000,
-          minRange: Math.max(1000, _file.freq * MIN_VIEW_POINTS * 1000),
-        };
-      }
-
-      // 뷰 범위 결정: "1픽셀 = 데이터 1개" 기본 뷰. 녹화 중 파일이면 실시간 창
-      // (창을 다 못 채웠으면 시작점부터 자라나다 다 채우면 최신 데이터에 고정),
-      // 아니면 파일 시작점부터 캔버스 폭만큼 — 데이터가 적어도 늘려 보여주지 않는다.
+      // 뷰 범위 결정: "1픽셀 = 데이터 1개" 기본 뷰. 녹화 중 파일이면 최신이 오른쪽 끝,
+      // 아니면 파일 시작점부터(데이터가 창보다 짧으면 오른쪽 정렬). 휠·드래그 한계는
+      // renderViewFromMemory가 같은 규칙으로 갱신한다.
+      applyNeedleLayout(false);   // 채널 수가 바뀌면 펼침 모드 칸 수가 달라짐 — 1:1 폭 계산 전에
       const [vf, vt] = isRecFile ? computeLiveWindow() : computeOneToOneStartWindow();
       _viewFrom = vf;
       _viewTo   = vt;
 
-      renderViewFromMemory(_viewFrom, _viewTo, { keepWidth: true });
+      renderViewFromMemory(_viewFrom, _viewTo);
+      // 새 데이터로 y축 숫자 폭이 바뀌면 그래프 폭도 바뀐다 — 확정된 폭으로 1:1 창을 한 번 더
+      const [vf2, vt2] = isRecFile ? computeLiveWindow() : computeOneToOneStartWindow();
+      if (Math.abs((vt2 - vf2) - (vt - vf)) >= _file.freq) renderViewFromMemory(vf2, vt2);
       renderStatsCards();
       highlightFileItem(filename);
 
@@ -792,16 +809,12 @@
         _allPts.push({ ts: from + i * gap, vals });
       }
 
-      // 휠/드래그 팬 한계도 함께 전진시켜 새로 들어온 구간까지 접근 가능하게 함
-      if (_chart) _chart.options.plugins.zoom.limits.x.max = dataEndSec() * 1000;
-
-      // 뷰 범위 전진 (실시간 추적 창 유지) — 창을 다 못 채웠으면 시작점 고정,
-      // 다 채우면 최신 데이터가 오른쪽 끝에 오는 슬라이딩 창으로 자연 전환
+      // 뷰 범위 전진 — 최신 데이터가 늘 오른쪽 끝(휠·드래그 한계도 render에서 갱신)
       const [lf, lt] = computeLiveWindow();
       _viewFrom = lf;
       _viewTo   = lt;
 
-      renderViewFromMemory(_viewFrom, _viewTo, { keepWidth: true });
+      renderViewFromMemory(_viewFrom, _viewTo);
       updateStatsLastValue();
 
     } catch {
@@ -895,6 +908,7 @@
             else _visibleCh.add(i);
             applyStatCardContent(card, i);
             updateChartData();
+            applyNeedleLayout();          // 펼침 모드면 칸 수가 바뀜 — 부드럽게
             return;
           }
           toggleSelectChannel(i);
@@ -1002,6 +1016,204 @@
     },
   };
 
+  // ── 바늘(기록계 펜) 플러그인 ─────────────────────────────────
+  // 그래프 오른쪽 끝과 y축 눈금 사이 공간에, 보이는 채널마다 "지금 화면 맨 오른쪽 데이터"의
+  // 값 높이에 채널 색 삼각형(◀)을 그린다. LIVE면 최신 값, 드래그로 지난 구간을 보면 그
+  // 구간 끝 값. 공간은 그래프와 y축 사이에 끼운 눈금 없는 빈 축('needle')의 폭으로 확보 —
+  // Chart.js가 그만큼 그래프 폭을 줄인다(y축 눈금 여백을 크게 주면 높이까지 줄어들어서 이 방식).
+  function needleSpacePx() {
+    return _needleMode === 'spread'
+      ? Math.max(1, _visibleCh.size) * NEEDLE_LANE_PX + 2
+      : NEEDLE_OVERLAP_PX;
+  }
+
+  function channelColor(i) {
+    const color = _colorMap[i] ?? PALETTE[i % PALETTE.length];
+    return _selectedCh != null && _selectedCh !== i ? dimColor(color, 0.25) : color;
+  }
+
+  // 디자인 색(트렌드 그래프 전용)
+  const RULER   = 'rgba(170,190,215,0.55)';   // 주 눈금
+  const RULER_2 = 'rgba(170,190,215,0.30)';   // 보조 눈금
+
+  // y축 눈금 위치(px) 목록과 그 사이 중간 위치(보조 눈금)
+  function yTickPixels(yScale) {
+    const major = yScale.ticks.map((_, k) => yScale.getPixelForTick(k));
+    const minor = [];
+    for (let k = 1; k < major.length; k++) minor.push((major[k - 1] + major[k]) / 2);
+    return { major, minor };
+  }
+
+  function hLine(ctx, x1, x2, y) {
+    const yy = Math.round(y) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x1, yy); ctx.lineTo(x2, yy); ctx.stroke();
+  }
+
+  // 그래프 영역 배경: 위쪽이 아주 조금 밝은 은은한 그라데이션
+  const plotBgPlugin = {
+    id: 'plotBg',
+    beforeDraw(chart) {
+      const a = chart.chartArea;
+      if (!a) return;
+      const { ctx } = chart;
+      const g = ctx.createLinearGradient(0, a.top, 0, a.bottom);
+      g.addColorStop(0, 'rgba(120,160,210,0.07)');
+      g.addColorStop(1, 'rgba(120,160,210,0.01)');
+      ctx.save();
+      ctx.fillStyle = g;
+      ctx.fillRect(a.left, a.top, a.right - a.left, a.bottom - a.top);
+      ctx.restore();
+    },
+  };
+
+  const needlePlugin = {
+    id: 'needle',
+    afterDatasetsDraw(chart) {
+      if (!_file || !chart.chartArea) return;
+      const { ctx, chartArea: { top, bottom, left } } = chart;
+      const edge   = chart.scales.needle?.left ?? chart.chartArea.right;   // 그래프 오른쪽 경계
+      const yScale = chart.scales.y;
+      const axisA  = _needleAnim.axis;      // 펼침 진행도 0(겹침)~1(펼침): 값 축·칸 구분선 투명도
+      const { major, minor } = yTickPixels(yScale);
+
+      ctx.save();
+      ctx.lineWidth = 1;
+      // 그래프 경계 눈금자(주·보조)
+      ctx.strokeStyle = RULER;   major.forEach((y) => hLine(ctx, edge, edge + 7, y));
+      ctx.strokeStyle = RULER_2; minor.forEach((y) => hLine(ctx, edge, edge + 4, y));
+      // 값 눈금 축(펼침 모드): y축 왼쪽 세로선 + 눈금(├). 전환 때 서서히 나타나고 사라짐
+      if (axisA > 0.01) {
+        const ax = Math.round(yScale.left) + 0.5;
+        ctx.globalAlpha = axisA;
+        ctx.strokeStyle = 'rgba(170,190,215,0.35)';
+        ctx.beginPath(); ctx.moveTo(ax, top); ctx.lineTo(ax, bottom); ctx.stroke();
+        ctx.strokeStyle = RULER;   major.forEach((y) => hLine(ctx, ax, ax + 5, y));
+        ctx.strokeStyle = RULER_2; minor.forEach((y) => hLine(ctx, ax, ax + 3, y));
+        ctx.globalAlpha = 1;
+      }
+
+      if (_chartPts.length === 0) { ctx.restore(); return; }
+      const last  = _chartPts[_chartPts.length - 1];
+      const lastX = chart.scales.x.getPixelForValue(last.ts * 1000);
+      const showDot = lastX >= left - 1 && lastX <= edge + 1;
+      const lanes = [..._visibleCh].filter((i) => i < _file.chCnt).sort((a, b) => a - b);
+      const order = lanes.filter((i) => i !== _selectedCh);       // 강조 채널은 맨 위에
+      if (_selectedCh != null && lanes.includes(_selectedCh)) order.push(_selectedCh);
+
+      if (axisA > 0.01) {   // 칸 구분선(아주 옅게)
+        ctx.strokeStyle = `rgba(148,163,184,${0.08 * axisA})`;
+        for (let k = 1; k < lanes.length; k++) {
+          const x = Math.round(edge + 2 + k * NEEDLE_LANE_PX) + 0.5;
+          ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+        }
+      }
+      for (const i of order) {
+        const ch  = _file.channels[i];
+        const v   = rawToValue(last.vals[i], ch.isSigned, ch.dotpos);
+        const y   = Math.max(top, Math.min(bottom, yScale.getPixelForValue(v)));
+        const x0  = edge + 2 + (_needleAnim.lane[i] ?? 0);   // 칸 위치(전환 중엔 미끄러지는 중)
+        const col = channelColor(i);
+        const sel = _selectedCh === i;
+        // 펜 선: 선 끝에서 자기 바늘까지(겹침 모드는 바늘이 바로 옆이라 길이 0)
+        if (showDot && x0 > lastX + 3) {
+          ctx.strokeStyle = col; ctx.globalAlpha = 0.75;
+          hLine(ctx, lastX, x0, y);
+          ctx.globalAlpha = 1;
+        }
+        // 선 끝 점
+        if (showDot) {
+          ctx.fillStyle = col;
+          ctx.beginPath(); ctx.arc(lastX, y, sel ? 3.2 : 2.6, 0, Math.PI * 2); ctx.fill();
+        }
+        // 바늘(펜 끝이 그래프 쪽을 가리킴)
+        const w = 10, h = sel ? 10 : 7;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x0 + w, y - h / 2);
+        ctx.lineTo(x0 + w, y + h / 2);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    },
+  };
+
+  // 바늘 배치 상태 — 실제로 그리는 값. 모드 전환·채널 표시 변경 때 목표값으로 애니메이션.
+  //  space: 바늘 공간 폭(px, 빈 축 afterFit이 읽음) / axis: 펼침 진행도 0~1 / lane: 채널별 칸 위치(px)
+  const _needleAnim = { space: null, axis: _needleMode === 'spread' ? 1 : 0, lane: {} };
+  const NEEDLE_ANIM_MS = 300;
+  let _needleAnimFrame = null;
+
+  function needleTarget() {
+    const spread = _needleMode === 'spread';
+    const lanes = [..._visibleCh].filter((i) => !_file || i < _file.chCnt).sort((a, b) => a - b);
+    const lane = {};
+    lanes.forEach((ch, k) => { lane[ch] = spread ? k * NEEDLE_LANE_PX : 0; });
+    return { space: needleSpacePx(), axis: spread ? 1 : 0, lane };
+  }
+
+  // 바늘 배치를 목표값으로 — animate=false면 바로(파일 열기 등). 그래프 폭이 바뀌면
+  // 매 프레임 배율을 유지하며 다시 그린다(rerenderForWidth). 바뀐 게 없으면 false.
+  function applyNeedleLayout(animate = true) {
+    if (!_chart) return false;
+    cancelAnimationFrame(_needleAnimFrame);
+    const to   = needleTarget();
+    const from = { space: _needleAnim.space ?? to.space, axis: _needleAnim.axis, lane: { ..._needleAnim.lane } };
+    const same = from.space === to.space && from.axis === to.axis
+      && Object.keys(to.lane).every((k) => from.lane[k] === to.lane[k]);
+    if (same) { _needleAnim.lane = to.lane; return false; }
+
+    const frame = (e) => {
+      const prevW = plotWidthPx();
+      _needleAnim.space = from.space + (to.space - from.space) * e;
+      _needleAnim.axis  = from.axis + (to.axis - from.axis) * e;
+      const lane = {};
+      for (const k of Object.keys(to.lane)) {
+        const f = from.lane[k] ?? to.lane[k];          // 새로 보이는 채널은 제자리에서 시작
+        lane[k] = f + (to.lane[k] - f) * e;
+      }
+      _needleAnim.lane = lane;
+      _chart.update('none');                            // 빈 축 폭 반영(레이아웃)
+      if (_file && Math.abs(plotWidthPx() - prevW) >= 0.5) rerenderForWidth(prevW);
+    };
+    if (!animate) { frame(1); return true; }
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / NEEDLE_ANIM_MS);
+      frame(easeInOutQuad(p));
+      if (p < 1) _needleAnimFrame = requestAnimationFrame(step);
+    };
+    _needleAnimFrame = requestAnimationFrame(step);
+    return true;
+  }
+
+  // 그래프 폭이 바뀐 뒤 다시 그리기 — LIVE는 1:1 창 다시 계산, 아니면 배율(1px당 시간)을
+  // 그대로 두고 오른쪽 끝 기준으로 보이는 폭만 조정(폭이 넓어졌는데 그래프가 늘어나지 않게)
+  function rerenderForWidth(prevW) {
+    if (!_file) return;
+    if (_isLive) {
+      const [f, t] = computeLiveWindow();
+      renderViewFromMemory(f, t);
+    } else {
+      const span = (_viewTo - _viewFrom) * (prevW ? plotWidthPx() / prevW : 1);
+      renderViewFromMemory(_viewTo - span, _viewTo);
+    }
+  }
+
+  const NEEDLE_ICONS = {
+    overlap: '<svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M7 3l5-2.5v5z"/><path d="M7 8l5-2.5v5z"/><path d="M7 13l5-2.5v5z"/><path d="M4 1v14" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>',
+    spread:  '<svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M3 3l4-2.3v4.6z"/><path d="M7 8l4-2.3v4.6z"/><path d="M11 13l4-2.3v4.6z"/><path d="M1 1v14" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>',
+  };
+
+  function updateNeedleBtn() {
+    if (!needleBtn) return;
+    const spread = _needleMode === 'spread';
+    needleBtn.innerHTML = NEEDLE_ICONS[_needleMode];
+    needleBtn.classList.toggle('active', spread);
+    needleBtn.title = spread ? '바늘: 펼침 (누르면 한 줄로 겹침)' : '바늘: 겹침 (누르면 채널별로 펼침)';
+  }
+
   // ── Chart.js 초기화 ─────────────────────────────────────────
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -1028,7 +1240,7 @@
     _chart = new Chart(canvas, {
       type: 'line',
       data: { datasets: [] },
-      plugins: [crosshairPlugin],
+      plugins: [plotBgPlugin, needlePlugin, crosshairPlugin],
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -1097,18 +1309,29 @@
               callback: (val) => {
                 const d = new Date(val), p = (n) => String(n).padStart(2, '0');
                 return [
-                  `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`,
                   `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`,
+                  `${p(d.getMonth() + 1)}/${p(d.getDate())}`,
                 ];
               },
             },
-            grid:   { color: 'rgba(148,163,184,0.13)' },
-            border: { color: 'rgba(148,163,184,0.28)' },
+            grid:   { color: 'rgba(148,163,184,0.07)', drawTicks: false },
+            border: { color: 'rgba(148,163,184,0.25)' },
           },
+          // 바늘 공간: 그래프 바로 오른쪽의 눈금 없는 축(weight 0 = 그래프에 가장 가까움)
+          needle: {
+            type: 'linear', position: 'right', weight: 0,
+            grid:   { display: false, drawOnChartArea: false },
+            ticks:  { display: false },
+            border: { color: 'rgba(170,190,215,0.35)' },     // 그래프 오른쪽 경계(눈금자 기준선)
+            afterFit: (scale) => { scale.width = _needleAnim.space ?? needleSpacePx(); },
+          },
+          // 값 축: 숫자 앞 눈금(-)은 숨김. 펼침 모드의 세로선 + 눈금(├)은 바늘 플러그인이
+          // 그린다(전환 때 서서히 나타나게). 숫자 여백은 두 모드 같게 — 전환 때 숫자가 안 움직임
           y: {
-            ticks:  { color: '#8fa0b7' },
-            grid:   { color: 'rgba(148,163,184,0.13)' },
-            border: { color: 'rgba(148,163,184,0.28)' },
+            position: 'right', weight: 1,
+            ticks:  { color: '#8fa0b7', padding: 10 },
+            grid:   { color: 'rgba(148,163,184,0.12)', drawTicks: false },
+            border: { display: false, dash: [2, 4] },
           },
         },
       },
@@ -1158,7 +1381,7 @@
     const isRecFile = _status?.recording && _status?.filename === _file.filename;
     if (!isRecFile) return;
     const [from, to] = computeLiveWindow();
-    renderViewFromMemory(from, to, { keepWidth: true });
+    renderViewFromMemory(from, to);
     startLive();
   });
 
@@ -1168,6 +1391,13 @@
   if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => zoomView(ZOOM_OUT_FACTOR));
   if (rangeSelectBtn) rangeSelectBtn.addEventListener('click', toggleRangeSelect);
   if (fitAllBtn)       fitAllBtn.addEventListener('click', toggleFitAll);
+  updateNeedleBtn();
+  if (needleBtn) needleBtn.addEventListener('click', () => {
+    _needleMode = _needleMode === 'spread' ? 'overlap' : 'spread';
+    try { localStorage.setItem(NEEDLE_KEY, _needleMode); } catch (_) {}
+    updateNeedleBtn();
+    applyNeedleLayout();
+  });
 
   if (refreshBtn) refreshBtn.addEventListener('click', () => {
     fetchStatus();
