@@ -557,13 +557,13 @@ DISABLED 상태는 관리자가 다시 활성화하기 전까지 로그인할 �
   - `PUT /api/users/security-policy` (각 필드 범위 검증 포함)
   - `validateUser()`에서 정책값 참조 (런타임에 config 파일에서 로드)
 
-- [ ] **5. 역할 기반 접근 제어 (RBAC)**
+- [x] **5. 역할 기반 접근 제어 (RBAC)** — `requireAuth(request, RequiredRole)`로 구현(`docs/policy/api-permissions.md`). 2026-11-11 장치 확인: User는 보안 정책·로그인 기록 조회, 레지스터 수정, 사용자 삭제, 백업에서 403 / Manager는 백업만 403 / Admin은 모두 허용
   - `isAuthenticated()` 외에 `hasRole()` 헬퍼 추가
   - USER 역할: 장비/레지스터 변경, 사용자 관리, 시스템 설정 차단
   - MANAGER 역할: 사용자 관리, 공장 초기화, 시스템 재시작 차단
   - 각 API 핸들러에 역할 체크 적용
 
-- [ ] **6. 세션 타임아웃**
+- [x] **6. 세션 타임아웃** — 1단계(서버 만료) 완료(2026-11-11, `referencs/api-changelog.md` 같은 날짜). `sessionTimeoutMinutes` 동안 인증 요청이 없는 토큰은 401, 정책 변경 즉시 반영, 사용자 비활성화·잠금·삭제와 비밀번호 변경 시 토큰 무효화. 웹은 사용 중 401을 받으면 로그인 화면으로 이동(`config.js` `apiFetch`). 화면을 켜 두면 주기 요청으로 세션이 유지된다. 2단계(웹 무조작 자동 로그아웃, `autoLogout`)는 보류 — 항상 켜 두는 HMI·관제 화면과 충돌하고, 켜 두는 화면은 User 권한 계정으로 운영하면 위험이 작아 효과 대비 복잡성이 큼. 그동안 효과 없는 "자동 로그아웃" 설정은 사용자 관리 화면에서 숨김(서버 값은 유지, 저장 시 보내지 않음). 다시 검토: 고객 보안 요구, 공용 사무실 PC에서 설정 작업이 생길 때 — 요청서 `docs/backend-session-timeout-request.md`
   - `m_sessionUsers` 맵에 `lastActivity` 타임스탬프 추가
   - `QTimer`로 주기적 만료 세션 정리 (기본 30분)
   - API 요청마다 `lastActivity` 갱신

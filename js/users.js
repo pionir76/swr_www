@@ -413,7 +413,6 @@
   const policyMaxFailed      = $('#policyMaxFailed');
   const policySessionTimeout = $('#policySessionTimeout');
   const policyMinPwLen       = $('#policyMinPwLen');
-  const policyAutoLogout     = $('#policyAutoLogout');
   const policyMsg            = $('#policyMsg');
   const policySaveBtn        = $('#policySaveBtn');
 
@@ -439,7 +438,6 @@
       setSelectValue(policyMaxFailed,      d.maxFailedAttempts);
       setSelectValue(policySessionTimeout, d.sessionTimeoutMinutes);
       setSelectValue(policyMinPwLen,       d.minPasswordLength);
-      setSelectValue(policyAutoLogout,     d.autoLogout);
     } catch (err) {
       console.error('security-policy fetch error:', err);
     }
@@ -456,7 +454,7 @@
           maxFailedAttempts:     parseInt(policyMaxFailed?.value      ?? '5',  10),
           sessionTimeoutMinutes: parseInt(policySessionTimeout?.value ?? '30', 10),
           minPasswordLength:     parseInt(policyMinPwLen?.value       ?? '8',  10),
-          autoLogout:            (policyAutoLogout?.value ?? 'true') === 'true',
+          // autoLogout은 보내지 않음 — 2단계(웹 무조작 자동 로그아웃) 보류로 화면에서 숨김, 서버 값 유지
         }),
       });
       if (res.ok) {

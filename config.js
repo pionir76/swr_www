@@ -38,11 +38,30 @@ function clearAuth() {
 
 // 토큰을 자동으로 Authorization 헤더에 넣어주는 fetch 래퍼.
 // 페이지별 js (dashboard.js, devices.js 등)에서 API 호출 시 이 함수를 사용한다.
-function apiFetch(path, options = {}) {
+//
+// 사용 중 세션이 만료되면(토큰을 보냈는데 401) 로그인 화면으로 보낸다 — 화면마다
+// 401을 따로 처리하지 않아도 되게 여기 한 곳에서. 세션 확인(/api/session)은
+// 페이지 시작 시 main.js·login.js가 직접 판단하므로 제외한다.
+const SESSION_EXEMPT = ["/api/login", "/api/logout", "/api/session"];
+const isSessionExempt = (path) => SESSION_EXEMPT.some((p) => path.startsWith(p));
+let _sessionExpired = false;
+
+async function apiFetch(path, options = {}) {
   const token   = getToken();
   const headers = { ...(options.headers || {}) };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  return fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (res.status === 401 && token && !isSessionExempt(path)) {
+    onSessionExpired();
+  }
+  return res;
+}
+
+function onSessionExpired() {
+  if (_sessionExpired) return;   // 동시에 여러 요청이 401을 받아도 한 번만
+  _sessionExpired = true;
+  clearAuth();
+  window.location.replace("./login.html?expired=1");
 }
 
 const $ = (sel, root = document) => root.querySelector(sel);

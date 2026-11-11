@@ -34,6 +34,7 @@
   "login.submitBtnLoading": "登录中…",
   "login.errMissingFields": "请输入用户名和密码。",
   "login.errInvalidCredentials": "用户名或密码不正确。",
+  "login.sessionExpired": "会话已过期，请重新登录。",
   "login.errFailedHttp": "登录失败。(HTTP {status})",
   "login.errNetworkFailed": "无法连接到服务器，请检查网络。",
 

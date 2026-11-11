@@ -34,6 +34,7 @@
   "login.submitBtnLoading": "Logging in…",
   "login.errMissingFields": "Please enter your username and password.",
   "login.errInvalidCredentials": "Incorrect username or password.",
+  "login.sessionExpired": "Your session has expired. Please sign in again.",
   "login.errFailedHttp": "Login failed. (HTTP {status})",
   "login.errNetworkFailed": "Unable to connect to the server. Please check your network.",
 

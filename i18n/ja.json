@@ -34,6 +34,7 @@
   "login.submitBtnLoading": "ログイン中…",
   "login.errMissingFields": "ユーザー名とパスワードを入力してください。",
   "login.errInvalidCredentials": "ユーザー名またはパスワードが正しくありません。",
+  "login.sessionExpired": "セッションの有効期限が切れました。もう一度ログインしてください。",
   "login.errFailedHttp": "ログインに失敗しました。(HTTP {status})",
   "login.errNetworkFailed": "サーバーに接続できません。ネットワークを確認してください。",
 

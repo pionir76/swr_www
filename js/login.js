@@ -89,7 +89,11 @@ loginForm.addEventListener("submit", async (e) => {
   loginBtn.textContent = I18n.t("login.submitBtn");
 });
 
-document.addEventListener("DOMContentLoaded", () => {
-  initLanguage();
+document.addEventListener("DOMContentLoaded", async () => {
+  await initLanguage();
+  // 사용 중 세션 만료로 넘어온 경우(config.js onSessionExpired) 안내
+  if (new URLSearchParams(location.search).get("expired") === "1") {
+    showError(I18n.t("login.sessionExpired"));
+  }
   checkExistingSession();
 });
