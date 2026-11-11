@@ -267,7 +267,6 @@
 
 .uid-status.uid-ok       { color: #4ade80; }
 .uid-status.uid-err      { color: #ff7d82; }
-.uid-status.uid-warn     { color: #fbbf24; }
 .uid-status.uid-checking { color: #8ea3bf; }
 
 .register-detail-panel .form-actions {

@@ -577,6 +577,17 @@
   });
 
   // ── 시간대 / NTP on-off / 수동 시간 설정 ────────────────────────────
+  // 백엔드 시간 관련 오류(영문) → 사용자 안내 문구. 모르는 오류는 원문 그대로.
+  const TIME_ERRORS = [
+    ['OS build date', '설정할 수 있는 가장 이른 날짜보다 앞선 시간입니다. 더 늦은 날짜와 시간을 입력하세요.'],
+    ['NTP is active', 'NTP 자동 동기화가 켜져 있습니다. NTP를 끈 뒤 시간을 설정하세요.'],
+    ['set-ntp timed out', 'NTP 설정이 제시간에 끝나지 않았습니다. 잠시 후 상태를 확인하고 다시 시도하세요.'],
+  ];
+  const timeErrText = (d, res) => {
+    const raw = d.error || `HTTP ${res.status}`;
+    return TIME_ERRORS.find(([key]) => raw.includes(key))?.[1] ?? raw;
+  };
+
   let _ntpEnabled      = true;  // 조회 전까지는 보수적으로 true(수동 입력 비활성) 가정
   let _recordingActive = false; // 트렌드 레코딩 중이면 시간대/시간 변경 자체를 막음
 
@@ -695,7 +706,7 @@
       ]);
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        showMsg(`NTP 설정 실패: ${d.error || `HTTP ${res.status}`}`, 'error');
+        showMsg(`NTP 설정 실패: ${timeErrText(d, res)}`, 'error');
         e.target.checked = !enabled;
         return;
       }
@@ -756,7 +767,7 @@
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        showMsg(`시간 설정 실패: ${d.error || `HTTP ${res.status}`}`, 'error');
+        showMsg(`시간 설정 실패: ${timeErrText(d, res)}`, 'error');
         return;
       }
       showMsg('시스템 시간이 변경되었습니다.');

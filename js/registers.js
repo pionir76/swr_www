@@ -137,10 +137,6 @@
     setUidStatus(statusEl, 'uid-checking', '확인 중…');
     try {
       const res = await apiFetch(`/api/registers/unified-id/check?id=${idVal}`);
-      if (res.status === 404) {
-        setUidStatus(statusEl, 'uid-warn', '✓ 서버 미구현 — 추후 연동 예정');
-        return true;
-      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.available) {
@@ -150,8 +146,9 @@
       setUidStatus(statusEl, 'uid-err', '✗ 이미 사용 중인 ID');
       return false;
     } catch {
-      setUidStatus(statusEl, 'uid-warn', '✓ 서버 미구현 — 추후 연동 예정');
-      return true;
+      // 확인하지 못한 ID로 저장하지 않는다(중복 ID 방지)
+      setUidStatus(statusEl, 'uid-err', '✗ 확인 실패 — 다시 확인하세요');
+      return false;
     }
   }
 
