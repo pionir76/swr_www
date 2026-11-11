@@ -78,6 +78,7 @@
     ['bitNone', '비트 모두 0', (c) => `비트 ${[].concat(c.bits || []).join(', ') || '(없음)'} 모두 0`],
   ];
   const NO_DEV = 'none';
+  const NO_TAG_TYPES = ['rect', 'label', 'screenlink', 'image'];     // 고정 위젯 — 값을 받지 않으므로 tag 칸 없음(동작 조건은 사용 가능)
   const WRITE_TYPES = ['input', 'button', 'switch', 'selector'];   // 쓰기 위젯 — 쓰기 태그(writeTag) 칸                    // 태그 고르기: 소스 장비를 모르는 태그 묶음
   const KEEP = '__keep__';                  // 태그 고르기: 다른 장비 태그가 연결된 상태(선택 전)              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
   const DRAFT_DELAY_MS = 400;               // 임시 저장(localStorage) 지연
@@ -2513,7 +2514,7 @@
           <div class="ed-form">
             <label class="ed-field wide"><span>id</span><input type="text" data-f="id" spellcheck="false" autocomplete="off"></label>
             ${num('x')}${num('y')}${num('w')}${num('h')}
-            <div class="ed-field wide ed-tagpick"><span>tag</span><select data-tagdev="f" title="장비"></select><select data-f="tag" title="태그"></select></div>
+            ${NO_TAG_TYPES.includes(w.type) ? '' : `<div class="ed-field wide ed-tagpick"><span>tag</span><select data-tagdev="f" title="장비"></select><select data-f="tag" title="태그"></select></div>`}
             ${WRITE_TYPES.includes(w.type) ? `<div class="ed-field wide ed-tagpick" title="표시(tag)와 다른 태그에 써야 할 때 — 예: NSP 표시, TSP 쓰기"><span>쓰기 태그</span><select data-tagdev="w" title="장비"></select><select data-f="writeTag" title="쓰기 태그"></select></div>` : ''}
           </div>
           <div class="ed-form-err"></div>

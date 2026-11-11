@@ -19,7 +19,7 @@
 | `id` | ● | 화면 내 고유 id |
 | `type` | ● | 위젯 타입 (§3) |
 | `x`,`y`,`w`,`h` | ● | 설계 해상도 기준 위치·크기(px) |
-| `tag` | | 바인딩할 **HMI 태그 id**(`referencs/api-spec.md` §14). 정적 위젯(rect/label)은 생략 |
+| `tag` | | 바인딩할 **HMI 태그 id**(`referencs/api-spec.md` §14). 고정 위젯(rect/label/image/screenlink)은 값을 받지 않으므로 생략 — 편집기 속성 창에도 tag 칸이 없다. 태그에 따라 보이기·숨기기는 동작 조건(`visibleWhen`)으로 |
 | `props` | | 타입별 속성. 생략 시 기본값. 편집기는 기본값과 다른 값만 저장한다 |
 | `writeTag` | | **쓰기 태그**(쓰기 위젯: input·button·switch·selector). 지정하면 값은 `tag`에서 보여 주고 쓰기는 이 태그에(예: NSP 표시 / TSP 쓰기). 쓰기 가능 여부는 이 태그의 권한·통신 상태로 판단하고 함께 폴링. 비우면 `tag`에 씀 |
 | `visibleWhen` | | **보이기** 조건(모든 위젯). 거짓이면 숨김(클릭 통과), 판정 불가(통신 불량 등)면 보임 |
