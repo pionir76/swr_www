@@ -26,6 +26,22 @@
 
 ---
 
+## 2026-11-11 — 세션 만료와 토큰 무효화 (세션 타임아웃 요청서)
+
+장치에 배포되어 있습니다. 요청 바디와 정상 응답은 바뀌지 않았습니다.
+
+- **세션 만료:** `sessionTimeoutMinutes` 동안 인증 요청이 없는 토큰은 무효가 되고 **401**입니다. 인증 요청마다 시간이 갱신되므로, 화면이 열려 있어 주기적으로 요청을 보내는 동안에는 끊기지 않습니다. `autoLogout`과 상관없이 항상 적용됩니다.
+- **정책 변경 즉시 반영:** `PUT /api/users/security-policy`로 시간을 바꾸면 기존 토큰에도 바로 적용됩니다.
+- **`GET /api/users/security-policy`가 저장된 값을 돌려줌:** 지금까지는 `PUT` 뒤에도 장치를 재시작하기 전까지 예전 값을 돌려줬습니다. 비밀번호 최소 길이 검사(`POST /api/users`, `PUT /api/users/{username}/password`)도 같은 이유로 예전 값을 쓰고 있었는데, 이제 저장된 값을 씁니다.
+- **토큰 즉시 무효화:**
+  - `PUT /api/users/{username}/status`로 `disabled` 또는 `locked`: 그 사용자의 모든 토큰
+  - `DELETE /api/users/{username}`: 그 사용자의 모든 토큰
+  - `PUT /api/users/{username}/password` 성공: 그 사용자의 다른 토큰 (본인이 바꾸면 요청에 쓴 토큰은 유지)
+  - 지금까지는 비활성화하거나 삭제한 사용자도 대시보드 등 `Any` 권한 API를 계속 쓸 수 있었습니다.
+- **`PUT /api/users/{username}/password` 현재 비밀번호 틀림: 401 → 400.** 본문(`{ "error": "Current password is incorrect" }`)은 그대로입니다.
+
+---
+
 ## 2026-11-10 — 시스템 시간 API 수정 (wrynose 플랫폼 업데이트 문서 3.1~3.3)
 
 요청 바디와 정상 응답은 그대로입니다. 오류가 나는 경우만 바뀌었습니다.
