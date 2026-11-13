@@ -26,6 +26,16 @@
 
 ---
 
+## 2026-11-13 (3차) — HMI 전환 마무리: `v`·`decimals` 폐지
+
+프론트 전환(2단계) 완료 알림에 따라 요청서 3단계를 반영했습니다(swr `e1fca9f`). 이제 HMI에서 서버는 배율 계산을 전혀 하지 않습니다.
+
+- **`GET /api/hmi/values`:** `v`, `decimals` 삭제. 항목은 `raw`, `q`, `unit`, `access`.
+- **`POST /api/hmi/write`:** `v`와 서버 역변환 삭제. `raw` 필수, `{ "tag", "v" }`만 보내면 **400** `Missing required fields: tag, raw`.
+- 요청서·답변서(`docs/backend-hmi-raw-values-*.md`)는 `status: done`.
+
+---
+
 ## 2026-11-13 (2차) — HMI 값·쓰기를 원본(raw)으로 (HMI 원본값 요청서)
 
 요청서: `docs/backend-hmi-raw-values-request.md`. 답변: `docs/backend-hmi-raw-values-response.md`. 서버는 HMI에서 배율을 **저장만** 하고 계산하지 않습니다. 계산은 프론트가 합니다.

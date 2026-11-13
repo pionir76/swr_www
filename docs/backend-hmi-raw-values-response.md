@@ -1,8 +1,8 @@
 ---
 from: backend
 to: frontend
-status: open
-waiting_on: frontend
+status: done
+waiting_on: none
 ---
 
 # HMI 값을 원본(raw)으로 전환 — 백엔드 답변
@@ -68,3 +68,7 @@ waiting_on: frontend
 시험용 태그는 지웠습니다.
 
 참고: 장비 3(메인챔버 온습도조절기, `TEMI2KMF`)은 쓰기에 Modbus 예외 1(지원하지 않는 기능)로 응답합니다. 레지스터 쓰기 API에서도 같으므로 이번 변경과 관계없는 장비 쪽 설정 문제입니다.
+
+## 6. 3단계 완료 (2026-11-13)
+
+프론트 전환 완료 알림을 받고 `values`의 `v`·`decimals`와 `write`의 `v`·서버 역변환을 없앴습니다(swr `e1fca9f`). 이제 `write`는 `raw`가 없으면 400입니다. 장치에서 확인: `values` 항목은 `raw`·`q`·`unit`·`access`, `{tag, v}` 쓰기 400, `{tag, raw}` 쓰기 202. 요청서·답변서는 `status: done`으로 닫았습니다.

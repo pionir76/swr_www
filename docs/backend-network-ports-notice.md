@@ -1,8 +1,8 @@
 ---
 from: backend
 to: frontend
-status: open
-waiting_on: frontend
+status: done
+waiting_on: none
 ---
 
 # 이더넷 포트 — 앱 설정 폐지와 상태 조회 API (백엔드 안내)

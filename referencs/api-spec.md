@@ -1,6 +1,6 @@
 # SmartRoute REST API 명세
 
-> 최종 수정: 2026-11-13 (HMI 값·쓰기를 원본(raw)으로, 태그 `decimals` → `scale`)  
+> 최종 수정: 2026-11-13 (HMI 값·쓰기 원본(raw)만, `v`·`decimals` 폐지)  
 > Base URL: `http://<device-ip>:8080`  
 > 응답 형식: `application/json` (바이너리 응답 제외)
 
@@ -1481,9 +1481,7 @@ Content-Type: `application/octet-stream`
       "raw": 569,
       "q": "good",
       "unit": "%",
-      "access": "r",
-      "v": 56.9,
-      "decimals": 1
+      "access": "r"
     }
   }
 }
@@ -1494,13 +1492,12 @@ Content-Type: `application/octet-stream`
 | `"good"` | 마지막 폴링 경과 < 1.5× interval |
 | `"normal"` | 1.5× ~ 3× interval (응답 지연) |
 | `"bad"` | 3× 초과 또는 응답 없음 |
-| `"disabled"` | 소스 레지스터의 장비가 비활성 (`v`는 `null`) |
+| `"disabled"` | 소스 레지스터의 장비가 비활성 (`raw`는 `null`) |
 
 | 필드 | 설명 |
 |---|---|
 | `raw` | 장비에서 읽은 **원본 워드 그대로**(uint16, 0–65535). 부호 해석·배율 적용 없음. `registers/realtime`의 `rawWord`와 같은 값. coil·discrete_input은 `0`/`1`. `q`가 `bad`·`disabled`이거나 아직 값이 없거나 2워드 이상 레지스터면 `null` |
 | `unit` / `access` | 태그 값, 없으면 레지스터에서 상속한 값 |
-| `v` / `decimals` | **전환 기간 전용, 곧 폐지.** `v`는 레지스터 배율을 적용하고 레지스터 `minValue`/`maxValue`로 자른 값(태그 `scale`과 무관). `decimals`는 태그 `scale`(없으면 레지스터 `scale`)의 소수 자릿수 |
 
 ### POST /api/hmi/write
 권한: `ManagerOrAbove`
@@ -1513,10 +1510,9 @@ Content-Type: `application/octet-stream`
 - `raw`: 장비에 쓸 **원본 워드**(정수 0–65535). 서버는 배율 계산 없이 그대로 씁니다. 음수는 프론트가 2의 보수로 바꿔 보냅니다(`-5` → `65531`). `POST /api/registers/{id}/write`의 `rawValues`와 같은 규칙
 - coil: `raw`는 `0` 또는 `1`
 - 서버는 태그 `min`/`max`로 범위를 검사하지 않습니다(프론트 입력 창에서 검사)
-- **전환 기간 전용, 곧 폐지:** `raw` 대신 `{ "tag": ..., "v": 75.0 }`도 받습니다. 서버가 `round(v / 레지스터 scale)`로 변환합니다. `raw`와 `v`가 함께 오면 `raw`를 씁니다
 
 **응답** 202: `{ "ok": true, "tag": "LEVEL_SP" }`  
-**에러** 400: `tag`·`raw` 없음 / `raw`가 정수가 아니거나 범위 밖(coil은 0/1 밖)  
+**에러** 400: `tag`·`raw` 없음(예전 `v`만 보내도 400) / `raw`가 정수가 아니거나 범위 밖(coil은 0/1 밖)  
 **에러** 404: 태그 없음  
 **에러** 405: `access: "r"` 태그 쓰기 시도  
 **에러** 409: 소스 레지스터의 장비가 비활성 `{ "error": "device disabled", "deviceId": 1 }`  
