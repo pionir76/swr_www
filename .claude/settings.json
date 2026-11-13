@@ -3,5 +3,17 @@
     "allow": [
       "Bash(curl -sv http://192.168.0.150/api/trend/config)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/dev3/project/swr_web/docs/collab/open-requests.py frontend --hook"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -686,6 +686,7 @@
 .dlg .tm-form .form-field select:focus { border-color: rgba(47, 128, 255, 0.6); box-shadow: 0 0 0 3px rgba(47, 128, 255, 0.15); }
 .dlg .tm-form .form-field input:disabled { opacity: 0.55; }
 .tm-form-err { min-height: 18px; margin-top: 6px; color: #ff8c87; font-size: 13px; }
+.tm-hint { display: block; min-height: 16px; margin-top: 4px; color: #8a96a6; font-size: 12px; }
 .tm.editing .tm-list-hint { display: none; }
 .tm-spacer { flex: 1; }
 .dlg button.tm-danger { background: #a33a35; border-color: #a33a35; color: #fff; }

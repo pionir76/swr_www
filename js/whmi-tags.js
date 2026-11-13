@@ -1,6 +1,7 @@
 // HMI 태그 관리(디자인 모드 [태그 관리] 대화상자) — 편집기와 함께 지연 로드된다.
 // HMI 태그 = 레지스터 하나를 소스로 연결한 HMI 전용 이름(referencs/api-spec.md §14).
-// 단위·최소/최대·소수점·읽기쓰기는 태그에서 덮어쓸 수 있고, 비우면(null) 레지스터 값을 물려받는다.
+// 단위·최소/최대·스케일·읽기쓰기는 태그에서 덮어쓸 수 있고, 비우면(null) 레지스터 값을 물려받는다.
+// 스케일은 원본값 기준 배율이다(레지스터 스케일과 독립 — 원본 데이터 원칙, overview.md §5.1).
 //
 // 구성: loadAll(데이터 읽기) → open(대화상자: 태그 목록). [점검]을 누르면 데이터를 새로 읽고
 //       checkTags/checkScreens(점검 규칙)를 단계별로 실행해 결과(● 표시, 화면 점검 탭)를 보여준다.
@@ -10,11 +11,9 @@
   'use strict';
 
   if (!window.WHMI) return;   // HMI 페이지를 떠나며 정리된 뒤 늦게 도착한 스크립트(이전 페이지 것)
-  const { esc } = window.WHMI;
-
-  // 레지스터 min/max는 "제한 없음"을 아주 큰 수로 내려주는 경우가 있다
-  const hasLimit = (v) => v != null && Number.isFinite(v) && Math.abs(v) < 1e15;
-  const decimalsFromScale = (scale) => (scale > 0 ? Math.max(0, -Math.round(Math.log10(scale))) : 0);
+  const { esc, raw: RAW } = window.WHMI;
+  // HMI는 1워드 레지스터만 지원(2워드 이상은 값 null·쓰기 422 — backend-hmi-raw-values-response.md)
+  const multiWord = (reg) => !!reg && (reg.length || 1) > 1;
 
   const LEVELS = [['error', '오류'], ['warn', '경고'], ['info', '정보']];
   const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -23,7 +22,8 @@
   // (서버가 ""를 null로 저장) "없음"은 고를 수 없다.
   const UNIT_OPTIONS = [['°F', '°F (화씨)'], ['°C', '°C (섭씨)'], ['%', '%'], ['Pa', 'Pa'], ['kPa', 'kPa'], ['%RH', '%RH'],
     ['mV', 'mV'], ['V', 'V'], ['Ω', 'Ω'], ['mmHg', 'mmHg'], ['kgf', 'kgf']];
-  const DECIMAL_OPTIONS = [[0, '0 (정수)'], [1, '1 (0.0)'], [2, '2 (0.00)'], [3, '3 (0.000)']];
+  // 레지스터 설정 화면과 같은 스케일 목록(pages/registers.html rfScale)
+  const SCALE_OPTIONS = ['100', '10', '1', '0.1', '0.01', '0.001'].map((v) => [v, v]);
   const accessLabel = (a) => (a === 'rw' ? 'WRITE' : 'READ');
   // 사용처의 용도 표시용 위젯 이름(편집기 위젯 목록과 같은 이름)
   const TYPE_NAME = {
@@ -87,15 +87,18 @@
       }
     }
     const tags = (tagData.tags || []).sort((a, b) => a.id.localeCompare(b.id));
-    return { tags, regs, values: valData.values || {}, usage, screens, projectScreens: new Set(screenRefs.map((s) => s.id)) };
+    const values = RAW.decode(valData.values || {}, Object.fromEntries(tags.map((t) => [t.id, t])));
+    return { tags, regs, values, usage, screens, projectScreens: new Set(screenRefs.map((s) => s.id)) };
   }
 
   // 태그가 실제로 쓰는 값(태그에서 덮어쓴 값, 없으면 레지스터 값)
+  // 최소/최대는 태그 스케일 기준(비면 레지스터 값을 환산 — RAW.limits)
   function effective(t, reg) {
+    const lim = reg ? RAW.limits(t, reg) : { min: t.min ?? null, max: t.max ?? null };
     return {
       unit: t.unit ?? (reg ? reg.unit || null : null),
-      min: t.min ?? (reg && hasLimit(reg.minValue) ? reg.minValue : null),
-      max: t.max ?? (reg && hasLimit(reg.maxValue) ? reg.maxValue : null),
+      min: lim.min,
+      max: lim.max,
       access: t.access ?? (reg ? (reg.readOnly ? 'r' : 'rw') : null),
     };
   }
@@ -107,6 +110,7 @@
   // 태그 규칙: (t 태그, src {reg, dev} | undefined, ctx { e 실제 값, v 현재 값, data })
   const TAG_RULES = [
     ['error', (t, src) => (!src ? `소스 레지스터(#${t.source && t.source.registerId})가 없습니다` : null)],
+    ['error', (t, src) => (src && multiWord(src.reg) ? `소스 레지스터가 ${src.reg.length}워드입니다 — HMI는 1워드 레지스터만 지원합니다(값 없음, 쓰기 불가)` : null)],
     ['error', (t, src, { e }) => (e.min != null && e.max != null && e.min >= e.max ? `최소값(${e.min})이 최대값(${e.max})보다 작지 않습니다` : null)],
     ['warn', (t, src) => (src && t.unit && t.unit !== (src.reg.unit || '')
       ? `태그 단위 '${t.unit}'와 레지스터 단위 '${src.reg.unit || '없음'}'가 다릅니다 — 레지스터 연결을 확인하세요` : null)],
@@ -197,7 +201,7 @@
       cols: colgroup([4, 16, 10, 20, 6, 10, 6, 8, 9, 11]),
       check: true,   // 맨 앞 선택 체크 상자(여러 개 삭제)
       head: [['id', 'TAG ID'], ['name', 'TAG NAME'], ['source', '소스(장비 · 레지스터)'], ['unit', '단위', 1], ['range', '범위', 1],
-        ['decimals', '소수점', 1], ['access', '읽기/쓰기', 1], ['value', '현재 값', 1], ['used', '사용처', 1]],
+        ['scale', '스케일', 1], ['access', '읽기/쓰기', 1], ['value', '현재 값', 1], ['used', '사용처', 1]],
       span: 10,
     },
     screens: {
@@ -218,7 +222,7 @@
       source: (t, data) => { const s = data.regs.get(t.source && t.source.registerId); return s ? `${s.dev.displayName || s.dev.name}\u0001${s.reg.tagName}` : null; },
       unit: (t, data) => effective(t, srcReg(t, data)).unit,
       range: (t, data) => effective(t, srcReg(t, data)).min,
-      decimals: (t, data) => { const r = srcReg(t, data); return t.decimals ?? (r ? decimalsFromScale(r.scale) : null); },
+      scale: (t, data) => { const r = srcReg(t, data); return t.scale ?? (r ? r.scale : null); },
       access: (t, data) => effective(t, srcReg(t, data)).access,
       value: (t, data) => { const v = data.values[t.id]; return v && v.q !== 'bad' && v.q !== 'disabled' && typeof v.v === 'number' ? v.v : null; },
       used: (t, data) => (data.usage.get(t.id) || { widgets: 0 }).widgets,
@@ -266,8 +270,9 @@
     const source = src
       ? `${esc(src.dev.displayName || src.dev.name)}${src.dev.enabled === false ? ' <span class="tm-off">비활성</span>' : ''}<br><small>${esc(reg.tagName)}${reg.displayName ? ` · ${esc(reg.displayName)}` : ''}</small>`
       : `<span class="tm-err">레지스터 없음 (#${esc(t.source && t.source.registerId)})</span>`;
-    const rMin = reg && hasLimit(reg.minValue) ? reg.minValue : null;
-    const rMax = reg && hasLimit(reg.maxValue) ? reg.maxValue : null;
+    const inh = reg ? RAW.limits({ ...t, min: null, max: null }, reg) : {};   // 물려받는 값(태그 스케일로 환산)
+    const rMin = inh.min ?? null;
+    const rMax = inh.max ?? null;
     const range = t.min == null && t.max == null && rMin == null && rMax == null
       ? '<span class="tm-inh">—</span>' : `${cell(t.min, rMin)} ~ ${cell(t.max, rMax)}`;
     const access = cell(t.access, reg ? (reg.readOnly ? 'r' : 'rw') : null, accessLabel);
@@ -291,7 +296,7 @@
       <td>${source}</td>
       <td class="tm-r">${cell(t.unit, reg ? reg.unit || null : null)}</td>
       <td class="tm-r">${range}</td>
-      <td class="tm-r">${cell(t.decimals, reg ? decimalsFromScale(reg.scale) : null)}</td>
+      <td class="tm-r">${cell(t.scale, reg ? reg.scale : null)}</td>
       <td class="tm-r">${access}</td>
       <td class="tm-r">${value}</td>
       <td class="tm-r">${used}</td>
@@ -331,7 +336,7 @@
     const linked = new Set(data.tags.map((t) => t.source && t.source.registerId));
     const byDev = new Map();
     for (const { reg, dev } of data.regs.values()) {
-      if (linked.has(reg.id)) continue;
+      if (linked.has(reg.id) || multiWord(reg)) continue;
       if (!byDev.has(dev.id)) byDev.set(dev.id, { dev, regs: [] });
       byDev.get(dev.id).regs.push(reg);
     }
@@ -384,7 +389,8 @@
     const groups = [...byDev.values()].map(({ dev, regs }) => `<optgroup label="${esc(dev.displayName || dev.name)}${dev.enabled === false ? ' (비활성)' : ''}">` +
       regs.map((r) => {
         const l = linked(r.id);
-        return `<option value="${r.id}">${esc(r.tagName)}${r.displayName ? ` · ${esc(r.displayName)}` : ''}${l.length ? ` (태그: ${esc(l.join(', '))})` : ''}</option>`;
+        const mw = multiWord(r) ? ` (${r.length}워드 — HMI 미지원)` : '';
+        return `<option value="${r.id}"${mw ? ' disabled' : ''}>${esc(r.tagName)}${r.displayName ? ` · ${esc(r.displayName)}` : ''}${l.length ? ` (태그: ${esc(l.join(', '))})` : ''}${mw}</option>`;
       }).join('') + '</optgroup>').join('');
     const missing = t && !data.regs.has(t.source && t.source.registerId)
       ? `<option value="${esc(t.source && t.source.registerId)}">레지스터 없음 (#${esc(t.source && t.source.registerId)})</option>` : '';
@@ -397,7 +403,7 @@
         <div class="form-field"><label>TAG ID${t ? ' (변경 불가)' : ''}</label>${t ? `<input class="input" value="${esc(t.id)}" disabled>` : '<input class="input" data-ff="id" spellcheck="false" autocomplete="off">'}</div>
         <div class="form-field"><label>TAG NAME</label><input class="input" data-ff="name" spellcheck="false"></div>
         <div class="form-field"><label>단위</label><select class="select" data-ff="unit"><option value="">레지스터 상속</option>${opts(UNIT_OPTIONS)}</select></div>
-        <div class="form-field"><label>소수점 위치</label><select class="select" data-ff="decimals"><option value="">레지스터 상속</option>${opts(DECIMAL_OPTIONS)}</select></div>
+        <div class="form-field"><label>스케일</label><select class="select" data-ff="scale"><option value="">레지스터 상속</option>${opts(SCALE_OPTIONS)}</select><small class="tm-hint" data-hint="scale"></small></div>
         <div class="form-field"><label>최소값</label><input class="input" data-ff="min" inputmode="decimal"></div>
         <div class="form-field"><label>최대값</label><input class="input" data-ff="max" inputmode="decimal"></div>
         <div class="form-field"><label>읽기/쓰기</label><select class="select" data-ff="access"><option value="">레지스터 상속</option><option value="r">READ</option><option value="rw">WRITE</option></select></div>
@@ -578,6 +584,25 @@
     const ff = (k) => formWrap.querySelector(`[data-ff="${k}"]`);
     const formError = (text) => { formWrap.querySelector('.tm-form-err').textContent = text || ''; };
 
+    // 스케일 미리보기 — 원본값(현재 값, 없으면 예시 1234)이 어떻게 보일지. 물려받는 최소/최대도
+    // 고른 스케일로 환산해 입력란에 흐리게 보여준다(레지스터 최소/최대는 레지스터 스케일 기준).
+    const showScaleHint = () => {
+      const src = data.regs.get(Number(ff('source').value));
+      const reg = src && src.reg;
+      const hint = formWrap.querySelector('[data-hint="scale"]');
+      const inherit = (v) => (reg ? `레지스터 상속 (${v})` : '레지스터 상속');
+      const t = { scale: ff('scale').value === '' ? null : Number(ff('scale').value), min: null, max: null };
+      const lim = reg ? RAW.limits(t, reg) : {};
+      ff('min').placeholder = inherit(lim.min ?? '제한 없음');
+      ff('max').placeholder = inherit(lim.max ?? '제한 없음');
+      if (!reg) { hint.textContent = ''; return; }
+      if (RAW.isBool(reg)) { hint.textContent = '0/1 값 — 스케일을 쓰지 않습니다'; return; }
+      const cur = editing.tag && editing.tag.source && editing.tag.source.registerId === reg.id && data.values[editing.tag.id];
+      const raw = cur && cur.raw != null ? cur.raw : null;
+      const r = raw ?? 1234;
+      hint.textContent = `${raw != null ? '현재 원본' : '예: 원본'} ${r} → ${RAW.toValue(r, t, reg).toFixed(lim.decimals)}`;
+    };
+
     // 소스 레지스터가 바뀌면 물려받을 값을 입력란에 흐리게, 새 태그면 id·이름도 제안
     const onSourceChange = () => {
       const src = data.regs.get(Number(ff('source').value));
@@ -585,9 +610,8 @@
       // 첫 항목 "레지스터 상속"에 물려받을 값을 함께 보여준다
       const inherit = (v) => (reg ? `레지스터 상속 (${v})` : '레지스터 상속');
       ff('unit').options[0].textContent = inherit(reg && reg.unit ? reg.unit : '없음');
-      ff('decimals').options[0].textContent = inherit(reg ? decimalsFromScale(reg.scale) : '');
-      ff('min').placeholder = inherit(reg && hasLimit(reg.minValue) ? reg.minValue : '제한 없음');
-      ff('max').placeholder = inherit(reg && hasLimit(reg.maxValue) ? reg.maxValue : '제한 없음');
+      ff('scale').options[0].textContent = inherit(reg ? reg.scale : '');
+      showScaleHint();
       const acc = ff('access');
       acc.options[0].textContent = inherit(reg ? accessLabel(reg.readOnly ? 'r' : 'rw') : '');
       // 레지스터가 읽기 전용이면 읽기·쓰기는 고를 수 없음(골라도 쓰기는 실패)
@@ -596,7 +620,8 @@
       // 새 태그에서 "레지스터를 고르세요"로 되돌리면 입력한 내용을 모두 비운다(제안값도 다시 받도록)
       if (!editing.tag && !reg) {
         for (const k of ['id', 'name', 'min', 'max']) { ff(k).value = ''; delete ff(k).dataset.touched; }
-        for (const k of ['unit', 'decimals', 'access']) ff(k).value = '';
+        for (const k of ['unit', 'scale', 'access']) ff(k).value = '';
+        showScaleHint();
         formError('');
       }
       if (!editing.tag && reg) {
@@ -615,7 +640,7 @@
         ff('source').value = String(tag.source && tag.source.registerId);
         ff('name').value = tag.name || '';
         // 목록에 없는 값(직접 넣은 단위·자릿수)이면 선택 항목으로 추가해 그대로 보이게
-        for (const [k, v] of [['unit', tag.unit], ['decimals', tag.decimals]]) {
+        for (const [k, v] of [['unit', tag.unit], ['scale', tag.scale]]) {
           if (v != null && ![...ff(k).options].some((o) => o.value === String(v))) ff(k).add(new Option(String(v), String(v)));
           ff(k).value = v == null ? '' : String(v);
         }
@@ -625,6 +650,7 @@
       }
       onSourceChange();
       ff('source').addEventListener('change', onSourceChange);
+      ff('scale').addEventListener('change', showScaleHint);
       for (const k of ['id', 'name']) ff(k)?.addEventListener('input', (e) => { e.target.dataset.touched = '1'; });
       (tag ? ff('name') : ff('source')).focus();
     };
@@ -664,7 +690,7 @@
         unit: ff('unit').value || null,
         min: num('min'),
         max: num('max'),
-        decimals: num('decimals'),
+        scale: num('scale'),
         access: ff('access').value || null,
       };
       if (!registerId) return formError('소스 레지스터를 고르세요.');
@@ -673,7 +699,6 @@
       if (!name) return formError('이름을 입력하세요.');
       if ([body.min, body.max].some((v) => v != null && !Number.isFinite(v))) return formError('최소값·최대값은 숫자로 입력하세요.');
       if (body.min != null && body.max != null && body.min >= body.max) return formError('최소값은 최대값보다 작아야 합니다.');
-      if (body.decimals != null && !(body.decimals >= 0 && body.decimals <= 6)) return formError('소수점 자리는 0~6입니다.');
       formError('');
       const btn = btns.querySelector('[data-k="save"]');
       btn.disabled = true;

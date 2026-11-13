@@ -110,23 +110,82 @@
     }
   }
 
+  // ---- 원본(raw) ↔ 값 — 원본 데이터 원칙(docs/architecture/overview.md §5.1) ---------------
+  // 서버는 원본 워드(uint16)만 주고받고 배율은 여기서 적용한다. 원본 1234에 레지스터 배율 0.1이면
+  // 123.4, 태그 배율 0.01이면 12.34 — 둘은 독립이고 태그 배율이 비면 레지스터 배율을 물려받는다.
+  // 표시 자릿수는 배율에서 정한다(0.01 → 2자리).
+  // src: 태그 source 또는 레지스터 객체 { registerType|type, scale, isSigned, minValue, maxValue }
+  const BOOL_REGS = ['coil', 'discrete_input'];
+  const RAW = {
+    // 레지스터 min/max는 "제한 없음"을 아주 큰 수(double 최댓값)로 내려준다
+    hasLimit: (v) => v != null && Number.isFinite(v) && Math.abs(v) < 1e15,
+    digits: (scale) => (scale > 0 ? Math.max(0, -Math.round(Math.log10(scale))) : 0),
+    isBool: (src) => !!src && BOOL_REGS.includes(src.registerType || src.type),
+    scaleOf: (t, src = t && t.source) => (t && t.scale) ?? (src && src.scale) ?? 1,
+    // 원본 → 값. 값 없음(null — 통신 불량·2워드 이상 레지스터)은 null
+    toValue(raw, t, src = t && t.source) {
+      if (raw == null) return null;
+      if (RAW.isBool(src)) return raw ? 1 : 0;
+      const s = RAW.scaleOf(t, src);
+      const n = src && src.isSigned && raw > 32767 ? raw - 65536 : raw;
+      return Number((n * s).toFixed(RAW.digits(s)));   // 2472 * 0.1 = 247.20000000000002 방지
+    },
+    // 값 → 원본 워드(uint16, 음수는 2의 보수). 워드로 담을 수 없는 값이면 오류
+    toRaw(v, t, src = t && t.source) {
+      if (RAW.isBool(src)) return v === true || Number(v) ? 1 : 0;
+      const s = RAW.scaleOf(t, src);
+      const n = Math.round(Number(v) / s);
+      const [lo, hi] = src && src.isSigned ? [-32768, 32767] : [0, 65535];
+      if (!Number.isFinite(n) || n < lo || n > hi) {
+        const f = (x) => (x * s).toFixed(RAW.digits(s));
+        throw new Error(`${v}은(는) 쓸 수 있는 범위(${f(lo)} ~ ${f(hi)}) 밖입니다`);
+      }
+      return n < 0 ? n + 65536 : n;
+    },
+    // 태그가 실제로 쓰는 최소/최대·자릿수. 최소/최대가 비면 레지스터 값(레지스터 배율 기준)을 태그 배율로 환산.
+    // source가 없는 태그(데모 데이터소스의 tags.json)는 태그 값 그대로.
+    limits(t = {}, src = t.source) {
+      if (!src) return { min: t.min ?? null, max: t.max ?? null, decimals: t.decimals ?? 0 };
+      const s = RAW.scaleOf(t, src);
+      const d = RAW.isBool(src) ? 0 : RAW.digits(s);
+      const inh = (x) => (RAW.hasLimit(x) ? Number(((x / (src.scale || 1)) * s).toFixed(d)) : null);
+      return { min: t.min ?? inh(src.minValue), max: t.max ?? inh(src.maxValue), decimals: d };
+    },
+    // 값 응답 → 위젯이 쓰는 모양: 원본(raw)에서 v·decimals를 계산해 넣는다.
+    // tags: { id: 태그 }. raw가 없는 응답(데모 데이터소스)은 그대로 둔다.
+    decode(values, tags) {
+      const out = {};
+      for (const id in values) {
+        const x = values[id];
+        const t = tags[id];
+        out[id] = x && t && t.source && 'raw' in x
+          ? { ...x, v: RAW.toValue(x.raw, t), decimals: RAW.limits(t).decimals } : x;
+      }
+      return out;
+    },
+  };
+  WHMI.raw = RAW;
+
   // swr_web 백엔드의 HMI 태그 API(referencs/api-spec.md §14) 전용 데이터소스.
   // HttpSource와 달리 인증이 필요해 apiFetch(config.js, 토큰 자동 첨부)를 쓰고,
   // 엔드포인트 경로도 고정(/api/hmi/*)이라 cfg.readUrl/writeUrl은 쓰지 않는다.
+  // 값은 원본(raw)으로 주고받고 배율은 RAW가 적용한다.
   class SwrHmiSource {
-    constructor(cfg) {
+    constructor(cfg, tags) {
       this.pollMs = cfg.pollMs || 1000;
+      this.tags = tags;
     }
     async read(ids) {
       const res = await apiFetch(`/api/hmi/values?tags=${ids.map(encodeURIComponent).join(',')}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()).values || {};
+      return RAW.decode((await res.json()).values || {}, this.tags);
     }
     async write(id, v) {
+      const raw = RAW.toRaw(v, this.tags[id]);
       const res = await apiFetch('/api/hmi/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tag: id, v }),
+        body: JSON.stringify({ tag: id, raw }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
     }
@@ -294,9 +353,9 @@
     }
 
     // 위젯이 보는 값 정보.
-    // min/max는 실시간 값 응답에 없으므로(태그 정의에만 존재): 위젯 props > 태그 정의 > 기본값
-    // unit/decimals/access는 실시간 값 응답이 상속·오버라이드 적용 완료 상태로 내려주므로:
-    //   위젯 props(명시한 경우만) > 실시간 값 응답 > 태그 정의
+    // min/max: 위젯 props > 태그(비면 레지스터 값을 태그 배율로 환산, RAW.limits) > 기본값
+    // decimals: 배율에서 정한 자릿수(RAW) — 위젯에서 덮어쓰지 않는다
+    // unit/access: 위젯 props(unit만, 명시한 경우) > 실시간 값 응답(서버가 상속 적용) > 태그 정의
     // (docs/reference/hmi-widgets.md §2.1)
     // st: 상태 칸 판정 결과(states) — 조작 허용이 거짓이면 쓰기 불가, 켜짐 상태는 info.active로 위젯에
     info(w, p, raw, st = this.states(w)) {
@@ -310,14 +369,15 @@
       const wraw = w.writeTag ? this.values[w.writeTag] : raw;
       const wt = w.writeTag ? this.tags[w.writeTag] || {} : t;
       const writable = !(wraw && wraw.q === 'disabled') && pick(wraw && wraw.access, wt.access) === 'rw' && st.enabled;
+      const lim = RAW.limits(t);
       return {
         value: raw ? raw.v : undefined,
         ok: quality !== 'bad',
         quality,
-        min: pick(p.min, t.min, 0),
-        max: pick(p.max, t.max, 100),
+        min: pick(p.min, lim.min, 0),
+        max: pick(p.max, lim.max, 100),
         unit: pick(p.unit, raw && raw.unit, t.unit, ''),
-        decimals: pick(p.decimals, raw && raw.decimals, t.decimals, 0),
+        decimals: pick(raw && raw.decimals, lim.decimals, 0),
         writable,
         active: st.active,
         tag: t,
@@ -396,7 +456,7 @@
       for (const t of tagDoc.tags) tags[t.id] = t;
     }
 
-    const source = isSwrHmi ? new SwrHmiSource(project.dataSource) : new HttpSource(project.dataSource || {});
+    const source = isSwrHmi ? new SwrHmiSource(project.dataSource, tags) : new HttpSource(project.dataSource || {});
 
     // screensSource: "api"면 화면 목록/시작 화면/화면 내용을 디바이스에 저장된 것에서 읽는다
     // (GET /api/hmi/project, /api/hmi/screens/{id}). 생략 시 project.json의 screens[].file

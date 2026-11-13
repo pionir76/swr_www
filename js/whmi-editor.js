@@ -158,9 +158,10 @@
   function previewInfo(w, p, tags, raw) {
     const t = tags[w.tag] || {};
     const pick = (...xs) => xs.find((x) => x != null);
-    const min = pick(p.min, t.min, 0);
-    const max = pick(p.max, t.max, 100);
-    const decimals = pick(p.decimals, raw && raw.decimals, t.decimals, 0);
+    const lim = window.WHMI.raw.limits(t);   // 런타임 info()와 같은 규칙
+    const min = pick(p.min, lim.min, 0);
+    const max = pick(p.max, lim.max, 100);
+    const decimals = pick(raw && raw.decimals, lim.decimals, 0);
     return {
       value: raw && raw.v != null ? raw.v : Number((min + (max - min) * 0.6).toFixed(decimals)),
       ok: true,
@@ -863,7 +864,7 @@
       if (!ids.length) return;
       try {
         const res = await apiFetch(`/api/hmi/values?tags=${ids.map(encodeURIComponent).join(',')}`);
-        if (res.ok) this.values = (await res.json()).values || {};
+        if (res.ok) this.values = window.WHMI.raw.decode((await res.json()).values || {}, this.tags);
       } catch (_) {}
     }
 
@@ -1900,7 +1901,7 @@
       if (tag && !(tag in this.values)) {
         try {
           const res = await apiFetch(`/api/hmi/values?tags=${encodeURIComponent(tag)}`);
-          if (res.ok) Object.assign(this.values, (await res.json()).values || {});
+          if (res.ok) Object.assign(this.values, window.WHMI.raw.decode((await res.json()).values || {}, this.tags));
         } catch (_) {}
       }
       this.redrawOne(w);

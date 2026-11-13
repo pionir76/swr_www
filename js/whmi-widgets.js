@@ -194,12 +194,13 @@
     return measureCtx.measureText(text).width;
   }
 
-  // 눈금 숫자 미리 재기용 범위 — 그릴 때(create)는 아직 값이 없으므로 위젯 덮어쓰기 → 태그 정의 순.
-  // 소수 자릿수를 모르면 1자리로 넉넉히 잡는다.
+  // 눈금 숫자 미리 재기용 범위 — 그릴 때(create)는 아직 값이 없으므로 위젯 덮어쓰기 → 태그(배율 환산) 순.
+  // 태그가 없으면 소수 자릿수를 1자리로 넉넉히 잡는다.
   function scaleRange(w, p, ctx) {
-    const t = (ctx.tag && w.tag && ctx.tag(w.tag)) || {};
+    const t = ctx.tag && w.tag && ctx.tag(w.tag);
+    const lim = window.WHMI.raw.limits(t || {});
     const pick = (...xs) => xs.find((x) => x != null);
-    return { min: pick(p.min, t.min, 0), max: pick(p.max, t.max, 100), decimals: pick(p.decimals, t.decimals, 1) };
+    return { min: pick(p.min, lim.min, 0), max: pick(p.max, lim.max, 100), decimals: t ? lim.decimals : 1 };
   }
 
   // 숫자와 단위를 한 <text> 안의 두 조각(<tspan>)으로 그린다 — 브라우저가 숫자 바로 뒤에 단위를

@@ -51,18 +51,24 @@
 ## 2. 값 바인딩 규칙
 
 ### 2.1 데이터 흐름
-- **태그 정의**(`min`/`max`/`access`/`name` 등)는 화면 진입 시 `GET /api/hmi/tags` **1회** 조회해 캐시
-- **실시간 값**(`v`/`q`/`unit`/`decimals`/`access`)은 `GET /api/hmi/values?tags=...` **폴링**으로 갱신 — 화면에 바인딩된 태그만 요청
-- 위젯이 보는 최종 `unit`/`decimals`/`access`는 **매 폴링 응답값 우선**(서버가 상속·오버라이드 적용 완료 상태로 내려줌), 응답에 없으면 태그 정의값, 그것도 없으면 위젯 `props`가 지정한 값
-- `min`/`max`는 `/api/hmi/values` 응답에 없으므로 **태그 정의 → 위젯 `props` 오버라이드 → 기본값(0/100)** 순
+- **태그 정의**(`scale`/`min`/`max`/`access`/`name`, `source`의 레지스터 정보 등)는 화면 진입 시 `GET /api/hmi/tags` **1회** 조회해 캐시
+- **실시간 값**(`raw`/`q`/`unit`/`access`)은 `GET /api/hmi/values?tags=...` **폴링**으로 갱신 — 화면에 바인딩된 태그만 요청
+- **원본 데이터 원칙**(`docs/architecture/overview.md` §5.1): 서버는 원본 워드(`raw`, uint16)만 주고, 배율은 프론트가 적용한다(`whmi-runtime.js` `WHMI.raw`). 값을 받는 곳(런타임 폴링·편집기 미리보기·태그 관리)에서 `WHMI.raw.decode`로 `v`·`decimals`를 계산해 넣으므로 위젯·조건 코드는 `v`만 본다
+  - 배율 = 태그 `scale`, 비면 레지스터 `scale`(`source.scale`). 둘 다 **원본 기준**이고 서로 독립 — 원본 1234에 레지스터 0.1이면 123.4, 태그 0.01이면 12.34
+  - `source.isSigned`면 32767보다 큰 원본을 음수로 해석. coil·discrete_input은 0/1 그대로
+  - 자릿수(`decimals`)는 배율에서 정한다(0.01 → 2자리). 따로 저장하지 않는다
+  - 2워드 이상 레지스터(`source.length > 1`)는 `raw`가 `null`(값 없음) — HMI는 1워드만 지원
+- `unit`/`access`는 매 폴링 응답값 우선(서버가 상속 적용), 응답에 없으면 태그 정의값
 - 우선순위 요약:
 
 | 항목 | 1순위 | 2순위 | 3순위 |
 |---|---|---|---|
-| `unit`/`decimals`/`access` | 위젯 `props` (명시한 경우만) | 실시간 값 응답 | 태그 정의 |
-| `min`/`max` | 위젯 `props` | 태그 정의 | 기본값(0/100) |
+| `unit` | 위젯 `props` (명시한 경우만) | 실시간 값 응답 | 태그 정의 |
+| `access` | 실시간 값 응답 | 태그 정의 | — |
+| `decimals` | 태그 배율에서 계산 | — | — |
+| `min`/`max` | 위젯 `props` | 태그 정의(비면 레지스터 `minValue`/`maxValue`를 태그 배율로 환산, "제한 없음"(double 최댓값)은 비움) | 기본값(0/100) |
 
-`props`의 `min`/`max`/`unit`/`decimals`는 값 위젯(numeric·input·bar·gauge·tank) 공통 덮어쓰기다. 편집기 속성 창 "값" 그룹에서 비워 두면 태그 값을 쓴다.
+`props`의 `min`/`max`/`unit`은 값 위젯(numeric·input·bar·gauge·tank) 공통 덮어쓰기다. 편집기 속성 창 "값" 그룹에서 비워 두면 태그 값을 쓴다. 소수점(배율)은 위젯에서 덮어쓰지 않는다(2026-11-13 폐지 — 예전 화면의 `props.decimals`는 무시됨).
 
 ### 2.2 품질(`q`) 3단계 처리
 
@@ -124,7 +130,7 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 - 쓰기 위젯(button·switch·input·selector)은 위젯 필드 `enableWhen`(§1)으로 조작 허용 조건을 걸 수 있다
 - 태그가 `access:"rw"`가 아니면 자동으로 비활성(클릭 무시) — `access`는 매 폴링 갱신되므로, 운영 중 권한이 바뀌면(관리자가 태그를 r로 변경 등) 화면도 다음 폴링에 바로 반영됨
 - **순간 동작(누르고 있는 동안 1, 떼면 0) 미지원** — HTTP 지연/연결 끊김 시 값이 눌린 상태로 남을 위험 때문에 1차 범위에서 제외(WHMI §7 그대로 유지)
-- 쓰기 값 타입: **불리언 태그는 `v`에 JSON boolean(`true`/`false`)을 그대로 전송** — 숫자 태그는 엔지니어링 단위 숫자 그대로(서버가 `raw = round(v/scale)` 변환)
+- 쓰기는 **원본 워드**로 보낸다: `POST /api/hmi/write { tag, raw }`. 프론트가 `raw = round(값 ÷ 배율)`을 계산하고 음수는 2의 보수(uint16)로 바꾼다(`WHMI.raw.toRaw`). 워드로 담을 수 없는 값은 보내지 않고 상태줄에 오류를 띄운다. coil은 0/1
 
 ### 화면 이동
 

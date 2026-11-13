@@ -253,12 +253,12 @@
     animMs,
   ];
 
-  // ── 태그 값 덮어쓰기(값 위젯 공통) — 비우면 태그 정의 값 사용
+  // ── 태그 값 덮어쓰기(값 위젯 공통) — 비우면 태그 정의 값 사용.
+  // 소수점(배율)은 위젯에서 덮어쓰지 않는다 — 태그 배율 하나로 정한다(원본 데이터 원칙, overview.md §5.1).
   const valueOverride = [
     { key: 'min', label: '최소값', type: 'optnum', group: 'value', step: 'any', placeholder: '태그 값 사용' },
     { key: 'max', label: '최대값', type: 'optnum', group: 'value', step: 'any', placeholder: '태그 값 사용' },
     { key: 'unit', label: '단위', type: 'opttext', group: 'value', placeholder: '태그 값 사용' },
-    { key: 'decimals', label: '소수점 자리', type: 'optnum', group: 'value', min: 0, max: 6, placeholder: '태그 값 사용' },
   ];
   // 동작 조건(위젯 필드 — props가 아님). 조건 하나 = 태그 + 비교(판정 엔진 whmi-rules.js)
   //  none: 조건을 두지 않았을 때의 동작(선택 상자 첫 항목), effect: 요약 문구 "…일 때 ○○"
