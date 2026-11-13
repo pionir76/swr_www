@@ -3,6 +3,7 @@
 > 작성: 2026-11-11 (프론트엔드)
 > 대상: 빌드/플랫폼(`meta-swr`의 lighttpd 설정)
 > 관련: 장치 `/etc/lighttpd/lighttpd.conf`
+> 상태: **반영 완료(2026-11-13, 이미지 …20261113021803)** — 보드는 다음 플래싱 때 적용. 빌드팀 수정 1건: 아래 예시처럼 `mod_setenv`를 `mod_proxy` 뒤에 로드하면 `/api` 응답에도 헤더가 붙어서, `mod_setenv`를 `mod_proxy`보다 **먼저** 로드하도록 바꿈
 
 ---
 
@@ -32,7 +33,12 @@
 ```lighttpd
 # 웹 UI 정적 파일: 캐시는 쓰되 매번 바뀌었는지 확인(바뀌지 않았으면 304)
 # — 웹 UI를 새로 배포하면 브라우저가 바로 새 파일을 받도록
-server.modules += ( "mod_setenv" )
+# mod_setenv는 mod_proxy보다 먼저 로드해야 /api(프록시) 응답에 붙지 않는다
+# (끝에 += 로 붙이면 mod_proxy 뒤가 되어 /api에도 헤더가 붙음 — 빌드팀 확인)
+server.modules = (
+  "mod_setenv",
+  "mod_proxy"
+)
 $HTTP["url"] !~ "^/api/" {
   setenv.add-response-header = ( "Cache-Control" => "no-cache" )
 }
@@ -55,8 +61,8 @@ ETAG=$(curl -sI http://192.168.0.150/js/trends.js | awk -F': ' 'tolower($1)=="et
 curl -s -o /dev/null -w '%{http_code}\n' -H "If-None-Match: $ETAG" http://192.168.0.150/js/trends.js
 #    → 304
 
-# 3) API 응답에는 붙지 않는지(로그인 없이 401이어도 헤더 확인 가능)
-curl -sI http://192.168.0.150/api/tfile/status | grep -i cache-control
+# 3) API 응답에는 붙지 않는지 — GET으로 확인(HEAD는 앱이 404를 돌려줌). 로그인 없이 401이어도 헤더는 보임
+curl -s -D - -o /dev/null http://192.168.0.150/api/tfile/status | grep -i cache-control
 #    → 출력 없음
 ```
 

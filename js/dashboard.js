@@ -17,10 +17,10 @@
   const scSysVer       = $('#scSysVer');
   const scSysRev       = $('#scSysRev');
   const scSysUpdate    = $('#scSysUpdate');
-  const scEth0Role     = $('#scEth0Role');
+  const scEth0Name     = $('#scEth0Name');
   const scEth0State    = $('#scEth0State');
   const scEth0Ip       = $('#scEth0Ip');
-  const scEth1Role     = $('#scEth1Role');
+  const scEth1Name     = $('#scEth1Name');
   const scEth1State    = $('#scEth1State');
   const scEth1Ip       = $('#scEth1Ip');
   const scMbState      = $('#scMbState');
@@ -111,10 +111,10 @@
       const ifaces = cfgData.network?.interfaces ?? [];
       const eth0   = ifaces[0] ?? {};
       const eth1   = ifaces[1] ?? {};
-      if (scEth0Role)  scEth0Role.textContent = eth0.role      || '—';
+      if (scEth0Name)  scEth0Name.textContent = portName(eth0);
       if (scEth0State) scEth0State.innerHTML  = scBadge(eth0.enabled, '사용 중', '미사용');
       if (scEth0Ip)    scEth0Ip.textContent   = eth0.ipAddress || '—';
-      if (scEth1Role)  scEth1Role.textContent = eth1.role      || '—';
+      if (scEth1Name)  scEth1Name.textContent = portName(eth1);
       if (scEth1State) scEth1State.innerHTML  = scBadge(eth1.enabled, '사용 중', '미사용');
       if (scEth1Ip)    scEth1Ip.textContent   = eth1.ipAddress || '—';
 

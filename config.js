@@ -64,6 +64,14 @@ function onSessionExpired() {
   window.location.replace("./login.html?expired=1");
 }
 
+// 이더넷 포트 이름 — 장치 내부 이름(eth0/eth1)은 보드 배선과 어긋날 수 있어 화면에는 역할로 표시.
+// 역할은 앱 설정(/api/config network.interfaces[].role)을 따른다.
+const PORT_ROLE = {
+  field:   { name: "필드 포트",   desc: "현장 장비 통신용 네트워크" },
+  service: { name: "서비스 포트", desc: "서비스 및 유지보수 접속용 네트워크" },
+};
+const portName = (iface) => PORT_ROLE[iface?.role]?.name ?? iface?.name ?? "—";
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 

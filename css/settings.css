@@ -103,6 +103,28 @@
 
 .network-card-head h3 { margin: 0; font-size: 20px; }
 .network-card-head h3 small { color: #b8c5d7; font-size: 14px; }
+
+/* 네트워크 포트(보기 전용) */
+.net-info {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 9px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+.net-info dt { color: #8ea1b9; }
+.net-info dd { margin: 0; color: #dce6f3; text-align: right; font-variant-numeric: tabular-nums; }
+.net-info dd small { color: #7a8fa6; }
+.net-info dd.mono { font-family: ui-monospace, monospace; font-size: 12.5px; }
+.network-card.net-loading { color: #7a8fa6; font-size: 13px; }
+.network-card-head .status-chip { flex: none; white-space: nowrap; }
+.network-card-head p { word-break: keep-all; }
+.network-card.net-stale .net-info { opacity: 0.45; }          /* 응답 없음: 마지막 값은 흐리게 */
+.net-stale-note { margin: 12px 2px 0; color: #fbbf24; font-size: 12.5px; }
+
+/* 네트워크 탭: 넓은 모니터에서 가로로 늘어지지 않게 최대 너비 */
+.tab-content[data-tab="settings"] { max-width: 1320px; }
+.net-fixed-note { margin: 12px 2px 0; color: #7a8fa6; font-size: 12.5px; }
 .network-card-head p { margin: 5px 0 0; color: #8ea1b9; font-size: 13px; }
 
 /* ── 상태 / 설정 칩 ─────────────────────────────────────────────── */

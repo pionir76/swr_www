@@ -19,7 +19,7 @@
   let _trendPage          = 1;
 
   const tabSubtitles = {
-    'settings':             '네트워크, RS485, Modbus TCP Server 설정을 관리합니다.',
+    'settings':             '네트워크 상태를 확인하고 RS485, Modbus TCP Server 설정을 관리합니다.',
     'settings-maintenance': '시스템 정보 확인, 백업·복원, 펌웨어 업데이트 및 재시작을 관리합니다.',
     'settings-trend':       '트렌드 레코딩 채널과 샘플 간격을 설정합니다.',
   };
@@ -58,36 +58,86 @@
   }
 
   function fillAllForms(cfg) {
-    fillNetwork(cfg.network);
     fillSerial(cfg.serial);
     fillModbus(cfg.modbusServer);
   }
 
-  function fillNetwork(net) {
-    if (!net?.interfaces) return;
-    $$('.network-card').forEach((card) => {
-      const iface = net.interfaces.find((i) => i.name === card.dataset.iface);
-      if (!iface) return;
+  // ── 네트워크 포트(보기 전용): GET /api/system/network ─────────────
+  // 포트 주소는 OS 이미지가 고정한다. ports[0] = 필드 포트(위쪽), ports[1] = 서비스 포트(아래쪽).
+  // 리눅스 이름(eth0/eth1)은 위아래와 반대라 화면에는 역할 이름만 쓴다.
+  let _ports = [];   // 마지막 응답 — 트래픽 블록 이름(리눅스 이름 → 역할)에도 씀
+  const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-      const enabledCb = $("input[data-net='enabled']", card);
-      if (enabledCb) enabledCb.checked = !!iface.enabled;
-      applyEnabledState(card, !!iface.enabled);
+  // 응답이 없으면(이 PC가 연결된 포트의 케이블이 빠짐, 장치 꺼짐 등) 마지막 상태를 그대로 두지
+  // 않고 "응답 없음"으로 표시한다 — 요청은 3초 제한, 앞 요청이 끝나기 전엔 다음을 보내지 않음
+  const PORTS_TIMEOUT_MS = 3000;
+  let _portsBusy  = false;
+  let _portsStale = false;
 
-      const modeEl = $("[data-net='mode']", card);
-      if (modeEl) {
-        modeEl.value = iface.mode ?? 'static';
-        applyDhcpMode(card, iface.mode === 'dhcp');
+  async function loadPorts() {
+    if (_portsBusy) return;
+    _portsBusy = true;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), PORTS_TIMEOUT_MS);
+    try {
+      const res = await apiFetch('/api/system/network', { signal: ctl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      _ports = (await res.json()).ports ?? [];
+      _portsStale = false;
+      renderPorts();
+    } catch (err) {
+      _portsStale = true;
+      const wrap = $('#netPorts');
+      if (!_ports.length) {
+        if (wrap) wrap.innerHTML = '<div class="network-card net-loading">포트 상태를 불러오지 못했습니다</div>';
+        const note = $('#netStale');
+        if (note) note.hidden = false;
+      } else {
+        renderPorts();
       }
+    } finally {
+      clearTimeout(timer);
+      _portsBusy = false;
+    }
+  }
 
-      const set = (key, val) => {
-        const el = $(`[data-net='${key}']`, card);
-        if (el) el.value = val ?? '';
-      };
-      set('ip',      iface.ipAddress);
-      set('netmask', iface.netmask);
-      set('gateway', iface.gateway);
-      set('dns',     iface.dns);
-    });
+  function renderPorts() {
+    const wrap = $('#netPorts');
+    if (!wrap) return;
+    const dash = (v) => (v == null || v === '' ? '—' : esc(String(v)));
+    wrap.innerHTML = _ports.map((pt) => {
+      const role = PORT_ROLE[pt.role];
+      const link = _portsStale
+        ? '<span class="status-chip off">응답 없음</span>'
+        : !pt.present
+        ? '<span class="status-chip off">포트 없음</span>'
+        : pt.linkUp
+          ? `<span class="status-chip ok">● 연결됨${pt.speedMbps ? ` · ${pt.speedMbps}Mbps${pt.duplex ? ` ${pt.duplex === 'full' ? 'Full' : 'Half'}` : ''}` : ''}</span>`
+          : '<span class="status-chip off">○ 연결 안 됨</span>';
+      const ip = pt.ipAddress
+        ? `${esc(pt.ipAddress)}${pt.prefixLength != null ? ` / ${pt.prefixLength}` : ''}${pt.netmask ? ` <small>(${esc(pt.netmask)})</small>` : ''}`
+        : '—';
+      const dns = Array.isArray(pt.dns) ? pt.dns.join(', ') : pt.dns;
+      return `
+        <div class="network-card${_portsStale ? ' net-stale' : ''}">
+          <div class="network-card-head">
+            <div>
+              <h3>${esc(role?.name ?? pt.role ?? '—')}</h3>
+              <p>${esc(role?.desc ?? '')}</p>
+            </div>
+            ${link}
+          </div>
+          <dl class="net-info">
+            <dt>IP 주소</dt><dd>${ip}</dd>
+            <dt>게이트웨이</dt><dd>${dash(pt.gateway)}</dd>
+            <dt>DNS</dt><dd>${dash(dns)}</dd>
+            <dt>MAC</dt><dd class="mono">${dash(pt.macAddress)}</dd>
+            <dt>누적 수신 / 송신</dt><dd>${fmtBytes(pt.rxBytes)} / ${fmtBytes(pt.txBytes)}</dd>
+          </dl>
+        </div>`;
+    }).join('') || '<div class="network-card net-loading">포트 정보가 없습니다</div>';
+    const note = $('#netStale');
+    if (note) note.hidden = !_portsStale;
   }
 
   function fillSerial(serial) {
@@ -113,93 +163,17 @@
     if (slaveId) slaveId.value = mbs.slaveId ?? '';
   }
 
-  // ── DHCP 모드: 정적 IP 필드 비활성화 ─────────────────────────────
-  const STATIC_FIELDS = ['ip', 'netmask', 'gateway', 'dns'];
-
-  function applyDhcpMode(card, isDhcp) {
-    STATIC_FIELDS.forEach((key) => {
-      const input = $(`[data-net='${key}']`, card);
-      if (!input) return;
-      input.disabled = isDhcp;
-      input.closest('.form-field').classList.toggle('field-disabled', isDhcp);
-    });
-  }
-
-  function applyEnabledState(card, isEnabled) {
-    const chip = $('.status-chip', card);
-    if (chip) {
-      chip.classList.toggle('ok',  isEnabled);
-      chip.classList.toggle('off', !isEnabled);
-      chip.textContent = isEnabled ? '사용 중' : '미사용';
-    }
-
-    // 미사용 시 모든 설정 입력 비활성화
-    $$('select[data-net], input[data-net]', card).forEach((el) => {
-      if (el.dataset.net === 'enabled') return; // 토글 자체는 유지
-      el.disabled = !isEnabled;
-      el.closest('.form-field')?.classList.toggle('field-disabled', !isEnabled);
-    });
-
-    // 활성화 시 DHCP 모드 재적용 (정적 IP 필드 상태 복원)
-    if (isEnabled) {
-      const modeEl = $("[data-net='mode']", card);
-      if (modeEl) applyDhcpMode(card, modeEl.value === 'dhcp');
-    }
-  }
-
-  $$('.network-card').forEach((card) => {
-    $("[data-net='mode']", card)?.addEventListener('change', (e) => {
-      applyDhcpMode(card, e.target.value === 'dhcp');
-    });
-
-    $("input[data-net='enabled']", card)?.addEventListener('change', (e) => {
-      applyEnabledState(card, e.target.checked);
-    });
-  });
-
-  // ── 저장: 네트워크·RS485·Modbus 동시 저장 ────────────────────────
+  // ── 저장: RS485·Modbus (네트워크는 OS 이미지 고정 — 보기 전용) ───────
   async function save() {
     const btn = $('#netSaveBtn');
     if (btn) btn.disabled = true;
     try {
-      await Promise.all([saveNetwork(), saveSerial(), saveModbus()]);
+      await Promise.all([saveSerial(), saveModbus()]);
       showMsg('저장되었습니다. 변경사항 적용을 위해 재시작이 필요할 수 있습니다.');
     } catch (err) {
       showMsg(`저장 실패: ${err.message}`, 'error');
     } finally {
       if (btn) btn.disabled = false;
-    }
-  }
-
-  // PUT /api/config/network
-  async function saveNetwork() {
-    const interfaces = $$('.network-card').map((card) => {
-      const ifaceName  = card.dataset.iface;
-      // role은 UI에서 수정 불가 — 서버 응답값 그대로 유지
-      const cachedRole = cachedConfig?.network?.interfaces
-        ?.find((i) => i.name === ifaceName)?.role ?? '';
-      const mode   = $("[data-net='mode']", card)?.value ?? 'static';
-      const isDhcp = mode === 'dhcp';
-      return {
-        name:      ifaceName,
-        role:      cachedRole,
-        enabled:   $("input[data-net='enabled']", card)?.checked ?? true,
-        mode,
-        // DHCP이면 빈 문자열 — 서버가 자동 할당
-        ipAddress: isDhcp ? '' : ($("[data-net='ip']",      card)?.value ?? ''),
-        netmask:   isDhcp ? '' : ($("[data-net='netmask']", card)?.value ?? ''),
-        gateway:   isDhcp ? '' : ($("[data-net='gateway']", card)?.value ?? ''),
-        dns:       isDhcp ? '' : ($("[data-net='dns']",     card)?.value ?? ''),
-      };
-    });
-    const res = await apiFetch('/api/config/network', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ interfaces }),
-    });
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e.error ?? `network: HTTP ${res.status}`);
     }
   }
 
@@ -420,7 +394,6 @@
         { key: 'devices',   label: '장비 목록',     defaultOn: true,  showCount: true },
         { key: 'registers', label: '레지스터 목록', defaultOn: true,  showCount: true },
         { key: 'users',     label: '사용자 계정',   defaultOn: true,  showCount: true },
-        { key: 'network',   label: '네트워크 설정', defaultOn: false, warn: 'IP 충돌 가능' },
         { key: 'hmi',       label: 'HMI 화면·태그', defaultOn: true,  showCount: true, countUnit: '개 화면', warn: '기존 HMI 전체 교체' },
       ];
       optEl.innerHTML = ITEMS.map(({ key, label, defaultOn, showCount, countUnit = '개', warn }) => {
@@ -460,7 +433,7 @@
   $('#restoreApplyBtn')?.addEventListener('click', async () => {
     if (!restoreId) return;
     if (!window.confirm('현재 설정이 백업 파일의 내용으로 교체됩니다.\n복원 후 시스템 재시작이 필요합니다. 계속하시겠습니까?')) return;
-    const options = { config: false, devices: false, registers: false, network: false, users: false, hmi: false };
+    const options = { config: false, devices: false, registers: false, users: false, hmi: false };
     $$('[data-opt]', $('#restoreOptions')).forEach((cb) => {
       if (Object.prototype.hasOwnProperty.call(options, cb.dataset.opt))
         options[cb.dataset.opt] = cb.checked;
@@ -948,12 +921,18 @@
 
     // Strip
     el('sysUptime', fmtUptime(d.uptimeSeconds));
-    const eth0 = d.network?.eth0;
-    const eth1 = d.network?.eth1;
-    el('ethRx0', eth0 ? fmtBytes(eth0.rxBytes) : '—');
-    el('ethTx0', eth0 ? fmtBytes(eth0.txBytes) : '—');
-    el('ethRx1', eth1 ? fmtBytes(eth1.rxBytes) : '—');
-    el('ethTx1', eth1 ? fmtBytes(eth1.txBytes) : '—');
+    // 트래픽 블록 2개: 다른 화면과 같은 순서(필드 → 서비스). 트래픽 값은 리눅스 이름 키라
+    // 포트 응답(또는 설정)의 순서·이름으로 짝을 맞춘다 — 리눅스 이름은 위아래와 반대
+    const ifaces = cachedConfig?.network?.interfaces ?? [];
+    [0, 1].forEach((k) => {
+      const port = _ports[k] ?? (ifaces[k] && { role: ifaces[k].role, iface: ifaces[k].name });
+      const name = port?.iface ?? ['eth1', 'eth0'][k];
+      const tr   = d.network?.[name];
+      const lbl  = $(`[data-port-block="${k}"]`);
+      if (lbl) lbl.textContent = port ? portName(port) : name;
+      el(`ethRx${k}`, tr ? fmtBytes(tr.rxBytes) : '—');
+      el(`ethTx${k}`, tr ? fmtBytes(tr.txBytes) : '—');
+    });
     const cat = (d.cachedAt ?? '').replace('T', ' ');
     el('sysCachedAt', cat ? cat.slice(11, 16) : '—');
   }
@@ -1451,6 +1430,9 @@
   switchTab(currentTab);
 
   loadConfig();
+  loadPorts();
+  // 네트워크 탭을 보는 동안 5초마다 — 케이블 연결 상태가 바로 보이게
+  const portsTimer = setInterval(() => { if (currentTab === 'settings') loadPorts(); }, 5000);
   loadSystemInfo();
   loadLanguageSetting();
   loadCurrentUserRole();
@@ -1467,6 +1449,7 @@
   window.addEventListener('spa:beforeload', () => {
     clearInterval(sysResourcesTimer);
     clearInterval(recordingGuardTimer);
+    clearInterval(portsTimer);
     unsubApplyPollWarning();
     unsubFactoryResetPoll();
     window.removeEventListener('hashchange', onHashChangeTab);

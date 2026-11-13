@@ -116,6 +116,8 @@ swr_backup_20260624_102431.zip
 
 ### 5.1 네트워크 설정
 
+> **2026-11-13 폐지.** 이더넷 포트 주소는 OS 이미지가 고정한다. 백업에 네트워크 설정을 넣지 않고, 복원 `options.network`는 무시되며(웹 복원 화면에서도 항목 삭제), validate의 네트워크 경고도 없어졌다. 아래는 폐지 전 설계 기록이다.
+
 네트워크 설정은 백업 파일에 포함할 수는 있지만, 복원 시 기본값은 OFF로 둔다.
 
 이유:
@@ -1070,7 +1072,7 @@ API 흐름:
 - [x] 잘못된 형식 파일 업로드 시 차단 확인 — 422 `Missing required files (manifest.json, checksum.sha256)`
 - [x] checksum 불일치 파일 복원 차단 확인 — 422 `Checksum mismatch: devices.json`
 - [x] schemaVersion 불일치 시 복원 차단 확인 — 422 `Incompatible schemaVersion: backup=999, device=1`
-- [x] 네트워크 설정 기본 OFF 확인 — validate 응답 경고 `Network settings will NOT be restored unless explicitly enabled`, apply는 `network: false`로 시험
+- [x] 네트워크 설정 기본 OFF 확인 — validate 응답 경고 `Network settings will NOT be restored unless explicitly enabled`, apply는 `network: false`로 시험 (2026-11-13 네트워크 복원 자체가 폐지되어 해당 없음)
 - [x] 폴링 중 복원 차단 확인 — 409 `Polling is running…`. 409를 받아도 복원 세션은 유지되어, 폴링 정지 후 같은 `restoreId`로 적용됨(화면 흐름과 일치)
 - [ ] DB transaction 실패 시 rollback 확인 (현재 설정 유지) — 실패 상황을 만들 수 없어 미확인
 - [x] admin 계정 삭제 차단 확인 — `DELETE /api/users/admin` 403

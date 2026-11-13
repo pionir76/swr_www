@@ -59,8 +59,7 @@ swr_web/
 │   └── icons/          # SVG 아이콘 (CSS mask-image 방식으로 적용)
 ├── docs/               # 설계 문서, 아키텍처, 배포 규약
 ├── referencs/          # 백엔드 참조 소스 (ApiServer.cpp/h)
-├── deploy.py           # 디바이스 배포 스크립트 (Python paramiko SFTP)
-└── dev_restore.py      # 개발 환경 복구 스크립트
+└── deploy.py           # 디바이스 배포 스크립트 (Python paramiko SFTP)
 ```
 
 ---
@@ -119,11 +118,7 @@ python3 deploy.py
 2. lighttpd CORS Origin 수정 (개발 → 프로덕션)
 3. 디바이스 재부팅 (약 30~60초 후 `http://192.168.0.150` 접속)
 
-개발 환경 복구:
-
-```bash
-python3 dev_restore.py
-```
+root 비밀번호는 저장소에 적지 않는다. 환경변수 `SWR_ROOT_PASS`로 넘기거나, 없으면 실행할 때 입력한다.
 
 ---
 

@@ -73,7 +73,7 @@ swr/
 ### 0) `config/`  _(앱 설정 계층)_
 
 - `config.json` 파일(경로: `SR_CONFIG_FILE`)을 파싱하여 `AppConfig` 구조체를 반환한다.
-- 네트워크 인터페이스(eth0/eth1), RS485 설정, 시스템 설정(hostname, NTP)을 담는다.
+- RS485 설정, 시스템 설정(hostname, NTP)을 담는다. 네트워크 항목은 2026-11-13 폐지 — 이더넷 포트 주소는 OS 이미지가 고정하고, 앱은 `GET /api/system/network`로 실제 상태만 읽는다(`docs/backend-network-ports-notice.md`).
 - `SystemConfig` 싱글턴을 통해 앱 전역에서 설정값을 조회한다.
 - `factoryReset()` 으로 config 파일이 없을 때 기본값 파일을 생성한다.
 
@@ -123,7 +123,7 @@ swr/
 | 사용자 | GET | `/api/users/security-policy` |
 | 사용자 | PUT | `/api/users/security-policy` |
 | 시스템 설정 | GET | `/api/config` |
-| 시스템 설정 | PUT | `/api/config/network` |
+| 시스템 설정 | PUT | `/api/config/network` — **폐지(항상 410)**, 포트 상태는 `GET /api/system/network` |
 | 시스템 설정 | PUT | `/api/config/serial` |
 | 시스템 설정 | PUT | `/api/config/system` |
 | 시스템 설정 | PUT | `/api/config/modbus-server` |
@@ -221,7 +221,7 @@ swr/
     config.json 로드 → AppConfig 파싱 (없으면 factoryReset으로 기본값 생성)
     SystemConfig::init(config) — 전역 설정 등록
     → Logger 초기화 (SR_LOG_FILE, 최대 SR_MAX_LOG_LINES 줄)
-    → 네트워크 설정 적용 (현재 주석 처리, 필요 시 활성화)
+    → (네트워크 설정 적용은 폐지 — 포트 주소는 OS 이미지 고정)
 
 [2] DeviceDatabase
     SQLite DB 오픈 (SR_DB_FILE)

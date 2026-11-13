@@ -3,7 +3,7 @@
   <div class="page-title-row">
     <div>
       <h1>시스템 설정</h1>
-      <p>네트워크, RS485, Modbus TCP Server 설정을 관리합니다.</p>
+      <p>네트워크 상태를 확인하고 RS485, Modbus TCP Server 설정을 관리합니다.</p>
     </div>
   </div>
 
@@ -24,87 +24,11 @@
           <h2><span class="header-icon">▦</span>네트워크 인터페이스</h2>
           <span class="setting-chip">network</span>
         </div>
-        <div class="network-card-wrap">
-
-          <div class="network-card" data-iface="eth0">
-            <div class="network-card-head">
-              <div>
-                <h3>eth0 <small>(field)</small></h3>
-                <p>현장 장비 통신용 네트워크</p>
-              </div>
-              <span class="status-chip ok">사용 중</span>
-            </div>
-            <div class="setting-row">
-              <label>사용 여부</label>
-              <label class="switch"><input type="checkbox" data-net="enabled" checked><span></span></label>
-            </div>
-            <div class="form-grid">
-              <div class="form-field">
-                <label>모드</label>
-                <select class="select" data-net="mode">
-                  <option value="static">static</option>
-                  <option value="dhcp">dhcp</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label>IP 주소</label>
-                <input class="input" data-net="ip" value="192.168.0.150">
-              </div>
-              <div class="form-field">
-                <label>Netmask</label>
-                <input class="input" data-net="netmask" value="255.255.255.0">
-              </div>
-              <div class="form-field">
-                <label>Gateway</label>
-                <input class="input" data-net="gateway" value="192.168.0.1">
-              </div>
-              <div class="form-field full">
-                <label>DNS</label>
-                <input class="input" data-net="dns" value="8.8.8.8">
-              </div>
-            </div>
-          </div>
-
-          <div class="network-card" data-iface="eth1">
-            <div class="network-card-head">
-              <div>
-                <h3>eth1 <small>(service)</small></h3>
-                <p>서비스 및 유지보수 접속용 네트워크</p>
-              </div>
-              <span class="status-chip ok">사용 중</span>
-            </div>
-            <div class="setting-row">
-              <label>사용 여부</label>
-              <label class="switch"><input type="checkbox" data-net="enabled" checked><span></span></label>
-            </div>
-            <div class="form-grid">
-              <div class="form-field">
-                <label>모드</label>
-                <select class="select" data-net="mode">
-                  <option value="static">static</option>
-                  <option value="dhcp">dhcp</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label>IP 주소</label>
-                <input class="input" data-net="ip" value="192.168.1.150">
-              </div>
-              <div class="form-field">
-                <label>Netmask</label>
-                <input class="input" data-net="netmask" value="255.255.255.0">
-              </div>
-              <div class="form-field">
-                <label>Gateway</label>
-                <input class="input" data-net="gateway" value="192.168.1.1">
-              </div>
-              <div class="form-field full">
-                <label>DNS</label>
-                <input class="input" data-net="dns" value="8.8.8.8">
-              </div>
-            </div>
-          </div>
-
+        <div class="network-card-wrap" id="netPorts">
+          <div class="network-card net-loading">불러오는 중…</div>
         </div>
+        <p class="net-stale-note" id="netStale" hidden>장치와 통신이 끊겼습니다. 이 PC가 연결된 포트의 케이블을 확인하세요.</p>
+        <p class="net-fixed-note">포트 주소는 장치에 고정되어 있습니다.</p>
       </article>
 
       <!-- 우: RS485 + Modbus -->
@@ -378,7 +302,7 @@
                   <div class="sysres-net-block-head">
                     <span class="sysres-net-block-tag">Ethernet Device</span>
                     <span class="sysres-net-block-sep">·</span>
-                    <span class="sysres-net-block-iface">eth0</span>
+                    <span class="sysres-net-block-iface" data-port-block="0">필드 포트</span>
                   </div>
                   <div class="sysres-net-stat">
                     <span class="sysres-net-stat-key">누적 수신량</span>
@@ -394,7 +318,7 @@
                   <div class="sysres-net-block-head">
                     <span class="sysres-net-block-tag">Ethernet Device</span>
                     <span class="sysres-net-block-sep">·</span>
-                    <span class="sysres-net-block-iface">eth1</span>
+                    <span class="sysres-net-block-iface" data-port-block="1">서비스 포트</span>
                   </div>
                   <div class="sysres-net-stat">
                     <span class="sysres-net-stat-key">누적 수신량</span>
@@ -696,7 +620,7 @@
   <!-- ── 하단 공지 (전체 폭) ─────────────────────────────────────── -->
   <footer class="settings-footer-notice">
     <span>ⓘ</span> 일부 설정은 저장 후 애플리케이션 재시작 또는 시스템 재부팅 후 적용됩니다.
-    네트워크·RS485·Modbus TCP Server 설정 변경은 현재 통신 상태에 영향을 줄 수 있습니다.
+    RS485·Modbus TCP Server 설정 변경은 현재 통신 상태에 영향을 줄 수 있습니다.
   </footer>
 
   <!-- 트렌드 기록 파일 전체 삭제 확인 모달 -->

@@ -2,7 +2,10 @@
 """
 SmartRoute Web UI 배포 스크립트
 사용: python3 deploy.py
+      root 비밀번호는 환경변수 SWR_ROOT_PASS에서 읽고, 없으면 실행할 때 묻는다
+      (저장소에 비밀번호를 적지 않는다). 예: SWR_ROOT_PASS='...' python3 deploy.py
 """
+import getpass
 import os
 import re
 import sys
@@ -12,14 +15,13 @@ import paramiko
 HOST        = "192.168.0.150"
 PORT        = 22
 USER        = "root"
-PASS        = "root"
 LOCAL_BASE  = os.path.dirname(os.path.abspath(__file__))
 REMOTE_BASE = "/var/www/html"
 
 LIGHTTPD_CONF     = "/etc/lighttpd/lighttpd.conf"
 
-EXCLUDE_DIRS  = {"referencs", "webtest_for_help", "webtest", "__pycache__", "docs", ".git"}
-EXCLUDE_FILES = {"dev-server.py", "deploy.py", "dev_restore.py"}
+EXCLUDE_DIRS  = {"referencs", "webtest_for_help", "webtest", "__pycache__", "docs", ".git", ".claude"}
+EXCLUDE_FILES = {"dev-server.py", "deploy.py"}
 EXCLUDE_EXTS  = {".md"}
 
 # ── 파일 수집 ────────────────────────────────────────────────────────────────
@@ -131,8 +133,9 @@ def main():
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    password = os.environ.get("SWR_ROOT_PASS") or getpass.getpass(f"{USER}@{HOST} 비밀번호: ")
     try:
-        ssh.connect(HOST, PORT, USER, PASS, timeout=10)
+        ssh.connect(HOST, PORT, USER, password, timeout=10)
     except Exception as e:
         print(f"✗ SSH 연결 실패: {e}")
         sys.exit(1)
