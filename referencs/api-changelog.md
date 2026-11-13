@@ -26,6 +26,21 @@
 
 ---
 
+## 2026-11-13 — 이더넷 포트: 앱 설정 폐지, 실제 상태 조회 추가
+
+포트 주소는 OS 이미지가 고정합니다. 지금까지 네트워크 설정 화면은 설정 파일에 저장만 하고 실제로 적용되지 않았습니다. 앱에서는 이제 **보기만** 합니다. 자세한 안내: `docs/backend-network-ports-notice.md`.
+
+용어: **필드 포트** = 위쪽 RJ45(`field`, 리눅스 `eth1`, 192.168.0.150/24), **서비스 포트** = 아래쪽 RJ45(`service`, 리눅스 `eth0`, 192.168.1.150/24). 리눅스 이름은 위아래와 반대입니다.
+
+- **신규 `GET /api/system/network`** (권한 `Any`): 포트 2개의 실제 상태. `ports[0]` = 필드, `ports[1]` = 서비스. 주소, 링크, 속도, MAC, 게이트웨이, DNS, 트래픽.
+- **`PUT /api/config/network` 폐지:** 항상 **410** `{ "error": "Network settings are fixed by the OS image ..." }`.
+- **`GET /api/config`의 `network`:** 설정 파일 값 대신 **실제 포트 상태**를 같은 모양으로 돌려줍니다. 순서는 필드 → 서비스, `name`은 실제 리눅스 이름(`eth1`, `eth0`), `role`은 `field`/`service`. 지금까지는 `eth0 = field`로 반대로 나왔습니다.
+- **`POST /api/config/reset` 응답:** `network` 항목이 빠졌습니다.
+- **백업·복원:** 백업에 네트워크 설정을 넣지 않습니다. 복원 `options.network`는 폐지(보내도 무시), validate의 `config.warning`("Network settings will NOT be restored ...")도 없어졌습니다.
+- `GET /api/system/resources`의 `network`는 그대로 리눅스 이름 키입니다(`eth1` = 필드, `eth0` = 서비스).
+
+---
+
 ## 2026-11-11 — 세션 만료와 토큰 무효화 (세션 타임아웃 요청서)
 
 장치에 배포되어 있습니다. 요청 바디와 정상 응답은 바뀌지 않았습니다.

@@ -750,14 +750,24 @@
   "network": {
     "interfaces": [
       {
-        "name": "eth0",
-        "role": "primary",
+        "name": "eth1",
+        "role": "field",
         "enabled": true,
         "mode": "static",
         "ipAddress": "192.168.0.150",
         "netmask": "255.255.255.0",
         "gateway": "192.168.0.1",
         "dns": "8.8.8.8"
+      },
+      {
+        "name": "eth0",
+        "role": "service",
+        "enabled": true,
+        "mode": "static",
+        "ipAddress": "192.168.1.150",
+        "netmask": "255.255.255.0",
+        "gateway": "",
+        "dns": ""
       }
     ]
   },
@@ -794,6 +804,8 @@
 }
 ```
 
+> `network` (2026-11-13부터): 설정 파일이 아니라 **장치의 실제 포트 상태**입니다. 항상 필드 포트(`role: "field"`) → 서비스 포트(`role: "service"`) 순서이고, `name`은 리눅스 이름(필드 = `eth1`, 서비스 = `eth0`)입니다. 포트를 찾지 못하면 `name`은 빈 문자열, `enabled`는 `false`입니다. 기존 화면 호환용으로 남겨 둔 것이며, 새 화면은 `GET /api/system/network`를 쓰세요.
+
 ---
 
 ### POST /api/config/reset
@@ -804,7 +816,6 @@
 **Response 200**
 ```json
 {
-  "network": { /* 초기화된 네트워크 설정 */ },
   "serial":  { /* 초기화된 시리얼 설정 */ },
   "system":  { /* 초기화된 시스템 설정 */ },
   "modbusServer": { /* 초기화된 Modbus 서버 설정 */ },
@@ -815,29 +826,13 @@
 ---
 
 ### PUT /api/config/network
-권한: `ManagerOrAbove`
+권한: `ManagerOrAbove` | **폐지 (2026-11-13)**
 
-**Request Body**
-```json
-{
-  "interfaces": [
-    {
-      "name": "eth0",
-      "role": "primary",
-      "enabled": true,
-      "mode": "static",
-      "ipAddress": "192.168.0.150",
-      "netmask": "255.255.255.0",
-      "gateway": "192.168.0.1",
-      "dns": "8.8.8.8"
-    }
-  ]
-}
-```
+포트 주소는 OS 이미지가 고정합니다(필드 포트 192.168.0.150/24, 서비스 포트 192.168.1.150/24). 이 API는 설정 파일에 저장만 하고 실제로 적용하지 않았기 때문에 폐지했습니다. 인증·권한 확인 뒤 항상 아래 응답을 돌려줍니다.
 
-**Response 200**
+**Response 410**
 ```json
-{ "restartRequired": true }
+{ "error": "Network settings are fixed by the OS image and cannot be changed. Use GET /api/system/network to read them." }
 ```
 
 ---
@@ -948,6 +943,71 @@
 
 ---
 
+### GET /api/system/network
+권한: `Any`
+
+이더넷 포트 2개의 실제 상태를 OS에서 읽어 돌려줍니다. 항상 `ports[0]` = 필드 포트, `ports[1]` = 서비스 포트입니다.
+
+| 포트 | 위치 | 리눅스 이름 | 주소 (OS 이미지 고정) | 용도 |
+|---|---|---|---|---|
+| 필드 포트 (`field`) | 위쪽 RJ45 | eth1 | 192.168.0.150/24, GW 192.168.0.1 | 현장 장비, 현장망, NTP |
+| 서비스 포트 (`service`) | 아래쪽 RJ45 | eth0 | 192.168.1.150/24, GW 없음 | 유지보수 노트북 직결 |
+
+포트는 리눅스 이름이 아니라 보드 위치로 찾습니다(이름은 위아래와 반대).
+
+**Response 200**
+```json
+{
+  "ports": [
+    {
+      "role": "field",
+      "iface": "eth1",
+      "present": true,
+      "linkUp": true,
+      "speedMbps": 100,
+      "duplex": "full",
+      "macAddress": "AE:D2:89:44:54:8F",
+      "ipAddress": "192.168.0.150",
+      "prefixLength": 24,
+      "netmask": "255.255.255.0",
+      "gateway": "192.168.0.1",
+      "dns": ["8.8.8.8"],
+      "rxBytes": 112550,
+      "txBytes": 164840
+    },
+    {
+      "role": "service",
+      "iface": "eth0",
+      "present": true,
+      "linkUp": false,
+      "speedMbps": 0,
+      "duplex": "",
+      "macAddress": "1E:CF:37:A8:73:D3",
+      "ipAddress": "192.168.1.150",
+      "prefixLength": 24,
+      "netmask": "255.255.255.0",
+      "gateway": "",
+      "dns": [],
+      "rxBytes": 32904,
+      "txBytes": 36010
+    }
+  ]
+}
+```
+
+| 필드 | 설명 |
+|---|---|
+| `present` | 포트를 찾았는지. `false`이면 나머지는 빈 값 |
+| `linkUp` | 케이블 연결(링크) 여부 |
+| `speedMbps`, `duplex` | 링크가 있을 때만 값이 있음. 없으면 `0`, `""` |
+| `macAddress` | 현재 시제품 보드는 MAC이 기록되지 않아 **부팅마다 바뀝니다** |
+| `ipAddress`, `prefixLength`, `netmask` | 첫 번째 IPv4 주소. 없으면 `""`, `-1`, `""` |
+| `gateway` | 이 포트로 나가는 기본 게이트웨이. 없으면 `""` |
+| `dns` | 이 포트에 설정된 DNS 목록 |
+| `rxBytes`, `txBytes` | 부팅 후 누적 바이트 |
+
+---
+
 ### GET /api/system/resources
 권한: `Any`
 
@@ -985,6 +1045,8 @@
   "cachedAt": "2026-10-13T12:00:00"
 }
 ```
+
+> `network` 키는 리눅스 이름입니다. **`eth1` = 필드 포트(위쪽), `eth0` = 서비스 포트(아래쪽)**. 포트별 표시는 `GET /api/system/network`의 `role`을 쓰는 것을 권합니다.
 
 ---
 
@@ -1562,7 +1624,8 @@ Content-Disposition: `attachment; filename="swr_backup_YYYYMMdd_HHmmss.zip"`
 
 **Response**: 설정 백업 ZIP 파일 (binary)
 
-> 포함 내용: 장비, 레지스터, 사용자, 시스템 설정 (config.json), HMI 프로젝트·화면·태그 (hmi.json)
+> 포함 내용: 장비, 레지스터, 사용자, 시스템 설정 (config.json), HMI 프로젝트·화면·태그 (hmi.json)  
+> 이더넷 포트 주소는 OS 이미지가 고정하므로 백업에 넣지 않습니다(2026-11-13부터). 예전 백업의 `config.json`에 있는 `network`는 복원할 때 무시합니다.
 >
 > `hmi.json`의 태그는 `registerId` 대신 `unifiedAddress`로 레지스터를 가리킵니다. 레지스터 id는 복원 시 새로 부여되므로, 복원 시 `unifiedAddress`로 현재 레지스터를 다시 찾아 연결합니다.
 
@@ -1612,7 +1675,6 @@ Content-Disposition: `attachment; filename="swr_backup_YYYYMMdd_HHmmss.zip"`
   "restoreId": "validate에서 받은 uuid",
   "options": {
     "config":    true,
-    "network":   false,
     "devices":   true,
     "registers": true,
     "users":     true,
@@ -1621,7 +1683,7 @@ Content-Disposition: `attachment; filename="swr_backup_YYYYMMdd_HHmmss.zip"`
 }
 ```
 
-> `network` 기본값 `false` (IP 변경으로 접속 불능 방지)  
+> `network` 옵션은 폐지되었습니다(2026-11-13). 보내도 무시합니다. 포트 주소는 OS 이미지가 고정합니다.  
 > `hmi` 기본값 `true`. HMI 복원은 병합이 아닌 **전체 교체** (기존 프로젝트·화면·태그 삭제 후 백업 내용으로 대체). 현재 장치에 해당 `unifiedAddress` 레지스터가 없는 태그는 건너뜁니다.  
 > `devices: true` + `hmi: false`이면 HMI 프로젝트·화면은 그대로 두고, **기존 HMI 태그는 `unifiedAddress`로 새로 만들어진 레지스터에 다시 연결**합니다. 백업에 없는 레지스터를 가리키던 태그는 삭제되며, 삭제된 태그 id는 시스템 로그(warning)에 기록됩니다.
 
