@@ -1,6 +1,6 @@
 # SmartRoute REST API 명세
 
-> 최종 수정: 2026-10-19 (HMI 태그 source에 장비·레지스터 정보 추가)  
+> 최종 수정: 2026-11-13 (HMI 값·쓰기를 원본(raw)으로, 태그 `decimals` → `scale`)  
 > Base URL: `http://<device-ip>:8080`  
 > 응답 형식: `application/json` (바이너리 응답 제외)
 
@@ -1372,12 +1372,18 @@ Content-Type: `application/octet-stream`
     "registerTagName": "LEVEL",
     "registerDisplayName": "탱크 수위",
     "localAddress": 100,
-    "unifiedAddress": 12
+    "unifiedAddress": 12,
+    "registerType": "holding_register",
+    "length": 1,
+    "scale": 0.1,
+    "isSigned": false,
+    "minValue": 0.0,
+    "maxValue": 1000.0
   },
   "unit": "%",
   "min": 0.0,
   "max": 100.0,
-  "decimals": 1,
+  "scale": 0.01,
   "access": "r",
   "createdAt": "2026-10-14T10:00:00",
   "updatedAt": "2026-10-14T10:00:00"
@@ -1395,11 +1401,19 @@ Content-Type: `application/octet-stream`
 | `registerDisplayName` | 레지스터 `displayName` |
 | `localAddress` | 레지스터 `localAddress` (장비 안 주소) |
 | `unifiedAddress` | 레지스터 `unifiedAddress` |
+| `registerType` | 레지스터 `type` (`coil`·`discrete_input`이면 원본은 0/1) |
+| `length` | 레지스터 `length` (워드 수). HMI 태그는 **1워드만 지원**. 2 이상이면 `values`의 `raw`는 `null`, 쓰기는 422 |
+| `scale` | 레지스터 `scale`. 태그 `scale`이 `null`일 때 상속 |
+| `isSigned` | 레지스터 `isSigned`. 원본 uint16을 부호 있는 값으로 해석할지 |
+| `minValue` / `maxValue` | 레지스터 `minValue` / `maxValue` (레지스터 배율 기준) |
 
 - 소스 레지스터를 찾을 수 없으면 `registerId` 외의 `source` 필드는 모두 `null` (필드는 항상 포함)
 - 소스 레지스터를 삭제하면 그 HMI 태그도 **함께 삭제**됨 (장비 삭제 시 그 장비의 태그도 모두 삭제)
-- `unit / min / max / decimals / access` 생략(null) 시 소스 레지스터 값에서 상속
-- `decimals` 생략 시 `scale`에서 자동 추론 (`scale=0.1 → 1`, `scale=0.01 → 2`, …)
+- **원본 데이터 원칙:** 서버는 태그의 `scale`·`min`·`max`를 **저장하고 돌려주기만** 하고, 계산에 쓰지 않습니다. 배율 적용(값 = 원본 × 배율)과 역변환은 프론트가 합니다.
+- `scale`: `null`이면 레지스터 `scale` 상속. 허용 값은 `100`, `10`, `1`, `0.1`, `0.01`, `0.001`, 그 밖의 값은 400. 레지스터 설정과 무관하게 **원본값 기준**입니다(원본 1234, 태그 `scale` 0.01 → 12.34)
+- `min` / `max`: 태그 배율을 적용한 값 기준. `null`일 때 레지스터 값을 환산해 물려받는 것은 프론트가 합니다
+- `unit` / `access`: 생략(null) 시 소스 레지스터 값 상속(`values` 응답에는 상속을 적용한 값이 나감)
+- `decimals`는 2026-11-13에 폐지. 요청에 들어와도 무시하고 응답에 없음
 - `access`: `"r"` | `"rw"` — 레지스터 `readOnly` 상속 또는 오버라이드
 - `id` 허용 문자: 영숫자 + `_` + `-`, 최대 64자
 
@@ -1423,14 +1437,14 @@ Content-Type: `application/octet-stream`
   "unit": "%",
   "min": 0.0,
   "max": 100.0,
-  "decimals": 1,
+  "scale": 0.01,
   "access": "r"
 }
 ```
 `id / name / source.registerId` 필수, 나머지 선택. `source`의 응답 전용 필드가 들어와도 무시
 
 **응답** 201: 생성된 HmiTag 객체  
-**에러** 400: 유효하지 않은 id 형식 / registerId 없음 / access 값 오류  
+**에러** 400: 유효하지 않은 id 형식 / registerId 없음 / access 값 오류 / scale 값 오류  
 **에러** 409: id 중복
 
 ### GET /api/hmi/tags/{id}
@@ -1464,11 +1478,12 @@ Content-Type: `application/octet-stream`
   "ts": "2026-10-14T02:26:05Z",
   "values": {
     "TK1_LEVEL": {
-      "v": 56.9,
+      "raw": 569,
       "q": "good",
       "unit": "%",
-      "decimals": 1,
-      "access": "r"
+      "access": "r",
+      "v": 56.9,
+      "decimals": 1
     }
   }
 }
@@ -1481,23 +1496,31 @@ Content-Type: `application/octet-stream`
 | `"bad"` | 3× 초과 또는 응답 없음 |
 | `"disabled"` | 소스 레지스터의 장비가 비활성 (`v`는 `null`) |
 
-`v`는 `bad` 상태이거나 아직 값이 없으면 `null`
+| 필드 | 설명 |
+|---|---|
+| `raw` | 장비에서 읽은 **원본 워드 그대로**(uint16, 0–65535). 부호 해석·배율 적용 없음. `registers/realtime`의 `rawWord`와 같은 값. coil·discrete_input은 `0`/`1`. `q`가 `bad`·`disabled`이거나 아직 값이 없거나 2워드 이상 레지스터면 `null` |
+| `unit` / `access` | 태그 값, 없으면 레지스터에서 상속한 값 |
+| `v` / `decimals` | **전환 기간 전용, 곧 폐지.** `v`는 레지스터 배율을 적용하고 레지스터 `minValue`/`maxValue`로 자른 값(태그 `scale`과 무관). `decimals`는 태그 `scale`(없으면 레지스터 `scale`)의 소수 자릿수 |
 
 ### POST /api/hmi/write
 권한: `ManagerOrAbove`
 
 **요청 바디:**
 ```json
-{ "tag": "LEVEL_SP", "v": 75.0 }
+{ "tag": "LEVEL_SP", "raw": 7500 }
 ```
 
-coil 타입 레지스터는 `v`에 JSON boolean(`true`/`false`) 또는 숫자(`0`/`1`) 전달 가능.  
-서버가 엔지니어링 단위 `v`를 `raw = round(v / scale)`로 변환 후 기록.
+- `raw`: 장비에 쓸 **원본 워드**(정수 0–65535). 서버는 배율 계산 없이 그대로 씁니다. 음수는 프론트가 2의 보수로 바꿔 보냅니다(`-5` → `65531`). `POST /api/registers/{id}/write`의 `rawValues`와 같은 규칙
+- coil: `raw`는 `0` 또는 `1`
+- 서버는 태그 `min`/`max`로 범위를 검사하지 않습니다(프론트 입력 창에서 검사)
+- **전환 기간 전용, 곧 폐지:** `raw` 대신 `{ "tag": ..., "v": 75.0 }`도 받습니다. 서버가 `round(v / 레지스터 scale)`로 변환합니다. `raw`와 `v`가 함께 오면 `raw`를 씁니다
 
 **응답** 202: `{ "ok": true, "tag": "LEVEL_SP" }`  
+**에러** 400: `tag`·`raw` 없음 / `raw`가 정수가 아니거나 범위 밖(coil은 0/1 밖)  
 **에러** 404: 태그 없음  
 **에러** 405: `access: "r"` 태그 쓰기 시도  
-**에러** 409: 소스 레지스터의 장비가 비활성 `{ "error": "device disabled", "deviceId": 1 }`
+**에러** 409: 소스 레지스터의 장비가 비활성 `{ "error": "device disabled", "deviceId": 1 }`  
+**에러** 422: 소스 레지스터 없음 / 2워드 이상 레지스터
 
 ---
 
@@ -1628,6 +1651,7 @@ Content-Disposition: `attachment; filename="swr_backup_YYYYMMdd_HHmmss.zip"`
 > 이더넷 포트 주소는 OS 이미지가 고정하므로 백업에 넣지 않습니다(2026-11-13부터). 예전 백업의 `config.json`에 있는 `network`는 복원할 때 무시합니다.
 >
 > `hmi.json`의 태그는 `registerId` 대신 `unifiedAddress`로 레지스터를 가리킵니다. 레지스터 id는 복원 시 새로 부여되므로, 복원 시 `unifiedAddress`로 현재 레지스터를 다시 찾아 연결합니다.
+> 태그의 배율은 `scale`로 저장됩니다(상속이면 생략). 2026-11-13 이전 백업의 `decimals`는 복원 때 무시되고 `scale`은 상속(`null`)이 됩니다.
 
 ---
 

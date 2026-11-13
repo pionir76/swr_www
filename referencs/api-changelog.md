@@ -26,6 +26,19 @@
 
 ---
 
+## 2026-11-13 (2차) — HMI 값·쓰기를 원본(raw)으로 (HMI 원본값 요청서)
+
+요청서: `docs/backend-hmi-raw-values-request.md`. 답변: `docs/backend-hmi-raw-values-response.md`. 서버는 HMI에서 배율을 **저장만** 하고 계산하지 않습니다. 계산은 프론트가 합니다.
+
+- **HmiTag `decimals` 폐지 → `scale` 신규:** `null`이면 레지스터 `scale` 상속. 허용 값 `100`·`10`·`1`·`0.1`·`0.01`·`0.001`, 그 밖은 **400**. `decimals`는 요청에 와도 무시하고 응답에서 빠졌습니다. 기존 태그는 `scale: null`(상속)이 됩니다.
+- **HmiTag `source` 응답 필드 추가:** `registerType`, `length`, `scale`, `isSigned`, `minValue`, `maxValue`. 레지스터를 찾지 못하면 `null`.
+- **`GET /api/hmi/values`에 `raw` 추가:** 원본 워드(uint16), coil·discrete_input은 0/1. `bad`·`disabled`·값 없음·2워드 이상 레지스터면 `null`. `v`/`decimals`는 **전환 기간 동안 남겨 둡니다**(`decimals`는 이제 태그 `scale` 기준 자릿수).
+- **`POST /api/hmi/write`에 `raw` 추가:** 원본 워드(정수 0–65535, coil은 0/1)를 그대로 씁니다. 범위 밖·정수 아님은 **400**. `v`도 전환 기간 동안 받으며, 둘 다 오면 `raw` 우선. 2워드 이상 레지스터는 **422**.
+- **백업·복원:** `hmi.json` 태그에 `scale`(상속이면 생략)을 넣고 `decimals`는 뺍니다. 이전 백업의 `decimals`는 복원 때 무시합니다.
+- **전환 마무리 예정:** 프론트 전환 완료를 알려 주시면 `values`의 `v`/`decimals`와 `write`의 `v`(서버 역변환)를 없앱니다.
+
+---
+
 ## 2026-11-13 — 이더넷 포트: 앱 설정 폐지, 실제 상태 조회 추가
 
 포트 주소는 OS 이미지가 고정합니다. 지금까지 네트워크 설정 화면은 설정 파일에 저장만 하고 실제로 적용되지 않았습니다. 앱에서는 이제 **보기만** 합니다. 자세한 안내: `docs/backend-network-ports-notice.md`.
