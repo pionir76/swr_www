@@ -77,7 +77,7 @@
   // ── 상태 판별 ────────────────────────────────────────────────────
   function getStatus(r) {
     if (!r.isValid)   return 'bad';
-    if (r.outOfRange) return 'warn';
+    if (isOut(r))     return 'warn';
     if (r.quality === 'bad' || r.quality === 'normal') return 'stale';
     return 'good';
   }
@@ -91,11 +91,16 @@
   const SOURCE_TYPE_LABEL = {
     holding_register: 'Holding Register',
     input_register:   'Input Register',
+    coil:             'Coil',
     coil_status:      'Coil Status',
     discrete_input:   'Discrete Input',
   };
+  const isCoilReg = (r) => r.sourceType === 'coil' || r.sourceType === 'coil_status';
 
   const fmtValue   = (v, reg) => RegFmt.value(v, reg);
+  // 값은 원본(rawWord)에서 프론트가 계산한다 — 서버 scaledValue/outOfRange를 쓰지 않음(원본 데이터 원칙)
+  const valueOf    = (r) => RegFmt.rawValue(r);
+  const isOut      = (r) => RegFmt.outOfRange(valueOf(r), r);
   const fmtAddress = (addr)   => RegFmt.address(addr);
 
   function fmtTime(iso) {
@@ -139,19 +144,21 @@
       if (!r.isValid) {
         valEl.className = 'error-value';
         valEl.textContent = '--';
-      } else if (r.outOfRange) {
+      } else if (isOut(r)) {
         valEl.className = 'warning-value';
-        valEl.textContent = `${fmtValue(r.scaledValue, r)} ${r.unit || ''}`.trim();
+        valEl.textContent = `${fmtValue(valueOf(r), r)} ${r.unit || ''}`.trim();
       } else {
         valEl.className = 'value-cell';
-        valEl.textContent = `${fmtValue(r.scaledValue, r)} ${r.unit || ''}`.trim();
+        valEl.textContent = `${fmtValue(valueOf(r), r)} ${r.unit || ''}`.trim();
       }
     }
 
-    set('dtlRawWord', r.rawWord != null ? `${r.rawWord} (${RegFmt.hex(r.rawWord)})` : '—');
+    const ws = RegFmt.words(r);
+    set('dtlRawWord', ws ? `${ws.join(' ')} (${RegFmt.regHex(r)})` : '—');
 
-    // 비트 상태 — 어떤 레지스터든 원본 워드 16비트를 그대로(b15 → b0, 4비트씩 묶음, 1은 강조)
-    renderBits(r.isValid ? r.rawWord : null);
+    // 비트 상태 — 어떤 레지스터든 원본 워드 16비트를 그대로(b15 → b0, 4비트씩 묶음, 1은 강조).
+    // 2워드 이상이면 가장 낮은 워드
+    renderBits(r.isValid ? RegFmt.lowWord(r) : null);
 
     const qEl = $('#dtlQuality');
     if (qEl) {
@@ -297,15 +304,15 @@
       const modeCls  = r.readOnly ? 'readonly' : 'readwrite';
 
       // 숫자값(스케일 적용) + 원본 워드 16진값 — 모든 레지스터 같은 형식
-      const hx = RegFmt.hex(r.rawWord);
+      const hx = RegFmt.regHex(r);
       const rawHex = hx ? ` <small class="raw-hex">(${hx})</small>` : '';
       let valueCell;
       if (!r.isValid) {
         valueCell = `<span class="error-value">--</span>`;
-      } else if (r.outOfRange) {
-        valueCell = `<span class="warning-value">${fmtValue(r.scaledValue, r)}</span>${rawHex}`;
+      } else if (isOut(r)) {
+        valueCell = `<span class="warning-value">${fmtValue(valueOf(r), r)}</span>${rawHex}`;
       } else {
-        valueCell = `<span class="value-cell">${fmtValue(r.scaledValue, r)}</span>${rawHex}`;
+        valueCell = `<span class="value-cell">${fmtValue(valueOf(r), r)}</span>${rawHex}`;
       }
 
       const tr = document.createElement('tr');
@@ -408,13 +415,13 @@
 
   function openWriteModal(r) {
     _writeReg = r;
-    const isCoil = r.sourceType === 'coil_status';
+    const isCoil = isCoilReg(r);
 
     wmTagName.textContent     = r.tagName ?? '—';
     wmDisplayName.textContent = r.displayName ?? '—';
     wmUnifiedAddr.textContent = 40000 + r.id;
     wmCurrentVal.textContent  = r.isValid
-      ? `${fmtValue(r.scaledValue, r)} ${r.unit || ''}`.trim()
+      ? `${fmtValue(valueOf(r), r)} ${r.unit || ''}`.trim()
       : '-- (Comm Error)';
 
     wmCoilWrap.hidden = !isCoil;
@@ -427,7 +434,7 @@
     } else {
       const unit = r.unit || '';
       wmUnitLabel.textContent = unit;
-      wmValueInput.value = r.isValid ? fmtValue(r.scaledValue, r) : '';
+      wmValueInput.value = r.isValid ? fmtValue(valueOf(r), r) : '';
       wmValueInput.removeAttribute('min');
       wmValueInput.removeAttribute('max');
 
@@ -456,8 +463,12 @@
     const val = parseFloat(wmValueInput?.value);
     if (!wmRawHint) return;
     if (isNaN(val) || !_writeReg) { wmRawHint.textContent = ''; return; }
-    const raw = Math.round(val / (_writeReg.scale || 1));
-    wmRawHint.textContent = `Raw: ${raw}`;
+    try {
+      const raw = RegFmt.toRaw(val, _writeReg);
+      wmRawHint.textContent = `Raw: ${raw} (${RegFmt.hex(raw)})`;
+    } catch (e) {
+      wmRawHint.textContent = e.message;
+    }
   }
 
   function closeWriteModal() {
@@ -472,7 +483,7 @@
 
   async function submitWrite() {
     if (!_writeReg) return;
-    const isCoil = _writeReg.sourceType === 'coil_status';
+    const isCoil = isCoilReg(_writeReg);
     let rawValues;
 
     if (isCoil) {
@@ -486,7 +497,7 @@
       if (hasLimit(_writeReg.maxValue) && val > _writeReg.maxValue) {
         showWmError(`Value exceeds maximum (${_writeReg.maxValue}).`); return;
       }
-      rawValues = [Math.round(val / (_writeReg.scale || 1))];
+      try { rawValues = [RegFmt.toRaw(val, _writeReg)]; } catch (e) { showWmError(e.message); return; }
     }
 
     wmSubmitBtn.disabled = true;

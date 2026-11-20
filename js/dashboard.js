@@ -207,8 +207,8 @@
       const qualCls   = r.quality === 'good'   ? 'state-ok'
                       : r.quality === 'normal' ? 'amber-text' : 'red-text';
       const devCode   = deviceCodeMap?.[r.deviceId] ?? '—';
-      const hx        = r.isValid ? RegFmt.hex(r.rawWord) : null;   // 원본 16진값(실시간 모니터링과 같은 형식)
-      const val       = RegFmt.value(r.scaledValue, r) + (hx ? ` <small class="raw-hex">(${hx})</small>` : '');
+      const hx        = r.isValid ? RegFmt.regHex(r) : null;   // 원본 16진값(실시간 모니터링과 같은 형식)
+      const val       = RegFmt.value(RegFmt.rawValue(r), r) + (hx ? ` <small class="raw-hex">(${hx})</small>` : '');   // 원본에서 계산(원본 데이터 원칙)
       const tr        = document.createElement('tr');
       tr.innerHTML = `
         <td class="mono">${devCode}</td>

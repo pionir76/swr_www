@@ -253,10 +253,77 @@ const RegFmt = (() => {
     return n.toFixed(decimalsFromScale(reg?.scale));
   }
 
-  // 원본 워드(rawWord, uint16) → "0x04D2". 값이 없으면 null
+  // ── 원본 → 값 (원본 데이터 원칙, docs/architecture/overview.md §5.1) ──
+  // 서버는 원본 워드(rawWord)만 믿고, 부호·스케일은 여기서 적용한다(HMI WHMI.raw와 같은 규칙).
+  // 원본은 rawWords(상위 워드 먼저, byteOrder 적용 완료 — docs/backend-realtime-raw-values-response.md §3-1).
+  // coil·discrete_input은 rawWord가 늘 0이라 반드시 rawWords([0]/[1])를 쓴다.
+  // 전환 기간: 서버가 아직 rawWords·isSigned를 주지 않으면 서버 계산값(scaledValue)을 쓴다.
+  const hasLimit = (v) => v != null && Number.isFinite(v) && Math.abs(v) < 1e15;   // double 최댓값 = 제한 없음
+  const isBitReg = (reg) => reg?.sourceType === 'coil' || reg?.sourceType === 'coil_status' || reg?.sourceType === 'discrete_input';
+
+  // 레지스터의 원본 워드 배열(상위 워드 먼저). 없으면 null
+  function words(reg) {
+    if (!reg) return null;
+    if (Array.isArray(reg.rawWords) && reg.rawWords.length) return reg.rawWords;
+    if (isBitReg(reg)) return null;                  // coil의 rawWord는 의미 없음(늘 0)
+    return reg.rawWord != null ? [reg.rawWord] : null;
+  }
+
+  // 원본 정수: 워드를 이어 붙이고 전체 최상위 비트로 부호 판단(BigInt — 64비트 대비)
+  function rawInt(ws, signed) {
+    let n = 0n;
+    for (const w of ws) n = (n << 16n) | BigInt(w & 0xFFFF);
+    const bits = BigInt(ws.length * 16);
+    if (signed && (n >> (bits - 1n)) & 1n) n -= 1n << bits;
+    return Number(n);
+  }
+
+  function rawValue(reg) {
+    if (!reg) return null;
+    const ws = words(reg);
+    if (!ws || reg.isSigned === undefined) return reg.scaledValue ?? null;   // 전환 기간
+    if (isBitReg(reg)) return ws[0] ? 1 : 0;
+    const s = reg.scale || 1;
+    return Number((rawInt(ws, reg.isSigned) * s).toFixed(decimalsFromScale(s)));   // 2472 * 0.1 = 247.20000000000002 방지
+  }
+
+  // 값이 레지스터 최소/최대 밖인지("제한 없음"은 비교하지 않음)
+  function outOfRange(v, reg) {
+    if (v == null || !reg) return false;
+    return (hasLimit(reg.minValue) && v < reg.minValue) || (hasLimit(reg.maxValue) && v > reg.maxValue);
+  }
+
+  // 값 → 원본 워드(쓰기용, uint16). 음수는 2의 보수. 워드에 담을 수 없으면 Error. 1워드만 지원
+  function toRaw(v, reg) {
+    if ((reg?.length || 1) > 1) throw new Error('2워드 이상 레지스터는 여기서 쓸 수 없습니다.');
+    const s = reg?.scale || 1;
+    const n = Math.round(Number(v) / s);
+    const signed = reg?.isSigned ?? n < 0;   // 전환 기간(isSigned 없음)엔 음수 입력이면 부호 있음으로
+    const [lo, hi] = signed ? [-32768, 32767] : [0, 65535];
+    if (!Number.isFinite(n) || n < lo || n > hi) {
+      const f = (x) => (x * s).toFixed(decimalsFromScale(s));
+      throw new Error(`쓸 수 있는 범위(${f(lo)} ~ ${f(hi)})를 벗어났습니다.`);
+    }
+    return n < 0 ? n + 65536 : n;
+  }
+
+  // 원본 워드(uint16) → "0x04D2". 값이 없으면 null
   function hex(raw) {
     if (raw == null || !isFinite(raw)) return null;
     return '0x' + (Number(raw) & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+  }
+
+  // 레지스터 원본 전체 → "0x04D2" / 2워드 이상은 이어서 "0x0001_86A0"
+  function regHex(reg) {
+    const ws = words(reg);
+    if (!ws) return null;
+    return '0x' + ws.map((w) => (w & 0xFFFF).toString(16).toUpperCase().padStart(4, '0')).join('_');
+  }
+
+  // 비트 상태 표시용 워드 — 가장 낮은 워드(b15..b0)
+  function lowWord(reg) {
+    const ws = words(reg);
+    return ws ? ws[ws.length - 1] : null;
   }
 
   // 원본 워드 → 16비트 배열(b15 → b0). 값이 없으면 null
@@ -270,5 +337,5 @@ const RegFmt = (() => {
     return addr != null ? String(addr).padStart(5, '0') : '—';
   }
 
-  return { value, hex, bits, address };
+  return { value, rawValue, outOfRange, toRaw, words, hex, regHex, lowWord, bits, address };
 })();
