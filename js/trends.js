@@ -12,9 +12,10 @@
   let _status      = null;   // /api/tfile/status 응답
   let _files       = [];     // /api/tfile/files.files 배열
   let _file        = null;   // 선택 파일: { filename, startTime, freq, chCnt, channels[] }
-  let _allPts      = [];     // 파일 전체를 메모리에 적재한 원본 레코드 [{ ts, vals }] (_allPtsStep 간격)
-  let _allPtsStep  = 1;      // _allPts 레코드 간 실제 간격(레코드 인덱스 단위). 서버가 50000개 캡으로
-                              // step을 올렸을 경우를 대비해 실측값을 저장(=1이면 매 레코드가 그대로 있음)
+  let _allPts      = [];     // 파일 전체를 메모리에 적재한 원본 레코드 [{ ts, vals }] (ts 오름차순)
+                              // 간격은 일정하지 않을 수 있다: 긴 파일은 서버가 step을 올려 성기게 오고,
+                              // 끝부분(refineTail)과 LIVE로 붙는 점은 1레코드 간격 — 찾을 때는 시각으로
+  let _allPtsStep  = 1;      // 전체 적재 때 서버가 실제로 쓴 간격(레코드 단위). 50000개 캡으로 올라갔으면 > 1
   let _chartPts    = [];     // 현재 화면에 그려지는 다운샘플된 부분집합 [{ ts, vals }]
   let _chart       = null;
   let _visibleCh   = new Set();
@@ -358,18 +359,33 @@
     return [to - width, to];
   }
 
-  // _allPts에서 지정 구간을 잘라 캔버스 폭에 맞게 다운샘플링(순수 함수 — 부수효과 없음)
+  // _allPts에서 ts >= sec인 첫 점의 위치(이진 탐색) — 점 간격이 일정하지 않아 순번 계산을 쓰지 않는다
+  function firstIdxAtOrAfter(sec) {
+    let lo = 0, hi = _allPts.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (_allPts[mid].ts < sec) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }
+
+  // _allPts에서 지정 구간을 잘라 캔버스 폭에 맞게 다운샘플링(순수 함수 — 부수효과 없음).
+  // 구간 양끝 바깥 점도 하나씩 넣어 선이 화면 끝까지 이어지게 한다. 다운샘플링은 개수가 아니라
+  // 시간 칸(1px 폭) 기준 — 성긴 구간과 촘촘한 구간이 섞여도 화면 밀도가 고르게.
   function computeViewPts(fromSec, toSec) {
     if (!_file || _allPts.length === 0) return [];
-    const stepSec = _allPtsStep * _file.freq;
-    let riStart = Math.round((fromSec - _file.startTime) / stepSec);
-    let riEnd   = Math.round((toSec   - _file.startTime) / stepSec);
-    riStart = Math.max(0, Math.min(_allPts.length - 1, riStart));
-    riEnd   = Math.max(riStart, Math.min(_allPts.length - 1, riEnd));
-    const slice = _allPts.slice(riStart, riEnd + 1);
-    const stride  = Math.max(1, Math.ceil(slice.length / plotWidthPx()));
-    if (stride === 1) return slice;
-    const out = slice.filter((_, i) => i % stride === 0);
+    const iStart = Math.max(0, firstIdxAtOrAfter(fromSec) - 1);
+    const iEnd   = Math.min(_allPts.length - 1, firstIdxAtOrAfter(toSec));
+    const slice  = _allPts.slice(iStart, iEnd + 1);
+    const px     = plotWidthPx();
+    if (slice.length <= px) return slice;
+    const cell = (toSec - fromSec) / px;
+    const out = [];
+    let lastCell = null;
+    for (const pt of slice) {
+      const c = Math.floor((pt.ts - fromSec) / cell);
+      if (c !== lastCell) { out.push(pt); lastCell = c; }
+    }
     if (out[out.length - 1] !== slice[slice.length - 1]) out.push(slice[slice.length - 1]);  // 바늘 위치
     return out;
   }
@@ -672,6 +688,37 @@
     _allPtsStep = pts.length > 1
       ? Math.max(1, Math.round((pts[1].ts - pts[0].ts) / _file.freq))
       : 1;
+    // 긴 파일이라 서버가 간격을 올렸으면, 끝부분만 1레코드 간격으로 다시 받아 바꿔 끼운다 —
+    // 기본 뷰(1:1)와 LIVE가 보는 최신 구간이 처음부터 원래 해상도로 보이게.
+    if (_allPtsStep > 1 && pts.length) await refineTail(filename, toSec);
+  }
+
+  // 메모리 적재용 레코드 디코드: 시각은 from + i × gap으로 직접 계산(서버는 요청 칸부터 실제 기록된
+  // 레코드만 돌려주므로, 받은 개수로 간격을 짐작하는 parseSample을 쓰지 않는다)
+  function decodeRecords(buf, from, gap) {
+    const n  = Math.floor(buf.byteLength / 32);
+    const dv = new DataView(buf);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const vals = new Array(16);
+      for (let ch = 0; ch < 16; ch++) vals[ch] = dv.getUint16(i * 32 + ch * 2, true);
+      out.push({ ts: from + i * gap, vals });
+    }
+    return out;
+  }
+
+  // 파일 끝 TAIL_FINE_RECORDS개를 1레코드 간격으로 받아 _allPts 끝부분(성긴 점)을 대체한다.
+  // 화면 폭(px)보다 넉넉하게 — 1:1 뷰가 전부 원래 해상도. 실패하면 성긴 점 그대로 둔다.
+  const TAIL_FINE_RECORDS = 4000;
+  async function refineTail(filename, toSec) {
+    const f    = _file.freq;
+    const from = _file.startTime + Math.max(0, Math.floor((toSec - _file.startTime) / f) - TAIL_FINE_RECORDS) * f;   // 레코드 칸에 맞춤
+    try {
+      const res = await apiFetch(`/api/tfile/sample?file=${encodeURIComponent(filename)}&from=${from}&to=${toSec}&step=1`);
+      if (!res.ok) return;
+      const fine = decodeRecords(await res.arrayBuffer(), from, f);
+      if (fine.length) _allPts = _allPts.slice(0, firstIdxAtOrAfter(from)).concat(fine);
+    } catch { /* 성긴 점 그대로 */ }
   }
 
   // ── 파일 선택 ────────────────────────────────────────────────
@@ -784,30 +831,24 @@
   // 그대로 온다 — 값 비교가 필요 없어 값이 안 변해도 점이 빠지지 않고, 요청이 하나라
   // 상태 조회와의 경쟁도 없다. 시각은 서버 응답 개수로 간격을 짐작하는
   // parseSample을 쓰지 않고 from + i × 간격으로 직접 계산한다(to를 넉넉히 잡으므로).
-  // 전체 적재 때 서버가 step을 올렸으면(_allPtsStep > 1) 같은 간격으로 이어 받는다.
+  // 전체 적재 때 서버가 step을 올렸어도(긴 파일) LIVE는 항상 1레코드 간격으로 이어 받는다 —
+  // 같은 간격으로 받으면 갱신이 step × freq초마다로 느려진다(녹화가 길수록 더 느려짐).
   const LIVE_SPAN_SEC = 3600;   // 한 번에 받을 최대 구간 — 밀리면 다음 주기에 나눠 따라잡음
   async function pollLatest() {
     if (_destroyed || !_file || _loadingFull || _liveBusy) return;
     const file = _file;
-    const step = _allPtsStep;
-    const gap  = step * file.freq;                       // 이어붙일 점 사이 간격(초)
+    const gap  = file.freq;                              // 이어붙일 점 사이 간격(초) = 1레코드
     const from = _allPts.length ? dataEndSec() + gap : file.startTime;
     const to   = from + Math.max(LIVE_SPAN_SEC, gap);
     _liveBusy = true;
     try {
-      const res = await apiFetch(`/api/tfile/sample?file=${encodeURIComponent(file.filename)}&from=${from}&to=${to}&step=${step}`);
+      const res = await apiFetch(`/api/tfile/sample?file=${encodeURIComponent(file.filename)}&from=${from}&to=${to}&step=1`);
       if (_destroyed || _file !== file || _loadingFull || !res.ok) return;
       const buf = await res.arrayBuffer();
       if (_destroyed || _file !== file || _loadingFull) return;
-      const n = Math.floor(buf.byteLength / 32);
-      if (n === 0) return;                               // 아직 새 레코드 없음
-
-      const dv = new DataView(buf);
-      for (let i = 0; i < n; i++) {
-        const vals = new Array(16);
-        for (let ch = 0; ch < 16; ch++) vals[ch] = dv.getUint16(i * 32 + ch * 2, true);
-        _allPts.push({ ts: from + i * gap, vals });
-      }
+      const fresh = decodeRecords(buf, from, gap);
+      if (fresh.length === 0) return;                    // 아직 새 레코드 없음
+      for (const pt of fresh) _allPts.push(pt);
 
       // 뷰 범위 전진 — 최신 데이터가 늘 오른쪽 끝(휠·드래그 한계도 render에서 갱신)
       const [lf, lt] = computeLiveWindow();
