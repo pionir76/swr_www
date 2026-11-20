@@ -365,90 +365,57 @@
           <article class="panel maintenance-param-card">
             <div class="maintenance-card-header">
               <div class="maintenance-icon">▤</div>
-              <div>
-                <h2>전체 파라메터</h2>
-                <p>디바이스 리스트, 레지스터 리스트 및 설정값 백업/복원</p>
-              </div>
+              <div><h2>전체 파라메터</h2></div>
             </div>
 
-            <div class="param-stack">
-              <section class="param-action-card">
-                <div class="param-action-icon">↓</div>
-                <div class="param-action-body">
-                  <h3>백업 Download</h3>
-                  <p>현재 전체 파라메터를 파일로 다운로드합니다.</p>
-                  <div class="param-meta">
-                    <span id="backupDeviceCount">장비 —대</span>
-                    <span id="backupRegisterCount">레지스터 —개</span>
-                  </div>
-                </div>
+            <div class="xfer-stack">
+              <section class="xfer-box xfer-row">
+                <div class="xfer-icon"><svg viewBox="0 0 24 24"><path d="M12 4v11M6.5 10l5.5 5.5 5.5-5.5M5 20h14"/></svg></div>
+                <div class="xfer-body"><h3>백업</h3><p id="backupSummary">장비 —대 · 레지스터 —개</p></div>
                 <button class="btn primary" id="backupDownloadBtn">Download</button>
               </section>
 
-              <!-- 복원 카드 — 상태 기반 -->
-              <section class="restore-card">
-
-                <!-- IDLE: 파일 선택 -->
-                <div id="restoreIdle">
-                  <div class="restore-card-head">
-                    <div class="param-action-icon">↑</div>
-                    <div>
-                      <h3>복원 Upload</h3>
-                      <p>백업 파일(.zip)을 업로드하여 전체 파라메터를 복원합니다.</p>
-                    </div>
-                  </div>
-                  <label class="restore-drop-zone" id="restoreDropZone">
-                    <input type="file" id="restoreFileInput" accept=".zip" />
-                    <span class="restore-drop-icon">↑</span>
-                    <span class="restore-drop-text">파일 선택 또는 드래그 &amp; 드롭</span>
-                    <small>.zip 파일만 지원합니다</small>
-                  </label>
+              <!-- 복원 — 상태: IDLE / VALIDATING / READY_TO_APPLY / APPLYING / DONE -->
+              <section class="xfer-box">
+                <div class="xfer-head">
+                  <div class="xfer-icon"><svg viewBox="0 0 24 24"><path d="M12 16V5M6.5 10.5 12 5l5.5 5.5M5 20h14"/></svg></div>
+                  <div class="xfer-body"><h3>복원</h3><p>백업 파일로 설정을 되돌립니다</p></div>
                 </div>
 
-                <!-- VALIDATING -->
-                <div id="restoreValidating" hidden>
-                  <div class="restore-status-box">
-                    <div class="restore-spinner"></div>
-                    <span>파일 검증 중…</span>
-                  </div>
-                </div>
+                <label class="xfer-drop" id="restoreIdle">
+                  <input type="file" id="restoreFileInput" accept=".zip" />
+                  <span>파일 선택 또는 드래그 &amp; 드롭</span>
+                  <small>.zip</small>
+                </label>
 
-                <!-- READY_TO_APPLY: 미리보기 -->
+                <div class="restore-status-box" id="restoreValidating" hidden><div class="restore-spinner"></div><span>파일 검증 중…</span></div>
+
                 <div id="restorePreview" hidden>
-                  <div class="restore-preview-head">
-                    <div>
-                      <h3>복원 미리보기</h3>
-                      <div class="restore-meta" id="restoreMetaInfo"></div>
+                  <div class="xfer-file">
+                    <div class="xfer-file-icon"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div>
+                    <div class="xfer-body">
+                      <div class="xfer-file-name" id="restoreFileName"></div>
+                      <div class="xfer-file-meta" id="restoreMetaInfo"></div>
                     </div>
-                    <button class="btn ghost" id="restoreCancelBtn">✕ 취소</button>
+                    <button class="xfer-x" type="button" id="restoreCancelBtn" title="취소">✕</button>
                   </div>
-                  <div id="restoreWarnings" class="restore-warnings" hidden></div>
-                  <div class="restore-options" id="restoreOptions"></div>
-                  <div class="restore-apply-row">
-                    <p class="restore-apply-note">복원 적용 후 시스템 재시작이 필요합니다.</p>
+                  <div class="xfer-warn" id="restoreWarnings" hidden></div>
+                  <div class="xfer-checks" id="restoreOptions"></div>
+                  <div class="xfer-warn" id="restoreHmiWarn" hidden>⚠ 레지스터 없이 HMI만 복원하면 이 장치에 없는 레지스터의 태그는 빠집니다</div>
+                  <div class="xfer-actions">
+                    <p class="xfer-note" id="restorePollNote" hidden>⚠ 폴링을 정지한 후 복원할 수 있습니다</p>
                     <button class="btn primary" id="restoreApplyBtn">복원 적용</button>
                   </div>
                 </div>
 
-                <!-- APPLYING -->
-                <div id="restoreApplying" hidden>
-                  <div class="restore-status-box">
-                    <div class="restore-spinner"></div>
-                    <span>복원 적용 중…</span>
-                  </div>
-                </div>
+                <div class="restore-status-box" id="restoreApplying" hidden><div class="restore-spinner"></div><span>복원 적용 중…</span></div>
 
-                <!-- DONE -->
                 <div id="restoreDone" hidden>
-                  <div class="restore-done-box">
-                    <span class="restore-done-icon">✓</span>
-                    <div>
-                      <strong>복원이 완료되었습니다.</strong>
-                      <p>변경 사항을 완전히 적용하려면 상단의 시스템 재시작 버튼을 눌러주세요.</p>
-                    </div>
+                  <div class="xfer-done">
+                    <div class="xfer-icon"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+                    <div class="xfer-body"><strong>복원 완료</strong><p>시스템을 재시작하면 적용됩니다</p></div>
                   </div>
                 </div>
-
               </section>
             </div>
           </article>
@@ -528,11 +495,6 @@
         </div>
       </div>
 
-      <!-- 하단 재부팅 알림 -->
-      <div class="maintenance-reboot-notice">
-        <span class="notice-symbol">!</span>
-        <p>파라메터 복원 또는 펌웨어 업데이트를 적용한 경우 시스템 재부팅이 필요합니다.</p>
-      </div>
     </div>
   </div>
 
@@ -661,76 +623,57 @@
         </article>
       </div>
 
-      <!-- 작화 데이터 내보내기 / 불러오기 -->
+      <!-- 작화 데이터 내보내기 / 불러오기 (xfer-*: 파일 내보내기·불러오기 공통 카드) -->
       <article class="panel maintenance-param-card">
         <div class="maintenance-card-header">
           <div class="maintenance-icon">▤</div>
-          <div>
-            <h2>HMI 작화 데이터</h2>
-            <p>화면·태그·HMI 설정을 파일로 저장하고 불러옵니다. 장치 재시작은 없습니다.</p>
-          </div>
+          <div><h2>HMI 작화 데이터</h2></div>
         </div>
 
-        <div class="param-stack">
-          <section class="param-action-card">
-            <div class="param-action-icon">↓</div>
-            <div class="param-action-body">
-              <h3>내보내기</h3>
-              <p>지금 HMI 전체를 파일(.json)로 저장합니다.</p>
-            </div>
+        <div class="xfer-stack">
+          <section class="xfer-box xfer-row">
+            <div class="xfer-icon"><svg viewBox="0 0 24 24"><path d="M12 4v11M6.5 10l5.5 5.5 5.5-5.5M5 20h14"/></svg></div>
+            <div class="xfer-body"><h3>내보내기</h3><p>HMI 전체를 파일로 저장</p></div>
             <button class="btn primary" id="hmiExportBtn">Download</button>
           </section>
 
-          <section class="restore-card">
-            <div id="hmiImpIdle">
-              <div class="restore-card-head">
-                <div class="param-action-icon">↑</div>
-                <div>
-                  <h3>불러오기</h3>
-                  <p>HMI 파일(.json)을 불러와 지금 HMI 전체를 <b>교체</b>합니다.</p>
-                </div>
-              </div>
-              <label class="restore-drop-zone" id="hmiImpDrop">
-                <input type="file" id="hmiImpFile" accept=".json,application/json" />
-                <span class="restore-drop-icon">↑</span>
-                <span class="restore-drop-text">파일 선택 또는 드래그 &amp; 드롭</span>
-                <small>HMI 내보내기 파일 또는 시스템 백업 zip 안의 hmi.json</small>
-              </label>
+          <section class="xfer-box">
+            <div class="xfer-head">
+              <div class="xfer-icon"><svg viewBox="0 0 24 24"><path d="M12 16V5M6.5 10.5 12 5l5.5 5.5M5 20h14"/></svg></div>
+              <div class="xfer-body"><h3>불러오기</h3><p>지금 HMI 전체를 교체합니다</p></div>
             </div>
 
-            <div id="hmiImpValidating" hidden>
-              <div class="restore-status-box"><div class="restore-spinner"></div><span>파일 검증 중…</span></div>
-            </div>
+            <label class="xfer-drop" id="hmiImpIdle">
+              <input type="file" id="hmiImpFile" accept=".json,application/json" />
+              <span>파일 선택 또는 드래그 &amp; 드롭</span>
+              <small>.json</small>
+            </label>
+
+            <div class="restore-status-box" id="hmiImpValidating" hidden><div class="restore-spinner"></div><span>파일 검증 중…</span></div>
 
             <div id="hmiImpPreview" hidden>
-              <div class="restore-preview-head">
-                <div>
-                  <h3>불러오기 미리보기</h3>
-                  <div class="restore-meta" id="hmiImpMeta"></div>
+              <div class="xfer-file">
+                <div class="xfer-file-icon"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div>
+                <div class="xfer-body">
+                  <div class="xfer-file-name" id="hmiImpFileName"></div>
+                  <div class="xfer-file-meta" id="hmiImpMeta"></div>
                 </div>
-                <button class="btn ghost" id="hmiImpCancelBtn">✕ 취소</button>
+                <button class="xfer-x" type="button" id="hmiImpCancelBtn" title="취소">✕</button>
               </div>
-              <div class="system-info-list hmi-imp-summary" id="hmiImpSummary"></div>
-              <div class="restore-warnings" id="hmiImpMissing" hidden></div>
-              <div class="restore-apply-row">
-                <p class="restore-apply-note">지금 HMI 화면·태그는 모두 지워지고 파일 내용으로 바뀝니다.</p>
-                <button class="btn primary" id="hmiImpApplyBtn">교체 적용</button>
-              </div>
+              <div class="xfer-title" id="hmiImpProject"></div>
+              <div class="xfer-stats" id="hmiImpSummary"></div>
+              <div class="xfer-warn" id="hmiImpMissing" hidden></div>
+              <div class="xfer-actions"><button class="btn primary" id="hmiImpApplyBtn">교체 적용</button></div>
             </div>
 
-            <div id="hmiImpApplying" hidden>
-              <div class="restore-status-box"><div class="restore-spinner"></div><span>불러오는 중…</span></div>
-            </div>
+            <div class="restore-status-box" id="hmiImpApplying" hidden><div class="restore-spinner"></div><span>불러오는 중…</span></div>
 
             <div id="hmiImpDone" hidden>
-              <div class="restore-done-box">
-                <span class="restore-done-icon">✓</span>
-                <div>
-                  <strong>불러오기가 완료되었습니다.</strong>
-                  <p id="hmiImpDoneText"></p>
-                </div>
+              <div class="xfer-done">
+                <div class="xfer-icon"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+                <div class="xfer-body"><strong>불러오기 완료</strong><p id="hmiImpDoneText"></p></div>
               </div>
-              <div class="restore-apply-row"><span></span><button class="btn ghost" id="hmiImpAgainBtn">다른 파일 불러오기</button></div>
+              <div class="xfer-actions"><button class="btn ghost" id="hmiImpAgainBtn">불러오기</button></div>
             </div>
           </section>
         </div>

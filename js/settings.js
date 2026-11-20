@@ -300,7 +300,7 @@
   let restoreId = null;
 
   const restoreFileInput = $('#restoreFileInput');
-  const restoreDropZone  = $('#restoreDropZone');
+  const restoreDropZone  = $('#restoreIdle');
 
   function setRestoreState(state) {
     const map = {
@@ -356,7 +356,7 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       restoreId = data.restoreId;
-      renderPreview(data);
+      renderPreview(data, file);
       setRestoreState('READY_TO_APPLY');
     } catch (err) {
       showMsg(`파일 검증 실패: ${err.message}`, 'error');
@@ -365,65 +365,41 @@
     }
   }
 
-  function renderPreview(data) {
+  function renderPreview(data, file) {
     const info = data.backupInfo ?? {};
-    const metaEl = $('#restoreMetaInfo');
-    if (metaEl) {
-      metaEl.innerHTML = [
-        info.createdAt     ? `<span class="restore-meta-chip">생성: ${info.createdAt.replace('T', ' ')}</span>` : '',
-        info.hostname      ? `<span class="restore-meta-chip">호스트: ${info.hostname}</span>` : '',
-        info.version       ? `<span class="restore-meta-chip">Ver.${info.version} Rev.${info.revision}</span>` : '',
-        info.schemaVersion != null ? `<span class="restore-meta-chip">Schema v${info.schemaVersion}</span>` : '',
-      ].join('');
-    }
+    $('#restoreFileName').textContent = file?.name ?? '';
+    $('#restoreFileName').title = file?.name ?? '';
+    $('#restoreMetaInfo').textContent = [
+      info.createdAt ? info.createdAt.replace('T', ' ').slice(0, 16) : '',
+      info.hostname ?? '',
+      info.version ? `Ver.${info.version} Rev.${info.revision ?? '—'}` : '',
+    ].filter(Boolean).join(' · ');
 
+    // 'HMI만 복원 + 레지스터 미복원' 경고는 백엔드가 항상 내려준다 — 그 조합일 때만 #restoreHmiWarn으로 표시
+    const warns = (data.warnings ?? []).filter((w) => !/without registers/i.test(w));
     const warningsEl = $('#restoreWarnings');
-    if (warningsEl) {
-      // 'HMI만 복원 + 레지스터 미복원' 경고는 백엔드가 항상 내려준다 — 그 조합일 때만 아래 옵션 영역에서 표시
-      const warns = (data.warnings ?? []).filter((w) => !/without registers/i.test(w));
-      if (warns.length) {
-        warningsEl.innerHTML = warns.map((w) => `<div>⚠ ${w}</div>`).join('');
-        warningsEl.hidden = false;
-      } else {
-        warningsEl.hidden = true;
-      }
-    }
+    warningsEl.innerHTML = warns.map((w) => `<div>⚠ ${esc(w)}</div>`).join('');
+    warningsEl.hidden = !warns.length;
 
+    const ITEMS = [
+      { key: 'config',    label: '시스템 설정' },
+      { key: 'devices',   label: '장비 목록',     unit: (n) => `${n}대` },
+      { key: 'registers', label: '레지스터 목록', unit: (n) => `${n}개` },
+      { key: 'users',     label: '사용자 계정',   unit: (n) => `${n}명` },
+      { key: 'hmi',       label: 'HMI 화면·태그', unit: (n) => `화면 ${n}` },
+    ];
     const optEl = $('#restoreOptions');
-    if (optEl) {
-      const ITEMS = [
-        { key: 'config',    label: '시스템 설정',   defaultOn: true  },
-        { key: 'devices',   label: '장비 목록',     defaultOn: true,  showCount: true },
-        { key: 'registers', label: '레지스터 목록', defaultOn: true,  showCount: true },
-        { key: 'users',     label: '사용자 계정',   defaultOn: true,  showCount: true },
-        { key: 'hmi',       label: 'HMI 화면·태그', defaultOn: true,  showCount: true, countUnit: '개 화면', warn: '기존 HMI 전체 교체' },
-      ];
-      optEl.innerHTML = ITEMS.map(({ key, label, defaultOn, showCount, countUnit = '개', warn }) => {
-        const item = data[key];
-        if (!item?.available) return '';
-        const countBadge = showCount && item.count
-          ? `<span class="restore-option-count">${item.count.toLocaleString()}${countUnit}</span>` : '';
-        const warnBadge = warn
-          ? `<span class="restore-option-warn">⚠ ${warn}</span>` : '';
-        return `
-          <div class="restore-option-row">
-            <label>
-              <input type="checkbox" data-opt="${key}"${defaultOn ? ' checked' : ''}>
-              ${label}
-            </label>
-            ${countBadge}${warnBadge}
-          </div>`;
-      }).join('') + `
-        <div class="restore-warnings" id="restoreHmiWarn" hidden>
-          ⚠ 레지스터를 복원하지 않고 HMI만 복원하면, 현재 장비에 없는 레지스터를 가리키는 HMI 태그는 삭제됩니다.
-        </div>`;
-      const updateHmiWarn = () => {
-        const checked = (k) => !!$(`[data-opt="${k}"]`, optEl)?.checked;
-        $('#restoreHmiWarn', optEl).hidden = !(checked('hmi') && !checked('registers'));
-      };
-      optEl.onchange = updateHmiWarn;
-      updateHmiWarn();
-    }
+    optEl.innerHTML = ITEMS.filter(({ key }) => data[key]?.available).map(({ key, label, unit }) => {
+      const n = data[key].count;
+      return `<label class="xfer-check"><input type="checkbox" data-opt="${key}" checked>
+        <span>${label}</span>${unit && n ? `<em>${unit(n.toLocaleString())}</em>` : ''}</label>`;
+    }).join('');
+    const updateHmiWarn = () => {
+      const checked = (k) => !!$(`[data-opt="${k}"]`, optEl)?.checked;
+      $('#restoreHmiWarn').hidden = !(checked('hmi') && !checked('registers'));
+    };
+    optEl.onchange = updateHmiWarn;
+    updateHmiWarn();
   }
 
   $('#restoreCancelBtn')?.addEventListener('click', () => {
@@ -468,18 +444,10 @@
   });
 
   function updateApplyPollWarning(running) {
-    const note     = $('.restore-apply-note');
+    const note = $('#restorePollNote');
     const applyBtn = $('#restoreApplyBtn');
-    if (!note || !applyBtn) return;
-    if (running) {
-      note.textContent = '⚠ 폴링이 실행 중입니다. 폴링을 정지한 후 복원을 적용할 수 있습니다.';
-      note.classList.add('polling-warn');
-      applyBtn.disabled = true;
-    } else {
-      note.textContent = '복원 적용 후 시스템 재시작이 필요합니다.';
-      note.classList.remove('polling-warn');
-      applyBtn.disabled = false;
-    }
+    if (note) note.hidden = !running;
+    if (applyBtn) applyBtn.disabled = !!running;
   }
 
   const unsubApplyPollWarning = PollingState.subscribe(updateApplyPollWarning);
@@ -565,7 +533,7 @@
     $('#hmiPermNote').hidden = ok || currentUserRole == null;
     for (const id of ['#hmiNameInput', '#hmiStartSelect', '#hmiPollSelect', '#hmiSaveBtn', '#hmiExportBtn', '#hmiImpFile'])
       { const el = $(id); if (el) el.disabled = !ok; }
-    $('#hmiImpDrop')?.classList.toggle('disabled', !ok);
+    $('#hmiImpIdle')?.classList.toggle('disabled', !ok);
   }
 
   async function saveHmiSettings() {
@@ -641,21 +609,23 @@
       _hmiImportFile = file;
       // fileInfo가 null이면 머리 없는 시스템 백업 hmi.json
       const fi = v.fileInfo;
+      $('#hmiImpFileName').textContent = file.name;
+      $('#hmiImpFileName').title = file.name;
       $('#hmiImpMeta').textContent = fi
-        ? `${file.name} · ${hmiTime(fi.createdAt)} · ${fi.hostname ?? '—'}${fi.createdBy ? ` · ${fi.createdBy}` : ''}`
-        : `${file.name} · 시스템 백업의 hmi.json`;
+        ? [hmiTime(fi.createdAt), fi.hostname, fi.createdBy].filter(Boolean).join(' · ')
+        : '시스템 백업의 hmi.json';
+      $('#hmiImpProject').textContent = v.project?.name || '이름 없음';
       const t = v.tags ?? {};
-      const cur = v.current ?? {};
-      $('#hmiImpSummary').innerHTML = [
-        ['프로젝트 이름', esc(v.project?.name || '이름 없음')],
-        ['화면', `${v.screens ?? 0}개 <small>(지금 ${cur.screens ?? '—'}개 → 교체)</small>`],
-        ['태그', `${t.total ?? 0}개 중 <b>${t.linked ?? 0}개 연결</b>${(t.missing ?? []).length ? `, <b class="warn">${t.missing.length}개 레지스터 없음</b>` : ''} <small>(지금 ${cur.tags ?? '—'}개 → 교체)</small>`],
-      ].map(([k, val]) => `<div class="system-info-item"><span>${k}</span><strong>${val}</strong></div>`).join('');
       const miss = t.missing ?? [];
-      const warnEl = $('#hmiImpMissing');
+      const total = t.total ?? 0;
+      $('#hmiImpSummary').innerHTML =
+        `<div class="xfer-stat"><span>화면</span><b>${v.screens ?? 0}</b></div>`
+        + `<div class="xfer-stat"><span>태그</span><b>${miss.length ? `${t.linked ?? 0} <small>/ ${total}</small>` : total}</b></div>`;
+      // 빠지는 태그: id만 꼬리표로, 통합 주소는 마우스를 올리면
       const warns = (v.warnings ?? []).map((w) => `<div>⚠ ${esc(w)}</div>`);
-      if (miss.length) warns.unshift(`<div>⚠ 이 장치에 레지스터가 없어 다음 태그는 빠집니다. 이 태그를 쓰는 위젯은 값이 표시되지 않습니다.</div>
-        <div class="hmi-miss-list">${miss.map((m) => `${esc(m.id)} <small>(통합 주소 ${m.unifiedAddress == null ? '없음' : esc(m.unifiedAddress)})</small>`).join(', ')}</div>`);
+      if (miss.length) warns.unshift(`<div>⚠ 이 장치에 없는 레지스터 — 태그 ${miss.length}개 제외</div>
+        <div class="xfer-chips">${miss.map((m) => `<i title="통합 주소 ${m.unifiedAddress == null ? '없음' : esc(m.unifiedAddress)}">${esc(m.id)}</i>`).join('')}</div>`);
+      const warnEl = $('#hmiImpMissing');
       warnEl.innerHTML = warns.join('');
       warnEl.hidden = !warns.length;
       setHmiImpState('PREVIEW');
@@ -676,7 +646,7 @@
       if (!res.ok) throw await hmiImportError(res);
       const r = await res.json();
       const skipped = r.skippedTags ?? [];
-      $('#hmiImpDoneText').textContent = `화면 ${r.screens ?? 0}개, 태그 ${r.tags ?? 0}개를 불러왔습니다.${skipped.length ? ` 레지스터가 없어 빠진 태그 ${skipped.length}개: ${skipped.join(', ')}` : ''}`;
+      $('#hmiImpDoneText').textContent = `화면 ${r.screens ?? 0} · 태그 ${r.tags ?? 0}${skipped.length ? ` · 제외 ${skipped.length}` : ''}`;
       setHmiImpState('DONE');
       _hmiImportFile = null;
       await loadHmiTab();
@@ -692,7 +662,7 @@
   $('#hmiImpCancelBtn')?.addEventListener('click', () => setHmiImpState('IDLE'));
   $('#hmiImpApplyBtn')?.addEventListener('click', applyHmiImport);
   $('#hmiImpAgainBtn')?.addEventListener('click', () => setHmiImpState('IDLE'));
-  const hmiDrop = $('#hmiImpDrop');
+  const hmiDrop = $('#hmiImpIdle');
   hmiDrop?.addEventListener('dragover', (e) => { e.preventDefault(); if (canEditHmi()) hmiDrop.classList.add('drag-over'); });
   hmiDrop?.addEventListener('dragleave', () => hmiDrop.classList.remove('drag-over'));
   hmiDrop?.addEventListener('drop', (e) => { e.preventDefault(); hmiDrop.classList.remove('drag-over'); validateHmiFile(e.dataTransfer?.files?.[0]); });
@@ -1001,10 +971,8 @@
       }
 
       if (d.summary) {
-        const dc = $('#backupDeviceCount');
-        const rc = $('#backupRegisterCount');
-        if (dc) dc.textContent = `장비 ${(d.summary.deviceCount ?? 0).toLocaleString()}대`;
-        if (rc) rc.textContent = `레지스터 ${(d.summary.registerCount ?? 0).toLocaleString()}개`;
+        const bs = $('#backupSummary');
+        if (bs) bs.textContent = `장비 ${(d.summary.deviceCount ?? 0).toLocaleString()}대 · 레지스터 ${(d.summary.registerCount ?? 0).toLocaleString()}개`;
       }
 
       if (d.ntp) {
