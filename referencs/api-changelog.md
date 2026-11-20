@@ -26,6 +26,32 @@
 
 ---
 
+## 2026-11-20 (2차) — HMI 내보내기·불러오기, HMI `pollMs`
+
+요청서 `docs/backend-hmi-export-import-request.md`, 답변서 `docs/backend-hmi-export-import-response.md` (swr `061badb`)
+
+- **신규 `GET /api/hmi/export`**: HMI만 파일(`format: "swr.hmi"`)로 내려받기. ManagerOrAbove.
+- **신규 `POST /api/hmi/import/validate`, `POST /api/hmi/import/apply`**: 둘 다 **파일 전체**를 보냅니다(`importId` 없음). 적용은 재시작 없이 전체 교체, 레지스터 없는 태그는 건너뜀, 프로젝트·화면 revision은 현재 최댓값 + 1. 머리 없는 백업 `hmi.json`도 받음. ManagerOrAbove.
+- **`GET/PUT /api/hmi/project`에 `pollMs`** (정수 500–10000, 기본 1000, 저장만). 시스템 백업 `hmi.json`의 `project.pollMs`에도 들어가고 복원 때 적용됩니다.
+- 자세한 형식과 에러는 `api-spec.md` §14 "HMI 내보내기 / 불러오기".
+
+---
+
+## 2026-11-20 — 실시간 레지스터 원본(raw) 1단계, 통신 경보 기준, HMI 값 유지
+
+swr `1c8e13e`(경보·HMI 값), `c9c822d`(실시간 원본값)
+
+**실시간·대시보드 원본값** (요청서 `docs/backend-realtime-raw-values-request.md` 1단계, 답변서 `docs/backend-realtime-raw-values-response.md`)
+- `GET /api/registers/realtime`, `GET /api/dashboard`의 `realtimeRegisters`에 `rawWords`, `isSigned`, `length` 추가. 대시보드 항목에는 `minValue`, `maxValue`도 추가.
+- `rawWords`는 상위 워드가 먼저인 원본 워드 배열입니다(`byteOrder` 적용됨). coil은 `[0]`/`[1]`. 값이 없으면 `null`.
+- `scaledValue`·`outOfRange`는 전환 기간 동안 유지. `outOfRange`는 결함으로 사실상 항상 `false`이니 쓰지 마세요.
+
+**통신 경보:** `[경보] … 통신 불능`은 장비가 **연속 3주기** 실패했을 때만 남고, 문구에 `(연속 N회)`가 붙습니다. `[복구]`는 경보를 낸 경우에만 남습니다. API의 장비 `state`·`consecutiveErrors`는 그대로입니다. 1회성 실패로 생기던 대시보드 거짓 경보(ST570, 하루 약 200건)가 사라집니다.
+
+**HMI `values`:** 한 번 읽기에 실패해도 `raw`가 `null`이 되지 않고 마지막 값을 유지합니다(`q`가 `bad`가 되면 `null`). 명세 §14에 적힌 동작에 맞춘 수정입니다.
+
+---
+
 ## 2026-11-13 (3차) — HMI 전환 마무리: `v`·`decimals` 폐지
 
 프론트 전환(2단계) 완료 알림에 따라 요청서 3단계를 반영했습니다(swr `e1fca9f`). 이제 HMI에서 서버는 배율 계산을 전혀 하지 않습니다.

@@ -1,6 +1,6 @@
 # SmartRoute REST API 명세
 
-> 최종 수정: 2026-11-13 (HMI 값·쓰기 원본(raw)만, `v`·`decimals` 폐지)  
+> 최종 수정: 2026-11-20 (실시간·대시보드 `rawWords` 등 추가, HMI 내보내기·불러오기, HMI `pollMs`)  
 > Base URL: `http://<device-ip>:8080`  
 > 응답 형식: `application/json` (바이너리 응답 제외)
 
@@ -125,7 +125,7 @@
       "lastError": ""
     }
   ],
-  "realtimeRegisters": [ /* 최대 20개, GET /api/registers/realtime 항목과 동일 */ ],
+  "realtimeRegisters": [ /* 최대 20개, GET /api/registers/realtime 항목과 같음(registerId만 없음) */ ],
   "alerts": [
     { "id": 10, "timestamp": "2026-10-13T12:00:00", "level": "WARN", "message": "..." }
   ],
@@ -136,6 +136,8 @@
 ```
 
 > `state`: `"ok"` | `"error"` | `"unknown"`
+>
+> `alerts`의 통신 경보(`[경보] … 통신 불능 (연속 N회)`)는 장비가 **연속 3주기** 실패했을 때만 남습니다. 장비 `state`·`consecutiveErrors`는 지금처럼 매 주기 바뀝니다(2026-11-20).
 
 ---
 
@@ -463,6 +465,9 @@
       "maxValue": 150.0,
       "scale": 0.1,
       "rawWord": 253,
+      "rawWords": [253],
+      "isSigned": false,
+      "length": 1,
       "bitLabels": "",
       "readOnly": false,
       "isValid": true,
@@ -476,6 +481,15 @@
 ```
 
 > `quality`: `"good"` | `"normal"` | `"bad"`
+
+| 필드 | 설명 |
+|---|---|
+| `rawWords` | 장비에서 읽은 **원본 워드 배열**(uint16), 길이 = `length`. **이미 워드 순서가 맞춰져 있어 항상 상위 워드가 먼저**입니다(`byteOrder`는 수집할 때 적용됨, 워드 안의 바이트는 그대로). coil·discrete_input은 비트마다 `0`/`1`. 아직 값을 받지 못했으면 `null`. 읽기에 실패해도 마지막 값이 남습니다(신선도는 `quality`로 판단) |
+| `isSigned` | 레지스터 부호 여부. 부호는 **전체 정수(`length`×16비트)의 최상위 비트** 기준(2의 보수) |
+| `length` | 워드 수(1–4) |
+| `rawWord` | `rawWords[0]`과 같음(호환용). coil·discrete_input과 값이 없을 때는 `0` |
+| `scaledValue` | 서버 계산값 = 정수 × `scale`, **`minValue`/`maxValue`로 잘린 값**. 실수(float) 해석은 없음. 원본 전환이 끝나면 없앨 예정 |
+| `outOfRange` | **신뢰하지 마세요.** 잘린 값으로 판정하는 결함이 있어 사실상 항상 `false`입니다. 서버 내부(경보·로그)에서는 쓰지 않으며, 원본 전환이 끝나면 없앨 예정 |
 
 ---
 
@@ -1555,22 +1569,24 @@ Content-Type: `application/octet-stream`
     { "id": "main",    "title": "냉동 설비 통합 모니터링", "revision": 3, "updatedAt": "2026-10-15T10:00:00", "updatedBy": "admin" },
     { "id": "chiller", "title": "메인칠러 모니터링",       "revision": 7, "updatedAt": "2026-10-15T11:20:00", "updatedBy": "manager1" }
   ],
-  "revision": 2
+  "revision": 2,
+  "pollMs": 1000
 }
 ```
 `screens` 배열 순서 = 화면 목록 표시 순서.  
-화면이 없으면 `{ "name": "", "startScreen": null, "screens": [], "revision": <n> }`
+화면이 없으면 `{ "name": "", "startScreen": null, "screens": [], "revision": <n>, "pollMs": 1000 }`  
+`pollMs`: HMI 실행 화면의 값 갱신 주기(ms). 정수 500–10000, 기본 1000. 서버는 저장만 합니다.
 
 ### PUT /api/hmi/project
 권한: `ManagerOrAbove`
 
 **요청 바디** (`revision` 필수, 나머지는 바꿀 것만)
 ```json
-{ "name": "냉동 설비 통합 모니터링", "startScreen": "chiller", "order": ["chiller", "main"], "revision": 2 }
+{ "name": "냉동 설비 통합 모니터링", "startScreen": "chiller", "order": ["chiller", "main"], "pollMs": 2000, "revision": 2 }
 ```
 
-**응답** 200: `{ "ok": true, "revision": 3 }`  
-**에러** 400: `revision` 누락 / `startScreen`이 없는 화면 / 화면이 있는데 `startScreen: null` / `order`가 현재 화면 id를 빠짐없이·중복 없이 담지 않음  
+**응답** 200: `{ "ok": true, "revision": 3, "pollMs": 2000 }`  
+**에러** 400: `revision` 누락 / `startScreen`이 없는 화면 / 화면이 있는데 `startScreen: null` / `order`가 현재 화면 id를 빠짐없이·중복 없이 담지 않음 / `pollMs`가 정수 500–10000이 아님  
 **에러** 409: `{ "error": "revision mismatch", "revision": 4 }`
 
 ### GET /api/hmi/screens/{id}
@@ -1630,6 +1646,87 @@ Content-Type: `application/octet-stream`
 (마지막 화면 삭제 시 `"startScreen": null`)  
 **에러** 409: 다른 화면이 남아 있는데 시작 화면 삭제 시도 `{ "error": "start screen" }`  
 **에러** 404: 화면 없음
+
+### HMI 내보내기 / 불러오기
+
+HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시스템 백업·복원과 달리 **재시작하지 않고** 폴링도 멈추지 않습니다. 불러오기는 **항상 전체 교체**입니다. 시스템 백업은 지금처럼 HMI를 포함합니다.
+
+검증과 적용 모두 **파일 전체를 요청 바디로** 보냅니다. 서버는 두 호출 사이에 아무것도 보관하지 않고, 적용할 때 다시 검사합니다.
+
+#### 파일 형식
+
+```json
+{
+  "format": "swr.hmi",
+  "schemaVersion": 1,
+  "fileInfo": { "product": "SmartRoute", "createdAt": "2026-11-20T14:00:00", "createdBy": "admin",
+                "hostname": "smartroute", "version": "1", "revision": "0" },
+  "hmi": {
+    "project": { "name": "...", "startScreen": "main", "revision": 7, "pollMs": 1000 },
+    "screens": [ { "id": "main", "title": "...", "revision": 3, "updatedAt": "...", "updatedBy": "...", "content": { "format": "whmi.screen" } } ],
+    "tags":    [ { "id": "TEMI2KMF_NPV", "name": "...", "unifiedAddress": 32, "scale": 0.01, "unit": "°C", "minValue": 0, "maxValue": 100, "access": "rw" } ]
+  }
+}
+```
+
+- `hmi`는 시스템 백업의 `hmi.json`과 같은 내용입니다. 태그는 `unifiedAddress`로 레지스터를 가리킵니다. 값이 없는(상속하는) `scale`·`unit`·`minValue`·`maxValue`·`access`는 키가 없습니다.
+- 불러오기는 **머리 없는 시스템 백업 `hmi.json`**도 받습니다(`format`이 없고 `project`·`screens`·`tags` 중 하나가 있으면).
+- 예전 파일: 태그 `decimals`는 무시하고, `scale`이 없거나 허용 값이 아니면 상속합니다. `pollMs`가 없으면 1000입니다.
+
+### GET /api/hmi/export
+권한: `ManagerOrAbove`
+
+위 형식의 JSON 파일을 내려 줍니다.  
+`Content-Disposition: attachment; filename="swr_hmi_<hostname>_YYYYMMdd_HHmmss.json"` (호스트 이름의 영문·숫자·`_`·`-` 외 문자는 `_`)  
+시스템 로그 INFO `HMI exported by <user>: N screen(s), M tag(s), B bytes`
+
+### POST /api/hmi/import/validate
+권한: `ManagerOrAbove`  
+요청 바디: 파일 전체 (`Content-Type: application/json`). 아무것도 바꾸지 않습니다.
+
+**응답** 200
+```json
+{
+  "fileInfo": { "product": "SmartRoute", "createdAt": "...", "createdBy": "admin", "hostname": "smartroute", "version": "1", "revision": "0" },
+  "project": { "name": "냉동 설비 통합 모니터링", "startScreen": "main", "pollMs": 1000 },
+  "screens": 3,
+  "tags": { "total": 28, "linked": 25, "missing": [ { "id": "TEMI2KMF_NPV", "unifiedAddress": 32 } ] },
+  "current": { "screens": 2, "tags": 20 },
+  "warnings": []
+}
+```
+- `fileInfo`: 파일에 적힌 그대로. 머리 없는 `hmi.json`이면 `null`
+- `tags.missing`: 이 장치에 레지스터가 없어 **적용 때 건너뛸** 태그(`unifiedAddress`가 없으면 `null`)
+- `current`: 지금 장치의 화면·태그 수(교체될 대상)
+- `warnings`: 예) 시작 화면이 파일에 없음 → 첫 화면을 시작 화면으로 씀
+
+**에러**
+
+| 상태 | 경우 |
+|---|---|
+| 400 | JSON 객체가 아님 / `format`이 `swr.hmi`가 아님 / `schemaVersion` > 1 / HMI 파일이 아님 / `project`·`screens`·`tags` 형식 오류 / 화면·태그 id 규칙(영문·숫자·`_`·`-` 1–64자) 위반 또는 중복 / 화면 `title` 64자 초과 / 화면 `content.format`이 `whmi.screen`이 아님 / 태그 `access`가 `r`·`rw`가 아님 / `pollMs`가 정수 500–10000이 아님 |
+| 413 | 화면 하나의 `content`가 256KB 초과 |
+| 409 | 화면 수 > `hmi.maxScreens` (`{ "error": "too many screens: 51 (maxScreens 50)", "maxScreens": 50 }`) |
+
+에러 메시지에 화면·태그 id가 들어갑니다. 예: `{ "error": "screen 'main': 'content.format' must be \"whmi.screen\"" }`
+
+### POST /api/hmi/import/apply
+권한: `ManagerOrAbove`  
+요청 바디: validate와 **같은 파일 전체**
+
+같은 검사를 다시 한 뒤 HMI 프로젝트·화면·태그를 한 번에 교체합니다(실패하면 아무것도 바뀌지 않음). `missing` 태그는 건너뜁니다.
+
+- **revision:** 프로젝트와 모든 화면이 지금 장치의 어떤 revision보다 1 큰 값을 받습니다. 불러오기 전에 열어 둔 화면·프로젝트를 저장하면 409입니다. 파일의 revision은 쓰지 않습니다.
+- 화면 `updatedAt`·`updatedBy`는 파일 값 그대로입니다.
+- 시스템 로그: INFO `HMI imported by <user>: N screen(s), M tag(s) — previous HMI replaced`, 건너뛴 태그가 있으면 WARN `HMI import skipped K tag(s) with no register on this device: id, ...`
+
+**응답** 200
+```json
+{ "ok": true, "screens": 3, "tags": 25, "skippedTags": ["TEMI2KMF_NPV"], "revision": 8 }
+```
+`revision`: 새 프로젝트 revision(화면 revision도 같음). **에러**: validate와 같음
+
+> 장치 실측(2026-11-20, 화면 50개 × 약 250KB = 12.5MB): 검증 약 3초, 적용 약 4.5초, 내보내기 약 4.5초. 업로드 중 진행 표시를 권합니다.
 
 ---
 

@@ -2,7 +2,7 @@
 from: frontend
 to: backend
 status: open
-waiting_on: backend
+waiting_on: frontend
 reply: docs/backend-realtime-raw-values-response.md
 ---
 
