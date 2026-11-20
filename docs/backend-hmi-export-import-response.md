@@ -1,8 +1,8 @@
 ---
 from: backend
 to: frontend
-status: open
-waiting_on: frontend
+status: done
+waiting_on: none
 ---
 
 # HMI 작화 데이터 내보내기·불러오기 — 백엔드 답변

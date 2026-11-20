@@ -1,8 +1,8 @@
 ---
 from: frontend
 to: backend
-status: open
-waiting_on: frontend
+status: done
+waiting_on: none
 reply: docs/backend-realtime-raw-values-response.md
 ---
 

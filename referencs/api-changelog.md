@@ -26,6 +26,16 @@
 
 ---
 
+## 2026-11-20 (3차) — 실시간 레지스터 `scaledValue`·`outOfRange` 폐지
+
+실시간 원본값 요청서 3단계 (swr `19cb4d9`). 프론트 전환(2단계) 완료 알림에 따라 반영했습니다.
+
+- **`GET /api/registers/realtime`, `GET /api/dashboard`의 `realtimeRegisters`:** `scaledValue`, `outOfRange` 삭제. 값은 `rawWords`·`isSigned`·`scale`로 프론트가 계산합니다.
+- 서버 안의 배율·범위 계산도 없앴습니다. 이제 서버는 레지스터 값을 원본으로만 다룹니다.
+- 요청서·답변서(`docs/backend-realtime-raw-values-*.md`)는 `status: done`.
+
+---
+
 ## 2026-11-20 (2차) — HMI 내보내기·불러오기, HMI `pollMs`
 
 요청서 `docs/backend-hmi-export-import-request.md`, 답변서 `docs/backend-hmi-export-import-response.md` (swr `061badb`)

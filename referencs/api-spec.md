@@ -1,6 +1,6 @@
 # SmartRoute REST API 명세
 
-> 최종 수정: 2026-11-20 (실시간·대시보드 `rawWords` 등 추가, HMI 내보내기·불러오기, HMI `pollMs`)  
+> 최종 수정: 2026-11-20 (실시간·대시보드 원본값만(`scaledValue`·`outOfRange` 폐지), HMI 내보내기·불러오기, HMI `pollMs`)  
 > Base URL: `http://<device-ip>:8080`  
 > 응답 형식: `application/json` (바이너리 응답 제외)
 
@@ -460,7 +460,6 @@
       "localAddress": 100,
       "sourceType": "holding_register",
       "unit": "℃",
-      "scaledValue": 25.3,
       "minValue": -50.0,
       "maxValue": 150.0,
       "scale": 0.1,
@@ -471,7 +470,6 @@
       "bitLabels": "",
       "readOnly": false,
       "isValid": true,
-      "outOfRange": false,
       "quality": "good",
       "lastUpdated": "2026-10-13T12:00:00Z",
       "errorMessage": ""
@@ -487,9 +485,9 @@
 | `rawWords` | 장비에서 읽은 **원본 워드 배열**(uint16), 길이 = `length`. **이미 워드 순서가 맞춰져 있어 항상 상위 워드가 먼저**입니다(`byteOrder`는 수집할 때 적용됨, 워드 안의 바이트는 그대로). coil·discrete_input은 비트마다 `0`/`1`. 아직 값을 받지 못했으면 `null`. 읽기에 실패해도 마지막 값이 남습니다(신선도는 `quality`로 판단) |
 | `isSigned` | 레지스터 부호 여부. 부호는 **전체 정수(`length`×16비트)의 최상위 비트** 기준(2의 보수) |
 | `length` | 워드 수(1–4) |
+
+> **값 계산은 프론트가 합니다**(2026-11-20부터 `scaledValue`·`outOfRange` 없음). 정수 = `rawWords`를 상위 워드부터 이어 붙임(`isSigned`면 전체 비트 수 기준 2의 보수) → 물리값 = 정수 × `scale`. 범위 초과 표시는 물리값을 `minValue`/`maxValue`와 비교합니다(±1.7976931348623157e308은 제한 없음).
 | `rawWord` | `rawWords[0]`과 같음(호환용). coil·discrete_input과 값이 없을 때는 `0` |
-| `scaledValue` | 서버 계산값 = 정수 × `scale`, **`minValue`/`maxValue`로 잘린 값**. 실수(float) 해석은 없음. 원본 전환이 끝나면 없앨 예정 |
-| `outOfRange` | **신뢰하지 마세요.** 잘린 값으로 판정하는 결함이 있어 사실상 항상 `false`입니다. 서버 내부(경보·로그)에서는 쓰지 않으며, 원본 전환이 끝나면 없앨 예정 |
 
 ---
 

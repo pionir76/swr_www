@@ -1,8 +1,8 @@
 ---
 from: backend
 to: frontend
-status: open
-waiting_on: frontend
+status: done
+waiting_on: none
 ---
 
 # 실시간 레지스터 값을 원본(raw)으로 전환 — 백엔드 답변
@@ -68,3 +68,15 @@ waiting_on: frontend
 같이 바뀐 것 (변경 이력 2026-11-20, swr `1c8e13e`):
 - **통신 경보:** `[경보] … 통신 불능 (연속 N회)`는 연속 3주기 실패할 때만 남습니다. 장비 `state`·`consecutiveErrors`는 그대로입니다.
 - **HMI `values`:** 한 번 읽기에 실패해도 `raw`가 비지 않습니다(명세 §14대로).
+
+## 5. 3단계 완료 (2026-11-20)
+
+프론트 전환 완료 알림을 받고 `GET /api/registers/realtime`과 대시보드 `realtimeRegisters`에서 `scaledValue`·`outOfRange`를 뺐습니다(swr `19cb4d9`). 서버 안의 배율·범위 계산(결함이 있던 `outOfRange` 판정 포함)도 쓰는 곳이 없어 함께 없앴습니다.
+
+장치에서 확인:
+- 실시간 36개와 대시보드 20개 항목에 두 필드가 없습니다.
+- `rawWords`는 모두 값이 있습니다.
+- 장비 4대와 HMI 값은 정상입니다.
+
+요청서·답변서는 `status: done`으로 닫았습니다.
+
