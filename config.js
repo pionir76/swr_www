@@ -254,10 +254,9 @@ const RegFmt = (() => {
   }
 
   // ── 원본 → 값 (원본 데이터 원칙, docs/architecture/overview.md §5.1) ──
-  // 서버는 원본 워드(rawWord)만 믿고, 부호·스케일은 여기서 적용한다(HMI WHMI.raw와 같은 규칙).
-  // 원본은 rawWords(상위 워드 먼저, byteOrder 적용 완료 — docs/backend-realtime-raw-values-response.md §3-1).
-  // coil·discrete_input은 rawWord가 늘 0이라 반드시 rawWords([0]/[1])를 쓴다.
-  // 전환 기간: 서버가 아직 rawWords·isSigned를 주지 않으면 서버 계산값(scaledValue)을 쓴다.
+  // 서버는 원본 워드만 주고(2026-11-20부터 scaledValue·outOfRange 없음), 부호·스케일은 여기서 적용한다
+  // (HMI WHMI.raw와 같은 규칙). 원본은 rawWords(상위 워드 먼저, byteOrder 적용 완료 —
+  // docs/backend-realtime-raw-values-response.md §3-1). coil·discrete_input은 rawWord가 늘 0이라 rawWords만 쓴다.
   const hasLimit = (v) => v != null && Number.isFinite(v) && Math.abs(v) < 1e15;   // double 최댓값 = 제한 없음
   const isBitReg = (reg) => reg?.sourceType === 'coil' || reg?.sourceType === 'coil_status' || reg?.sourceType === 'discrete_input';
 
@@ -281,10 +280,10 @@ const RegFmt = (() => {
   function rawValue(reg) {
     if (!reg) return null;
     const ws = words(reg);
-    if (!ws || reg.isSigned === undefined) return reg.scaledValue ?? null;   // 전환 기간
+    if (!ws) return null;
     if (isBitReg(reg)) return ws[0] ? 1 : 0;
     const s = reg.scale || 1;
-    return Number((rawInt(ws, reg.isSigned) * s).toFixed(decimalsFromScale(s)));   // 2472 * 0.1 = 247.20000000000002 방지
+    return Number((rawInt(ws, !!reg.isSigned) * s).toFixed(decimalsFromScale(s)));   // 2472 * 0.1 = 247.20000000000002 방지
   }
 
   // 값이 레지스터 최소/최대 밖인지("제한 없음"은 비교하지 않음)
@@ -298,8 +297,7 @@ const RegFmt = (() => {
     if ((reg?.length || 1) > 1) throw new Error('2워드 이상 레지스터는 여기서 쓸 수 없습니다.');
     const s = reg?.scale || 1;
     const n = Math.round(Number(v) / s);
-    const signed = reg?.isSigned ?? n < 0;   // 전환 기간(isSigned 없음)엔 음수 입력이면 부호 있음으로
-    const [lo, hi] = signed ? [-32768, 32767] : [0, 65535];
+    const [lo, hi] = reg?.isSigned ? [-32768, 32767] : [0, 65535];
     if (!Number.isFinite(n) || n < lo || n > hi) {
       const f = (x) => (x * s).toFixed(decimalsFromScale(s));
       throw new Error(`쓸 수 있는 범위(${f(lo)} ~ ${f(hi)})를 벗어났습니다.`);

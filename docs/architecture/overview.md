@@ -285,7 +285,7 @@ SmartRoute는 NXP i.MX6ULL 기반 임베디드 통신 변환 디바이스입니�
 |---|---|---|
 | 트렌드 `/api/tfile/sample` | 원본 uint16. 프론트 `TndFormat.rawToValue`가 부호·배율 적용 | 원칙대로 |
 | Modbus 서버 | 원본 | 원칙대로 |
-| 레지스터 실시간 `/api/registers/realtime`, 대시보드 `realtimeRegisters` | `rawWord`와 서버 계산값 `scaledValue`·`outOfRange`를 함께 | 전환 중(2026-11-20): 프론트 `RegFmt.rawValue`/`outOfRange`/`toRaw`로 계산. 서버가 `isSigned`·`length`·`rawWords`를 주기 전엔 `scaledValue` 사용(`docs/backend-realtime-raw-values-request.md`) |
+| 레지스터 실시간 `/api/registers/realtime`, 대시보드 `realtimeRegisters` | 원본 `rawWords`(+`isSigned`·`length`)만. 프론트 `RegFmt.rawValue`/`outOfRange`/`toRaw`가 계산 | 원칙대로(2026-11-20 전환 완료, `docs/backend-realtime-raw-values-request.md`) |
 | HMI 값·쓰기 `/api/hmi/values`, `/api/hmi/write` | 원본 `raw`만. 프론트 `WHMI.raw`가 배율 적용·역변환 | 원칙대로(2026-11-13 전환 완료, `docs/backend-hmi-raw-values-request.md`) |
 
 새 API나 화면을 설계할 때 백엔드에 배율 계산을 맡기지 않는다.
