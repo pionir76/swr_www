@@ -470,6 +470,8 @@
       project.startScreen = p.startScreen;
       project.screens = p.screens;
       project.revision = p.revision;
+      // 값 갱신 주기: HMI 설정(설정 → HMI 탭)에 저장된 값 우선, 없으면 project.json 기본값
+      if (p.pollMs && source.pollMs != null) source.pollMs = p.pollMs;
     }
 
     // 화면 JSON은 한 번 불러오면 캐시 — 같은 화면으로 돌아올 때 재요청하지 않는다.

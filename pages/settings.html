@@ -11,6 +11,7 @@
     <a class="settings-tab" href="#settings">네트워크</a>
     <a class="settings-tab" href="#settings-maintenance">시스템 유지보수</a>
     <a class="settings-tab" href="#settings-trend">트렌드</a>
+    <a class="settings-tab" href="#settings-hmi">HMI</a>
     <button class="btn warning settings-restart-btn" id="netRestartBtn">↻ 시스템 재시작</button>
   </nav>
 
@@ -614,6 +615,127 @@
     <div class="settings-action-bar">
       <span id="trendMsg" class="trend-msg" hidden></span>
       <button class="btn primary" id="trendApplyBtn">적용</button>
+    </div>
+  </div>
+
+  <!-- ── HMI 탭 — HMI 설정 + HMI 전용 내보내기·불러오기(docs/backend-hmi-export-import-request.md) ── -->
+  <div class="tab-content" data-tab="settings-hmi" hidden>
+    <div class="settings-two-col">
+
+      <div class="settings-right-col">
+        <!-- 현황 -->
+        <article class="panel maintenance-system-card">
+          <div class="maintenance-card-header">
+            <div class="maintenance-icon">▣</div>
+            <div>
+              <h2>HMI 현황</h2>
+              <p>지금 장치에 저장된 HMI 작화 데이터</p>
+            </div>
+          </div>
+          <div class="system-info-list">
+            <div class="system-info-item"><span>프로젝트 이름</span><strong id="hmiStName">—</strong></div>
+            <div class="system-info-item"><span>화면</span><strong id="hmiStScreens">—</strong></div>
+            <div class="system-info-item"><span>태그</span><strong id="hmiStTags">—</strong></div>
+            <div class="system-info-item"><span>마지막 수정</span><strong id="hmiStUpdated">—</strong></div>
+          </div>
+        </article>
+
+        <!-- 설정 -->
+        <article class="panel settings-panel">
+          <div class="panel-header"><h2>HMI 설정</h2></div>
+          <div class="form-grid">
+            <div class="form-field full"><label>프로젝트 이름</label><input class="input" id="hmiNameInput" maxlength="64" placeholder="이름 없음"></div>
+            <div class="form-field"><label>시작 화면</label><select class="select" id="hmiStartSelect"></select></div>
+            <div class="form-field" id="hmiPollField" hidden>
+              <label>값 갱신 주기</label>
+              <select class="select" id="hmiPollSelect">
+                <option value="500">0.5초</option><option value="1000">1초 (기본)</option><option value="2000">2초</option>
+                <option value="5000">5초</option><option value="10000">10초</option>
+              </select>
+            </div>
+          </div>
+          <div class="hmi-set-row">
+            <p class="hmi-note" id="hmiPermNote" hidden>⚠ Manager 이상 계정만 변경할 수 있습니다.</p>
+            <button class="btn primary" id="hmiSaveBtn">저장</button>
+          </div>
+        </article>
+      </div>
+
+      <!-- 작화 데이터 내보내기 / 불러오기 -->
+      <article class="panel maintenance-param-card">
+        <div class="maintenance-card-header">
+          <div class="maintenance-icon">▤</div>
+          <div>
+            <h2>HMI 작화 데이터</h2>
+            <p>화면·태그·HMI 설정을 파일로 저장하고 불러옵니다. 장치 재시작은 없습니다.</p>
+          </div>
+        </div>
+
+        <div class="param-stack">
+          <section class="param-action-card">
+            <div class="param-action-icon">↓</div>
+            <div class="param-action-body">
+              <h3>내보내기</h3>
+              <p>지금 HMI 전체를 파일(.json)로 저장합니다.</p>
+            </div>
+            <button class="btn primary" id="hmiExportBtn">Download</button>
+          </section>
+
+          <section class="restore-card">
+            <div id="hmiImpIdle">
+              <div class="restore-card-head">
+                <div class="param-action-icon">↑</div>
+                <div>
+                  <h3>불러오기</h3>
+                  <p>HMI 파일(.json)을 불러와 지금 HMI 전체를 <b>교체</b>합니다.</p>
+                </div>
+              </div>
+              <label class="restore-drop-zone" id="hmiImpDrop">
+                <input type="file" id="hmiImpFile" accept=".json,application/json" />
+                <span class="restore-drop-icon">↑</span>
+                <span class="restore-drop-text">파일 선택 또는 드래그 &amp; 드롭</span>
+                <small>HMI 내보내기 파일 또는 시스템 백업 zip 안의 hmi.json</small>
+              </label>
+            </div>
+
+            <div id="hmiImpValidating" hidden>
+              <div class="restore-status-box"><div class="restore-spinner"></div><span>파일 검증 중…</span></div>
+            </div>
+
+            <div id="hmiImpPreview" hidden>
+              <div class="restore-preview-head">
+                <div>
+                  <h3>불러오기 미리보기</h3>
+                  <div class="restore-meta" id="hmiImpMeta"></div>
+                </div>
+                <button class="btn ghost" id="hmiImpCancelBtn">✕ 취소</button>
+              </div>
+              <div class="system-info-list hmi-imp-summary" id="hmiImpSummary"></div>
+              <div class="restore-warnings" id="hmiImpMissing" hidden></div>
+              <div class="restore-apply-row">
+                <p class="restore-apply-note">지금 HMI 화면·태그는 모두 지워지고 파일 내용으로 바뀝니다.</p>
+                <button class="btn primary" id="hmiImpApplyBtn">교체 적용</button>
+              </div>
+            </div>
+
+            <div id="hmiImpApplying" hidden>
+              <div class="restore-status-box"><div class="restore-spinner"></div><span>불러오는 중…</span></div>
+            </div>
+
+            <div id="hmiImpDone" hidden>
+              <div class="restore-done-box">
+                <span class="restore-done-icon">✓</span>
+                <div>
+                  <strong>불러오기가 완료되었습니다.</strong>
+                  <p id="hmiImpDoneText"></p>
+                </div>
+              </div>
+              <div class="restore-apply-row"><span></span><button class="btn ghost" id="hmiImpAgainBtn">다른 파일 불러오기</button></div>
+            </div>
+          </section>
+        </div>
+      </article>
+
     </div>
   </div>
 

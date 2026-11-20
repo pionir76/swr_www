@@ -1,5 +1,5 @@
 (() => {
-  const validTabs = ['settings', 'settings-maintenance', 'settings-trend'];
+  const validTabs = ['settings', 'settings-maintenance', 'settings-trend', 'settings-hmi'];
 
   let currentTab = window.location.hash.replace('#', '');
   if (!validTabs.includes(currentTab)) currentTab = 'settings';
@@ -22,6 +22,7 @@
     'settings':             '네트워크 상태를 확인하고 RS485, Modbus TCP Server 설정을 관리합니다.',
     'settings-maintenance': '시스템 정보 확인, 백업·복원, 펌웨어 업데이트 및 재시작을 관리합니다.',
     'settings-trend':       '트렌드 레코딩 채널과 샘플 간격을 설정합니다.',
+    'settings-hmi':         'HMI 설정을 관리하고 HMI 작화 데이터를 파일로 저장하거나 불러옵니다.',
   };
 
   // ── 탭 전환 ───────────────────────────────────────────────────────
@@ -37,6 +38,7 @@
     });
     const subtitle = $('.page-title-row p');
     if (subtitle) subtitle.textContent = tabSubtitles[tabName] ?? '';
+    if (tabName === 'settings-hmi') loadHmiTab();   // 탭을 열 때마다 최신 상태로
   }
 
   function onHashChangeTab() {
@@ -516,6 +518,185 @@
     }
   }
 
+  // ── HMI 탭 — HMI 설정 + HMI 전용 내보내기·불러오기 ────────────────────
+  // 불러오기는 무조건 전체 교체, 재시작 없음. 권한은 Manager 이상(화면 저장과 같음).
+  // API: GET /api/hmi/export, POST /api/hmi/import/validate|apply (docs/backend-hmi-export-import-response.md).
+  // 서버는 검증 결과를 보관하지 않는다 — 고른 파일을 들고 있다가 적용 때 같은 파일을 다시 보낸다.
+  let _hmiProject    = null;
+  let _hmiImportFile = null;
+  const canEditHmi = () => currentUserRole === 'admin' || currentUserRole === 'manager';
+  const hmiTime = (s) => (s ? String(s).replace('T', ' ').slice(0, 16) : '—');
+  const notSupported = (res) => res.status === 404 || res.status === 405 || res.status === 501;
+
+  async function loadHmiTab() {
+    try {
+      const [pRes, tRes] = await Promise.all([apiFetch('/api/hmi/project'), apiFetch('/api/hmi/tags')]);
+      if (!pRes.ok) throw new Error(`HTTP ${pRes.status}`);
+      _hmiProject = await pRes.json();
+      const tags  = tRes.ok ? (await tRes.json()).tags ?? [] : [];
+      const p = _hmiProject;
+      const screens = p.screens ?? [];
+      // 마지막 수정: 화면 중 가장 최근 저장
+      const last = screens.reduce((a, s) => (!a || (s.updatedAt ?? '') > (a.updatedAt ?? '') ? s : a), null);
+      const broken = tags.filter((t) => t.source && t.source.registerTagName == null).length;
+      $('#hmiStName').textContent    = p.name || '이름 없음';
+      $('#hmiStScreens').textContent = `${screens.length}개`;
+      $('#hmiStTags').textContent    = `${tags.length}개${broken ? ` (레지스터 없음 ${broken}개)` : ''}`;
+      $('#hmiStUpdated').textContent = last ? `${hmiTime(last.updatedAt)} · ${last.updatedBy ?? '—'} (${last.title || last.id})` : '—';
+
+      $('#hmiNameInput').value = p.name ?? '';
+      const sel = $('#hmiStartSelect');
+      sel.innerHTML = screens.length
+        ? screens.map((s) => `<option value="${esc(s.id)}">${esc(s.title || s.id)} (${esc(s.id)})</option>`).join('')
+        : '<option value="">화면 없음</option>';
+      sel.value = p.startScreen ?? '';
+      // 값 갱신 주기는 서버가 pollMs를 줄 때만 보인다(백엔드 반영 전에는 숨김)
+      const hasPoll = p.pollMs != null;
+      $('#hmiPollField').hidden = !hasPoll;
+      if (hasPoll) $('#hmiPollSelect').value = String(p.pollMs);
+      updateHmiPerm();
+    } catch (err) {
+      showMsg(`HMI 정보 불러오기 실패: ${err.message}`, 'error');
+    }
+  }
+
+  function updateHmiPerm() {
+    const ok = canEditHmi();
+    $('#hmiPermNote').hidden = ok || currentUserRole == null;
+    for (const id of ['#hmiNameInput', '#hmiStartSelect', '#hmiPollSelect', '#hmiSaveBtn', '#hmiExportBtn', '#hmiImpFile'])
+      { const el = $(id); if (el) el.disabled = !ok; }
+    $('#hmiImpDrop')?.classList.toggle('disabled', !ok);
+  }
+
+  async function saveHmiSettings() {
+    if (!_hmiProject) return;
+    const body = { revision: _hmiProject.revision, name: $('#hmiNameInput').value.trim() };
+    const start = $('#hmiStartSelect').value;
+    if (start) body.startScreen = start;
+    if (!$('#hmiPollField').hidden) body.pollMs = Number($('#hmiPollSelect').value);
+    const btn = $('#hmiSaveBtn');
+    btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/hmi/project', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (res.status === 409) { showMsg('다른 곳에서 HMI 설정이 바뀌었습니다. 최신 내용을 다시 불러왔으니 확인 후 저장하세요.', 'error'); await loadHmiTab(); return; }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error ?? `HTTP ${res.status}`); }
+      showMsg('HMI 설정을 저장했습니다.');
+      await loadHmiTab();
+    } catch (err) {
+      showMsg(`HMI 설정 저장 실패: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = !canEditHmi();
+    }
+  }
+
+  async function exportHmi() {
+    const btn = $('#hmiExportBtn');
+    btn.disabled = true; btn.textContent = '생성 중…';
+    try {
+      const res = await apiFetch('/api/hmi/export');
+      if (notSupported(res)) throw new Error('장치가 아직 HMI 내보내기를 지원하지 않습니다(백엔드 반영 전)');
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error ?? `HTTP ${res.status}`); }
+      const blob = await res.blob();
+      const m = (res.headers.get('Content-Disposition') ?? '').match(/filename="?([^"]+)"?/);
+      const filename = m ? m[1] : `swr_hmi_${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15)}.json`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showMsg(`HMI 내보내기 실패: ${err.message}`, 'error');
+    } finally {
+      btn.textContent = 'Download'; btn.disabled = !canEditHmi();
+    }
+  }
+
+  function setHmiImpState(state) {
+    const map = { IDLE: '#hmiImpIdle', VALIDATING: '#hmiImpValidating', PREVIEW: '#hmiImpPreview', APPLYING: '#hmiImpApplying', DONE: '#hmiImpDone' };
+    for (const [k, sel] of Object.entries(map)) { const el = $(sel); if (el) el.hidden = k !== state; }
+    if (state === 'IDLE') { _hmiImportFile = null; const f = $('#hmiImpFile'); if (f) f.value = ''; }
+  }
+
+  // 검증·적용 공통 오류 문구(400 메시지는 서버가 문제 위치를 담아 준다)
+  async function hmiImportError(res) {
+    const e = await res.json().catch(() => ({}));
+    return new Error(res.status === 413 ? `화면 내용이 너무 큽니다(화면 하나당 256KB). ${e.error ?? ''}`.trim()
+      : res.status === 409 ? `화면 수가 장치 한도(${e.maxScreens ?? '—'}개)를 넘습니다.`
+      : e.error ?? `HTTP ${res.status}`);
+  }
+
+  async function validateHmiFile(file) {
+    if (!file || !canEditHmi()) return;
+    if (!/\.json$/i.test(file.name)) { showMsg('.json 파일만 불러올 수 있습니다.', 'error'); return; }
+    setHmiImpState('VALIDATING');
+    try {
+      const res = await apiFetch('/api/hmi/import/validate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: file,
+      });
+      if (notSupported(res)) throw new Error('장치가 아직 HMI 불러오기를 지원하지 않습니다(백엔드 반영 전)');
+      if (!res.ok) throw await hmiImportError(res);
+      const v = await res.json();
+      _hmiImportFile = file;
+      // fileInfo가 null이면 머리 없는 시스템 백업 hmi.json
+      const fi = v.fileInfo;
+      $('#hmiImpMeta').textContent = fi
+        ? `${file.name} · ${hmiTime(fi.createdAt)} · ${fi.hostname ?? '—'}${fi.createdBy ? ` · ${fi.createdBy}` : ''}`
+        : `${file.name} · 시스템 백업의 hmi.json`;
+      const t = v.tags ?? {};
+      const cur = v.current ?? {};
+      $('#hmiImpSummary').innerHTML = [
+        ['프로젝트 이름', esc(v.project?.name || '이름 없음')],
+        ['화면', `${v.screens ?? 0}개 <small>(지금 ${cur.screens ?? '—'}개 → 교체)</small>`],
+        ['태그', `${t.total ?? 0}개 중 <b>${t.linked ?? 0}개 연결</b>${(t.missing ?? []).length ? `, <b class="warn">${t.missing.length}개 레지스터 없음</b>` : ''} <small>(지금 ${cur.tags ?? '—'}개 → 교체)</small>`],
+      ].map(([k, val]) => `<div class="system-info-item"><span>${k}</span><strong>${val}</strong></div>`).join('');
+      const miss = t.missing ?? [];
+      const warnEl = $('#hmiImpMissing');
+      const warns = (v.warnings ?? []).map((w) => `<div>⚠ ${esc(w)}</div>`);
+      if (miss.length) warns.unshift(`<div>⚠ 이 장치에 레지스터가 없어 다음 태그는 빠집니다. 이 태그를 쓰는 위젯은 값이 표시되지 않습니다.</div>
+        <div class="hmi-miss-list">${miss.map((m) => `${esc(m.id)} <small>(통합 주소 ${m.unifiedAddress == null ? '없음' : esc(m.unifiedAddress)})</small>`).join(', ')}</div>`);
+      warnEl.innerHTML = warns.join('');
+      warnEl.hidden = !warns.length;
+      setHmiImpState('PREVIEW');
+    } catch (err) {
+      setHmiImpState('IDLE');
+      showMsg(`HMI 파일 검증 실패: ${err.message}`, 'error');
+    }
+  }
+
+  async function applyHmiImport() {
+    if (!_hmiImportFile) return;
+    if (!window.confirm('지금 HMI 화면·태그를 모두 지우고 파일 내용으로 교체합니다. 계속할까요?\n(편집 중인 사람이 있으면 그 내용은 저장되지 않습니다)')) return;
+    setHmiImpState('APPLYING');
+    try {
+      const res = await apiFetch('/api/hmi/import/apply', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: _hmiImportFile,   // 검증한 파일 그대로
+      });
+      if (!res.ok) throw await hmiImportError(res);
+      const r = await res.json();
+      const skipped = r.skippedTags ?? [];
+      $('#hmiImpDoneText').textContent = `화면 ${r.screens ?? 0}개, 태그 ${r.tags ?? 0}개를 불러왔습니다.${skipped.length ? ` 레지스터가 없어 빠진 태그 ${skipped.length}개: ${skipped.join(', ')}` : ''}`;
+      setHmiImpState('DONE');
+      _hmiImportFile = null;
+      await loadHmiTab();
+    } catch (err) {
+      setHmiImpState('IDLE');
+      showMsg(`HMI 불러오기 실패: ${err.message}`, 'error');
+    }
+  }
+
+  $('#hmiSaveBtn')?.addEventListener('click', saveHmiSettings);
+  $('#hmiExportBtn')?.addEventListener('click', exportHmi);
+  $('#hmiImpFile')?.addEventListener('change', (e) => validateHmiFile(e.target.files?.[0]));
+  $('#hmiImpCancelBtn')?.addEventListener('click', () => setHmiImpState('IDLE'));
+  $('#hmiImpApplyBtn')?.addEventListener('click', applyHmiImport);
+  $('#hmiImpAgainBtn')?.addEventListener('click', () => setHmiImpState('IDLE'));
+  const hmiDrop = $('#hmiImpDrop');
+  hmiDrop?.addEventListener('dragover', (e) => { e.preventDefault(); if (canEditHmi()) hmiDrop.classList.add('drag-over'); });
+  hmiDrop?.addEventListener('dragleave', () => hmiDrop.classList.remove('drag-over'));
+  hmiDrop?.addEventListener('drop', (e) => { e.preventDefault(); hmiDrop.classList.remove('drag-over'); validateHmiFile(e.dataTransfer?.files?.[0]); });
+
   // ── 버튼 이벤트 ──────────────────────────────────────────────────
   $('#netSaveBtn')?.addEventListener('click', save);
   $('#netResetBtn')?.addEventListener('click', reset);
@@ -959,6 +1140,7 @@
     } catch (_) {}
     updateFactoryResetBtn();
     updateLanguageControl();
+    updateHmiPerm();
   }
 
   function updateFactoryResetBtn() {

@@ -1800,3 +1800,19 @@
 
 
 
+
+/* ── HMI 탭 ─────────────────────────────────────────────────────── */
+.tab-content[data-tab="settings-hmi"] { max-width: 1320px; }
+.hmi-set-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+}
+.hmi-note { margin: 0 auto 0 0; color: #fbbf24; font-size: 13px; }
+.hmi-imp-summary { margin: 4px 0 10px; }
+.hmi-imp-summary small { color: #7f93ab; font-weight: 500; }
+.hmi-imp-summary b.warn { color: #fbbf24; }
+.hmi-miss-list { margin-top: 6px; line-height: 1.6; word-break: break-all; }
+.restore-drop-zone.disabled { opacity: 0.45; pointer-events: none; }
