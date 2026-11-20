@@ -271,6 +271,11 @@
   text-align: left;
 }
 
+/* 현재값 칸(숫자값 + 원본 16진값)은 한눈에 읽히게 크게 */
+.realtime-table td:nth-child(5) {
+  font-size: 16px;
+}
+
 .realtime-table tbody tr:hover {
   background: rgba(47, 128, 255, 0.07);
   cursor: pointer;
@@ -688,62 +693,33 @@
   margin-left: 4px;
 }
 
-/* ── 비트 상태 섹션 ─────────────────────────────────────────────── */
+/* ── 비트 상태 섹션 — 원본 워드 16비트(b15 → b0), 1은 초록 강조 ─────────── */
 
-.detail-bit-list {
-  padding: 10px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.bit-bin {
+  padding: 14px 14px 12px;
 }
 
-.bit-row {
-  min-height: 30px;
+.bit-bin-digits {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  color: #a1b1c7;
-  font-size: 13px;
+  font: 800 19px ui-monospace, Consolas, monospace;
+  letter-spacing: 1px;
+  color: #33475c;
 }
 
-.bit-row .bit-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bit-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.bit-state.on {
+.bit-bin-digits span.on {
   color: #4cd96b;
+  text-shadow: 0 0 8px rgba(76, 217, 107, 0.55);
 }
 
-.bit-state.off {
-  color: #4a5f75;
+.bit-bin-digits i {
+  width: 10px;
 }
 
-.bit-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.bit-state.on .bit-dot {
-  background: #4cd96b;
-  box-shadow: 0 0 8px rgba(76, 217, 107, 0.7);
-}
-
-.bit-state.off .bit-dot {
-  background: #2e4050;
-  border: 1px solid #3a5268;
+.bit-bin-ruler {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font: 700 10.5px ui-monospace, Consolas, monospace;
+  color: #5d7088;
 }

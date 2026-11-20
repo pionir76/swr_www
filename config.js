@@ -245,15 +245,24 @@ const RegFmt = (() => {
     return Math.max(0, -Math.round(Math.log10(scale)));
   }
 
-  // 스케일 적용 후 fixed-point 문자열 반환. bitLabels 가 있으면 0xHHHH 헥사.
+  // 스케일 적용 후 fixed-point 문자열 반환.
   function value(v, reg) {
     if (v == null) return '—';
     const n = Number(v);
     if (!isFinite(n)) return '—';
-    if (reg?.bitLabels) {
-      return '0x' + (n >>> 0).toString(16).toUpperCase().padStart(4, '0');
-    }
     return n.toFixed(decimalsFromScale(reg?.scale));
+  }
+
+  // 원본 워드(rawWord, uint16) → "0x04D2". 값이 없으면 null
+  function hex(raw) {
+    if (raw == null || !isFinite(raw)) return null;
+    return '0x' + (Number(raw) & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+  }
+
+  // 원본 워드 → 16비트 배열(b15 → b0). 값이 없으면 null
+  function bits(raw) {
+    if (raw == null || !isFinite(raw)) return null;
+    return Array.from({ length: 16 }, (_, k) => (Number(raw) >> (15 - k)) & 1);
   }
 
   // Modbus 주소 5자리 0-패딩 (0 → "00000", 2 → "00002")
@@ -261,5 +270,5 @@ const RegFmt = (() => {
     return addr != null ? String(addr).padStart(5, '0') : '—';
   }
 
-  return { value, address };
+  return { value, hex, bits, address };
 })();

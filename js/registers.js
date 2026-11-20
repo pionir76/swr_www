@@ -24,7 +24,6 @@
   const rfSigned    = $('#rfSigned');
   const rfMin       = $('#rfMin');
   const rfMax       = $('#rfMax');
-  const rfBitLabels = $('#rfBitLabels');
   const formChip    = document.querySelector('.register-detail-panel .form-chip');
   const saveBtn           = $('#saveRegister');
   const resetBtn          = $('#resetRegister');
@@ -169,7 +168,6 @@
     if (rfSigned)    rfSigned.value    = r.isSigned ? 'true' : 'false';
     if (rfMin)       rfMin.value       = isRealLimit(r.minValue) ? r.minValue : '';
     if (rfMax)       rfMax.value       = isRealLimit(r.maxValue) ? r.maxValue : '';
-    if (rfBitLabels) rfBitLabels.value = r.bitLabels ?? '';
 
     if (r.unifiedAddress != null && r.unifiedAddress >= 5000) {
       // 수동 지정 범위(5000~5999)
@@ -205,7 +203,6 @@
     if (rfSigned)    rfSigned.value    = 'false';
     if (rfMin)       rfMin.value       = '';
     if (rfMax)       rfMax.value       = '';
-    if (rfBitLabels) rfBitLabels.value = '';
     if (rfUnifiedId) rfUnifiedId.value = '';
     applyRfUidMode('auto');
     if (formChip)    formChip.textContent = '선택 항목';
@@ -447,10 +444,8 @@
     }
     const minStr = rfMin?.value.trim();
     const maxStr = rfMax?.value.trim();
-    const bitStr = rfBitLabels?.value.trim();
     if (minStr !== '') body.minValue  = parseFloat(minStr);
     if (maxStr !== '') body.maxValue  = parseFloat(maxStr);
-    if (bitStr !== '') body.bitLabels = bitStr;
     return body;
   }
 
@@ -560,7 +555,6 @@
   const arSigned    = $('#arSigned');
   const arMin       = $('#arMin');
   const arMax       = $('#arMax');
-  const arBitLabels = $('#arBitLabels');
   const arFormMsg   = $('#arFormMsg');
   const arSubmitBtn = $('#arSubmitBtn');
 
@@ -589,7 +583,6 @@
     if (arSigned)    arSigned.value    = 'false';
     if (arMin)       arMin.value       = '';
     if (arMax)       arMax.value       = '';
-    if (arBitLabels) arBitLabels.value = '';
     if (arUnifiedId) arUnifiedId.value = '';
     applyArUidMode('auto');
     hideArMsg();
@@ -651,9 +644,6 @@
     const maxVal = arMax?.value.trim();
     if (minVal !== '') body.minValue = parseFloat(minVal);
     if (maxVal !== '') body.maxValue = parseFloat(maxVal);
-
-    const bitLabelsStr = arBitLabels?.value.trim();
-    if (bitLabelsStr) body.bitLabels = bitLabelsStr;
 
     hideArMsg();
     if (arSubmitBtn) { arSubmitBtn.disabled = true; arSubmitBtn.textContent = '추가 중…'; }

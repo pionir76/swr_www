@@ -148,34 +148,10 @@
       }
     }
 
-    set('dtlRawWord', r.rawWord != null ? r.rawWord : '—');
+    set('dtlRawWord', r.rawWord != null ? `${r.rawWord} (${RegFmt.hex(r.rawWord)})` : '—');
 
-    // 비트 라벨
-    const bitSection = $('#dtlBitSection');
-    const bitList    = $('#dtlBitList');
-    let parsedLabels = null;
-    try { if (r.bitLabels) parsedLabels = JSON.parse(r.bitLabels); } catch (_) {}
-    if (bitSection && bitList && parsedLabels && Object.keys(parsedLabels).length > 0 && r.rawWord != null) {
-      bitList.innerHTML = '';
-      const word = r.rawWord;
-      Object.entries(parsedLabels)
-        .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
-        .forEach(([pos, name]) => {
-          const isOn = ((word >> parseInt(pos)) & 1) === 1;
-          const row = document.createElement('div');
-          row.className = 'bit-row';
-          row.innerHTML =
-            `<span class="bit-name">${name}</span>` +
-            `<span class="bit-state ${isOn ? 'on' : 'off'}">` +
-              `<span class="bit-dot"></span>${isOn ? 'ON' : 'OFF'}` +
-            `</span>`;
-          bitList.appendChild(row);
-        });
-      bitSection.hidden = false;
-    } else if (bitSection) {
-      bitSection.hidden = true;
-      if (bitList) bitList.innerHTML = '';
-    }
+    // 비트 상태 — 어떤 레지스터든 원본 워드 16비트를 그대로(b15 → b0, 4비트씩 묶음, 1은 강조)
+    renderBits(r.isValid ? r.rawWord : null);
 
     const qEl = $('#dtlQuality');
     if (qEl) {
@@ -196,15 +172,21 @@
     }
   }
 
+  function renderBits(raw) {
+    const el = $('#dtlBits');
+    if (!el) return;
+    const b = RegFmt.bits(raw);
+    el.innerHTML = b
+      ? b.map((v, k) => `<span class="${v ? 'on' : ''}">${v}</span>${k % 4 === 3 && k < 15 ? '<i></i>' : ''}`).join('')
+      : '---- ---- ---- ----';
+  }
+
   function clearDetail() {
     $$('#dtlUnifiedAddr,#dtlTagName,#dtlDisplayName,#dtlUnit,#dtlScale,' +
        '#dtlDevice,#dtlSrcAddr,#dtlSrcType,' +
        '#dtlValue,#dtlRawWord,#dtlQuality,#dtlLastUpdated,#dtlErrMsg,' +
        '#dtlRwMode').forEach((el) => { el.textContent = '—'; el.className = ''; });
-    const bs = $('#dtlBitSection');
-    const bl = $('#dtlBitList');
-    if (bs) bs.hidden = true;
-    if (bl) bl.innerHTML = '';
+    renderBits(null);
   }
 
   // ── Summary Cards ────────────────────────────────────────────────
@@ -314,13 +296,16 @@
       const modeText = r.readOnly ? 'READ ONLY' : 'READ WRITE';
       const modeCls  = r.readOnly ? 'readonly' : 'readwrite';
 
+      // 숫자값(스케일 적용) + 원본 워드 16진값 — 모든 레지스터 같은 형식
+      const hx = RegFmt.hex(r.rawWord);
+      const rawHex = hx ? ` <small class="raw-hex">(${hx})</small>` : '';
       let valueCell;
       if (!r.isValid) {
         valueCell = `<span class="error-value">--</span>`;
       } else if (r.outOfRange) {
-        valueCell = `<span class="warning-value">${fmtValue(r.scaledValue, r)}</span>`;
+        valueCell = `<span class="warning-value">${fmtValue(r.scaledValue, r)}</span>${rawHex}`;
       } else {
-        valueCell = `<span class="value-cell">${fmtValue(r.scaledValue, r)}</span>`;
+        valueCell = `<span class="value-cell">${fmtValue(r.scaledValue, r)}</span>${rawHex}`;
       }
 
       const tr = document.createElement('tr');

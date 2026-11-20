@@ -1164,3 +1164,10 @@ input[type="checkbox"] {
   letter-spacing: 0.02em;
 }
 
+/* 현재값 옆 원본 16진값 — 실시간 모니터링·대시보드 공용 (RegFmt.hex) */
+.raw-hex {
+  margin-left: 4px;
+  font-size: inherit;          /* 값과 같은 크기 — 색과 굵기로만 구분 */
+  font-weight: 500;
+  color: rgba(122, 160, 204, 0.55);
+}
