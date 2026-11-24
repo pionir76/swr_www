@@ -261,6 +261,8 @@
   }
 
   // ── 테이블 렌더링 ────────────────────────────────────────────────
+  const escAttr = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
   function renderTable(registers) {
     updateSummary(registers);
 
@@ -322,11 +324,11 @@
       tr.innerHTML = `
         <td><span class="status-label ${status}"><i></i>${STATUS_LABEL[status]}</span></td>
         <td class="mono">${40000 + r.id}</td>
-        <td class="mono">${r.tagName ?? '—'}</td>
-        <td>${r.displayName ?? '—'}</td>
+        <td class="mono" title="${escAttr(r.tagName ?? '')}">${r.tagName ?? '—'}</td>
+        <td title="${escAttr(r.displayName ?? '')}">${r.displayName ?? '—'}</td>
         <td>${valueCell}</td>
         <td>${r.unit || '—'}</td>
-        <td>${devName}</td>
+        <td title="${escAttr(devName)}">${devName}</td>
         <td class="mono">${fmtAddress(r.localAddress)}</td>
         <td>${SOURCE_TYPE_LABEL[r.sourceType] ?? r.sourceType ?? '—'}</td>
         <td><span class="mode-badge ${modeCls}">${modeText}</span></td>
@@ -583,9 +585,20 @@
   function onBeforeLoad() {
     destroyed = true;
     stopAutoRefresh();
+    window.removeEventListener('resize', fitLayout);
     window.removeEventListener('spa:beforeload', onBeforeLoad);
   }
   window.addEventListener('spa:beforeload', onBeforeLoad);
+
+  // 목록·상세 영역의 아래 끝을 화면 아래 끝에 맞춘다 — 목록이 페이지 번호 바로 위까지 채워지게
+  function fitLayout() {
+    const lay = $('.realtime-main-layout');
+    if (!lay) return;
+    const top = lay.getBoundingClientRect().top + window.scrollY;
+    lay.style.minHeight = `${Math.max(420, window.innerHeight - top - 24)}px`;
+  }
+  window.addEventListener('resize', fitLayout);
+  fitLayout();
 
   // ── 초기 실행 ────────────────────────────────────────────────────
   loadDevices().then(() => {

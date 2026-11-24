@@ -64,7 +64,7 @@
 }
 
 .register-table {
-  min-width: 980px;
+  min-width: 860px;
 }
 
 .register-table th,
@@ -72,6 +72,13 @@
   height: 52px;
   padding: 0 12px;
   white-space: nowrap;
+}
+
+/* 태그명·표시명은 길면 …로 줄인다(전체는 마우스를 올리면) */
+.register-table td.reg-ellipsis {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .register-table tbody tr:hover {

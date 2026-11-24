@@ -217,10 +217,11 @@
 
 /* Table */
 
+/* 목록은 패널의 남는 높이를 모두 쓴다(페이지 번호 바로 위까지). 패널 높이는 화면 아래 끝에 맞춘다
+   — realtime.js fitLayout()이 .realtime-main-layout의 min-height를 정함 */
 .realtime-table-wrap {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 200px;
-  max-height: calc(100vh - var(--topbar-h) - 480px);
   overflow-x: auto;
   overflow-y: auto;
 }
@@ -269,6 +270,15 @@
 .realtime-table th:nth-child(4),
 .realtime-table td:nth-child(4) {
   text-align: left;
+}
+
+/* 태그명·표시명·소스 장비는 길면 …로 줄인다(전체는 마우스를 올리면) */
+.realtime-table td:nth-child(3),
+.realtime-table td:nth-child(4),
+.realtime-table td:nth-child(7) {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 현재값 칸(숫자값 + 원본 16진값)은 한눈에 읽히게 크게 */

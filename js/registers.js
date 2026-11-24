@@ -334,8 +334,8 @@
       return `
         <tr data-index="${i}">
           <td><input type="checkbox" data-id="${r.id}" ${selectedRegIds.has(r.id) ? 'checked' : ''} /></td>
-          <td class="mono">${escHtml(r.tagName)}</td>
-          <td>${escHtml(r.displayName)}</td>
+          <td class="mono reg-ellipsis" title="${escHtml(r.tagName)}">${escHtml(r.tagName)}</td>
+          <td class="reg-ellipsis" title="${escHtml(r.displayName)}">${escHtml(r.displayName)}</td>
           <td>${String(r.localAddress).padStart(5, '0')}</td>
           <td>${escHtml(typeLabel)}</td>
           <td>${r.length}</td>
