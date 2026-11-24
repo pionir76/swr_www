@@ -364,6 +364,17 @@
       if (p.italic) t.style.fontStyle = 'italic';
       if (p.glow) t.setAttribute('filter', `url(#${glowFilter(ctx.defs, w.id, p.fontSize)})`);
       t.textContent = p.text;
+      // 태그를 연결하면 "글자" 대신 태그 값을 그대로 보여 준다(글자 태그는 그 글자, 숫자는 자릿수 맞춤, 참/거짓).
+      // 단위는 붙이지 않는다(단위가 필요한 숫자는 숫자 표시 위젯). 편집기 미리보기에서 값이 없으면 "글자"를 둔다.
+      return {
+        update(info) {
+          if (info.preview) { t.textContent = p.text; return; }
+          const v = info.value;
+          t.textContent = !info.ok || v == null ? '----'
+            : v === true ? '참' : v === false ? '거짓'
+            : typeof v === 'number' ? v.toFixed(info.decimals || 0) : String(v);
+        },
+      };
     },
   });
 

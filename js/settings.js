@@ -619,9 +619,9 @@
       const warns = (v.warnings ?? []).map((w) => `<div>⚠ ${esc(w)}</div>`);
       if (miss.length) warns.unshift(`<div>⚠ 이 장치에 없는 레지스터 — 태그 ${miss.length}개 제외</div>
         <div class="xfer-chips">${miss.map((m) => `<i title="통합 주소 ${m.unifiedAddress == null ? '없음' : esc(m.unifiedAddress)}">${esc(m.id)}</i>`).join('')}</div>`);
-      // 참조가 끊기는 계산 태그(들어가지만 값은 불량)
+      // 참조가 끊기는 로직 태그(들어가지만 값은 불량)
       const broken = t.brokenExpr ?? [];
-      if (broken.length) warns.push(`<div>⚠ 참조가 끊겨 값이 불량이 되는 계산 태그 ${broken.length}개</div>
+      if (broken.length) warns.push(`<div>⚠ 참조가 끊겨 값이 불량이 되는 로직 태그 ${broken.length}개</div>
         <div class="xfer-chips">${broken.map((x) => `<i title="없는 태그: ${esc((x.missingRefs ?? []).join(', '))}">${esc(x.id)}</i>`).join('')}</div>`);
       const warnEl = $('#hmiImpMissing');
       warnEl.innerHTML = warns.join('');

@@ -121,7 +121,7 @@
     hasLimit: (v) => v != null && Number.isFinite(v) && Math.abs(v) < 1e15,
     digits: (scale) => (scale > 0 ? Math.max(0, -Math.round(Math.log10(scale))) : 0),
     isBool: (src) => !!src && BOOL_REGS.includes(src.registerType || src.type),
-    // 계산 태그(expr)·설정 태그(param) — 값이 원본이 아니라 서버가 준 value(hmi.md §5.2, §5.4)
+    // 로직 태그(expr)·설정 태그(param) — 값이 원본이 아니라 서버가 준 value(hmi.md §5.2, §5.4)
     isCalc: (t) => !!t && !!t.kind && t.kind !== 'register',
     scaleOf: (t, src = t && t.source) => (t && t.scale) ?? (src && src.scale) ?? 1,
     // 원본 → 값. 값 없음(null — 통신 불량·2워드 이상 레지스터)은 null
@@ -194,11 +194,11 @@
         body: JSON.stringify({ tag: id, raw }),
       });
       if (!res.ok) {
-        // 서버의 쓰기 범위 검사(422: min·max·value는 표시 값 기준, 제한 없는 쪽은 null), 읽기 전용·계산 태그(405)
+        // 서버의 쓰기 범위 검사(422: min·max·value는 표시 값 기준, 제한 없는 쪽은 null), 읽기 전용·로직 태그(405)
         const e = await res.json().catch(() => ({}));
         throw new Error(res.status === 422 && ('min' in e || 'max' in e)
           ? `${e.value}은(는) 쓸 수 있는 범위(${e.min ?? '…'} ~ ${e.max ?? '…'}) 밖입니다`
-          : res.status === 405 ? '쓸 수 없는 태그입니다(읽기 전용 또는 계산 태그)' : e.error || `HTTP ${res.status}`);
+          : res.status === 405 ? '쓸 수 없는 태그입니다(읽기 전용 또는 로직 태그)' : e.error || `HTTP ${res.status}`);
       }
     }
   }

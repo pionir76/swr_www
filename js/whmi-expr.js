@@ -1,4 +1,4 @@
-// HMI 계산 태그의 조건 빌더 — 태그 관리 폼(whmi-tags.js)이 쓴다. 디자인 모드에서만 로드된다.
+// HMI 로직 태그의 조건 빌더 — 태그 관리 폼(whmi-tags.js)이 쓴다. 디자인 모드에서만 로드된다.
 // 설계: docs/architecture/hmi.md §5.3(식 AST), §7.3. 계산은 백엔드가 한다(미리보기도 POST /api/hmi/eval).
 //
 // 편집 모형(화면용) ↔ AST(저장용)
@@ -99,14 +99,14 @@
       const m = new Map();
       for (const t of tags) {
         const k = devKey(t);
-        if (!m.has(k)) m.set(k, { key: k, name: k === CALC ? '계산 태그' : (t.source && (t.source.deviceDisplayName || t.source.deviceCode)) || '(장비 없음)', tags: [] });
+        if (!m.has(k)) m.set(k, { key: k, name: k === CALC ? '로직' : (t.source && (t.source.deviceDisplayName || t.source.deviceCode)) || '(장비 없음)', tags: [] });
         m.get(k).tags.push(t);
       }
       const rank = (g) => (g.key === NONE ? 2 : g.key === CALC ? 1 : 0);
       return [...m.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'ko'));
     })();
     const firstTag = () => (groups[0] && groups[0].tags[0] ? groups[0].tags[0].id : '');
-    // 새 조건의 기본 비교 — 계산 태그(참/거짓)는 "참일 때", 나머지는 "같음 1"
+    // 새 조건의 기본 비교 — 로직 태그(참/거짓)는 "참일 때", 나머지는 "같음 1"
     const newCond = (tagId = firstTag()) => {
       const t = byId.get(tagId);
       return t && RAW.isCalc(t) && t.source && t.source.valueType === 'bool' ? { tag: tagId, test: 'true' } : { tag: tagId, test: 'eq', value: 1 };
@@ -130,46 +130,50 @@
     const parentOf = (path) => { const p = String(path).split('.'); const i = Number(p.pop()); return { g: at(p.join('.')), i }; };
 
     const opt = (v, label, cur) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(label)}</option>`;
-    const condHtml = (c, path, removable) => {
+    const X = (attr, title) => `<button type="button" class="cb-x" ${attr} title="${title}">×</button>`;
+    // 조건 한 줄 — 칸 폭은 모든 줄이 같다(장비 · 태그 · 비교 · 값 · [tail] · 지우기). 값이 없는 비교도 빈 칸을 둔다.
+    //  tail: 숫자·글자 형식에서 "→ 결과 값" 칸. 비트 비교면 아래에 0~15 칸(같은 폭 16칸)이 한 줄 더 붙는다
+    const condHtml = (c, path, rm, tail = '', attrs = '') => {
       const t = byId.get(c.tag);
       const dk = t ? devKey(t) : (groups[0] ? groups[0].key : '');
       const g = groups.find((x) => x.key === dk) || { tags: [] };
       const missing = c.tag && !t ? opt(c.tag, `${c.tag} (없는 태그)`, c.tag) : '';
-      const val = CMP.includes(c.test) ? `<input class="cb-v" data-cv value="${esc(fmtValue(c.value))}" placeholder="값" spellcheck="false">`
-        : c.test === 'range' ? `<span class="cb-range"><input data-cmin value="${esc(fmtValue(c.min))}" placeholder="…" inputmode="decimal"><i>~</i><input data-cmax value="${esc(fmtValue(c.max))}" placeholder="…" inputmode="decimal"></span>`
-        : '<span></span>';
+      const val = CMP.includes(c.test) ? `<input data-cv value="${esc(fmtValue(c.value))}" placeholder="값" spellcheck="false">`
+        : c.test === 'range' ? `<span class="cb-range"><input data-cmin value="${esc(fmtValue(c.min))}" placeholder="최소" inputmode="decimal"><i>~</i><input data-cmax value="${esc(fmtValue(c.max))}" placeholder="최대" inputmode="decimal"></span>`
+        : '<span class="cb-nov"></span>';
+      const on = R.bitList(c.bits);
       const bits = isBit(c.test)
-        ? `<div class="cb-bits">${Array.from({ length: 16 }, (_, i) => `<button type="button" data-cbit="${i}" class="${R.bitList(c.bits).includes(i) ? 'on' : ''}">${i}</button>`).join('')}</div>` : '';
-      return `<div class="cb-row${t || !c.tag ? '' : ' bad'}" data-path="${esc(path)}">
-        <select data-cdev title="장비">${groups.map((x) => opt(x.key, `${x.name} (${x.tags.length})`, dk)).join('')}</select>
+        ? `<span class="cb-bitlabel">비트</span><div class="cb-bits">${Array.from({ length: 16 }, (_, i) => `<button type="button" data-cbit="${i}" class="${on.includes(i) ? 'on' : ''}">${i}</button>`).join('')}</div>` : '';
+      return `<div class="cb-row${tail ? ' cb-srow' : ''}${t || !c.tag ? '' : ' bad'}" data-path="${esc(path)}"${attrs}>
+        <select data-cdev title="장비">${groups.map((x) => opt(x.key, x.name, dk)).join('')}</select>
         <select data-ct title="태그">${missing}${g.tags.map((x) => opt(x.id, x.name ? `${x.id} — ${x.name}` : x.id, c.tag)).join('')}</select>
-        <select data-ctest>${TESTS.map(([v, l]) => opt(v, l, c.test)).join('')}</select>
-        ${val}
-        ${removable ? '<button type="button" class="cb-x" data-crm title="조건 지우기">✕</button>' : '<span></span>'}
-        ${bits}
+        <select data-ctest title="비교">${TESTS.map(([v, l]) => opt(v, l, c.test)).join('')}</select>
+        ${val}${tail}${rm || '<span></span>'}${bits}
       </div>`;
     };
-    const modeSel = (g) => `<select data-gmode>${opt('and', '모두 만족하면 (그리고)', g.mode)}${opt('or', '하나라도 만족하면 (또는)', g.mode)}</select>`;
-    const groupHtml = (g, path, depth) => `<div class="cb-group" data-gpath="${esc(path)}">
-      <div class="cb-ghead">${modeSel(g)}
-        ${depth > 1 ? `<label class="cb-not"><input type="checkbox" data-gnot${g.not ? ' checked' : ''}> 반대로(아님)</label><button type="button" class="cb-x" data-grm title="묶음 지우기">✕</button>` : ''}</div>
-      ${g.items.map((it, i) => { const p = path === '' ? String(i) : `${path}.${i}`; return it.items ? groupHtml(it, p, depth + 1) : condHtml(it, p, g.items.length > 1 || depth > 1); }).join('')}
+    const colHead = (sel) => `<div class="cb-row cb-colhead${sel ? ' cb-srow' : ''}"><span>장비</span><span>태그</span><span>비교</span><span>값</span>${sel ? '<span></span><span>결과 값</span>' : ''}<span></span></div>`;
+    // 묶음 방식(그리고 / 또는) — 라디오. 묶음마다 이름이 달라야 서로 영향을 주지 않는다
+    const seg = (g, path) => `<span class="cb-modes">${[['and', '모두 만족 (그리고)'], ['or', '하나라도 만족 (또는)']].map(([v, l]) =>
+      `<label><input type="radio" name="cbm-${esc(path || 'root')}" data-gmr value="${v}"${g.mode === v ? ' checked' : ''}><span>${l}</span></label>`).join('')}</span>`;
+    const groupHtml = (g, path, depth) => `<div class="cb-group${depth > 1 ? ' cb-inner' : ''}" data-gpath="${esc(path)}">
+      <div class="cb-ghead">${seg(g, path)}
+        ${depth > 1 ? `<label class="cb-not"><input type="checkbox" data-gnot${g.not ? ' checked' : ''}> 반대로(아님)</label>${X('data-grm', '묶음 지우기')}` : ''}</div>
+      ${depth === 1 ? colHead(false) : ''}
+      ${g.items.map((it, i) => { const p = path === '' ? String(i) : `${path}.${i}`; return it.items ? groupHtml(it, p, depth + 1) : condHtml(it, p, g.items.length > 1 || depth > 1 ? X('data-crm', '조건 지우기') : ''); }).join('')}
       <div class="cb-add"><button type="button" data-gadd="cond">+ 조건</button>${depth < MAX_DEPTH ? '<button type="button" data-gadd="group">+ 묶음</button>' : ''}</div>
     </div>`;
     const selectHtml = (m) => `<div class="cb-group">
-      ${m.rows.map((r, i) => `<div class="cb-sel" data-row="${i}">
-        <div class="cb-cond">${condHtml(r.cond, String(i), false)}</div><span class="cb-arrow">→</span>
-        <input data-rv value="${esc(fmtValue(r.value))}" placeholder="값" spellcheck="false">
-        ${m.rows.length > 1 ? '<button type="button" class="cb-x" data-rrm title="줄 지우기">✕</button>' : '<span></span>'}
-      </div>`).join('')}
+      ${colHead(true)}
+      ${m.rows.map((r, i) => condHtml(r.cond, String(i), m.rows.length > 1 ? X('data-rrm', '줄 지우기') : '',
+        `<span class="cb-arrow">→</span><input data-rv value="${esc(fmtValue(r.value))}" placeholder="결과 값" spellcheck="false">`, ` data-row="${i}"`)).join('')}
+      <div class="cb-row cb-srow cb-defrow"><span class="cb-deflabel">위 조건에 모두 맞지 않으면</span><span class="cb-arrow">→</span><input data-rdef value="${esc(fmtValue(m.def))}" placeholder="결과 값" spellcheck="false"><span></span></div>
       <div class="cb-add"><button type="button" data-radd>+ 줄</button></div>
-      <div class="cb-def">그 외에는 <input data-rdef value="${esc(fmtValue(m.def))}" placeholder="값" spellcheck="false"></div>
     </div>`;
 
     const render = () => {
       root.innerHTML = readonly
         ? `<div class="cb-ro">이 식은 조건 빌더로 편집할 수 없는 모양입니다. 내용은 그대로 유지됩니다.<code>${esc(R.exprText(opts.expr))}</code></div>`
-        : `<div class="cb-sec">${valueType === 'bool' ? '규칙 — 참이 되는 조건' : '규칙 — 위에서부터 처음 맞는 줄의 값'}</div>`
+        : `<div class="cb-sec">규칙 <small>${valueType === 'bool' ? '참이 되는 조건' : '위에서부터 처음 맞는 줄의 결과 값'}</small></div>`
           + (valueType === 'bool' ? groupHtml(model, '', 1) : selectHtml(model));
     };
     const changed = (redraw) => { if (redraw) render(); if (opts.onChange) opts.onChange(); };
@@ -178,7 +182,7 @@
     root.addEventListener('change', (e) => {
       if (readonly) return;
       const t = e.target, row = t.closest('[data-path]');
-      if (t.dataset.gmode !== undefined) { at(t.closest('[data-gpath]').dataset.gpath).mode = t.value; return changed(false); }
+      if (t.dataset.gmr !== undefined) { at(t.closest('[data-gpath]').dataset.gpath).mode = t.value; return changed(false); }
       if (t.dataset.gnot !== undefined) { at(t.closest('[data-gpath]').dataset.gpath).not = t.checked; return changed(false); }
       if (!row) return;
       const c = at(row.dataset.path);

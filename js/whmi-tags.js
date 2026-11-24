@@ -88,7 +88,13 @@
     }
     const tags = (tagData.tags || []).sort((a, b) => a.id.localeCompare(b.id));
     const values = RAW.decode(valData.values || {}, Object.fromEntries(tags.map((t) => [t.id, t])));
-    return { tags, regs, values, usage, screens, projectScreens: new Set(screenRefs.map((s) => s.id)) };
+    // 로직 태그가 참조하는 태그: 태그 id → 그 태그를 식에 쓰는 로직 태그 id 목록
+    const refs = new Map();
+    for (const t of tags) {
+      if (!RAW.isCalc(t) || !t.source || !t.source.expr) continue;
+      for (const id of window.WHMI.rules.exprTags(t.source.expr)) { if (!refs.has(id)) refs.set(id, []); refs.get(id).push(t.id); }
+    }
+    return { tags, regs, values, usage, refs, screens, projectScreens: new Set(screenRefs.map((s) => s.id)) };
   }
 
   // 태그가 실제로 쓰는 값(태그에서 덮어쓴 값, 없으면 레지스터 값)
@@ -106,6 +112,19 @@
   // 계산·설정 태그(레지스터가 아닌 태그)와 식 글자
   const isCalc = (t) => RAW.isCalc(t);
   const exprText = (t) => (t.source && t.source.expr ? window.WHMI.rules.exprText(t.source.expr) : '');
+  // 태그 종류의 화면 이름(용어: 레지스터 / 로직 / 설정 — 문서의 register·expr·param 태그)
+  const KIND_NAME = { register: '레지스터', expr: '로직', param: '설정' };
+  // 로직 태그의 입력 태그와 지금 값 — 목록의 소스 칸에 마우스를 올리면 보인다(값이 왜 그렇게 나왔는지)
+  function inputsText(t, data) {
+    const ids = t.source && t.source.expr ? window.WHMI.rules.exprTags(t.source.expr) : [];
+    const one = (id) => {
+      const v = data.values[id];
+      return `${id} = ${!data.tags.some((x) => x.id === id) ? '(없는 태그)'
+        : !v || v.v == null || v.q === 'bad' || v.q === 'disabled' ? '(불량)'
+        : v.v === true ? '참' : v.v === false ? '거짓' : typeof v.v === 'number' ? v.v.toFixed(v.decimals ?? 0) : String(v.v)}`;
+    };
+    return ids.length ? `\n\n지금 값: ${ids.map(one).join(', ')}` : '';
+  }
 
   // ---- 점검 규칙 -------------------------------------------------------------
   // 규칙 하나 = [등급, 판정 함수]. 판정 함수가 문구를 돌려주면 문제, 아니면 null.
@@ -123,9 +142,9 @@
       ? `현재 값 ${v.v}이(가) 범위(${e.min ?? '—'} ~ ${e.max ?? '—'}) 밖입니다` : null)],
     ['warn', (t, src, { v }) => ((src || isCalc(t)) && v && v.q === 'bad' && !(t.missingRefs || []).length
       ? (isCalc(t) ? '입력 태그 중 통신 불량이 있어 지금 값을 계산하지 못합니다' : '통신 불량 — 지금 값을 받지 못합니다') : null)],
-    ['info', (t, src, { data }) => (!data.usage.has(t.id) ? '어느 화면에서도 쓰지 않습니다' : null)],
+    ['info', (t, src, { data }) => (!data.usage.has(t.id) && !data.refs.has(t.id) ? '어느 화면에서도, 어느 로직 태그에서도 쓰지 않습니다' : null)],
     ['info', (t, src, { data }) => {
-      const same = data.tags.filter((o) => o !== t && o.source && t.source && o.source.registerId === t.source.registerId);
+      const same = isCalc(t) ? [] : data.tags.filter((o) => o !== t && !isCalc(o) && o.source && t.source && o.source.registerId === t.source.registerId);
       return same.length ? `같은 레지스터를 쓰는 태그: ${same.map((o) => o.id).join(', ')}` : null;
     }],
     ['info', (t, src) => (src && src.dev.enabled === false ? `소스 장비(${src.dev.displayName || src.dev.name})가 통신 비활성입니다` : null)],
@@ -204,11 +223,11 @@
   // 열: [정렬 키, 제목, 오른쪽 정렬]. 머리글을 누르면 그 열로 오름차순 ↔ 내림차순
   const TABLES = {
     tags: {
-      cols: colgroup([4, 16, 10, 20, 6, 10, 6, 8, 9, 11]),
+      cols: colgroup([3, 13, 12, 8, 21, 5, 8, 5, 7, 8, 10]),
       check: true,   // 맨 앞 선택 체크 상자(여러 개 삭제)
-      head: [['id', 'TAG ID'], ['name', 'TAG NAME'], ['source', '소스(장비 · 레지스터)'], ['unit', '단위', 1], ['range', '범위', 1],
+      head: [['id', 'TAG ID'], ['name', 'TAG NAME'], ['kind', '종류'], ['source', '소스'], ['unit', '단위', 1], ['range', '범위', 1],
         ['scale', '스케일', 1], ['access', '읽기/쓰기', 1], ['value', '현재 값', 1], ['used', '사용처', 1]],
-      span: 10,
+      span: 11,
     },
     screens: {
       cols: colgroup([8, 18, 18, 11, 45]),
@@ -225,6 +244,7 @@
     tags: {
       id: (t) => t.id,
       name: (t) => t.name || null,
+      kind: (t) => KIND_NAME[t.kind || 'register'] || t.kind,
       source: (t, data) => { const s = data.regs.get(t.source && t.source.registerId); return s ? `${s.dev.displayName || s.dev.name}\u0001${s.reg.tagName}` : null; },
       unit: (t, data) => effective(t, srcReg(t, data)).unit,
       range: (t, data) => effective(t, srcReg(t, data)).min,
@@ -273,11 +293,14 @@
   function tagRowHtml(t, data, picked) {
     const src = data.regs.get(t.source && t.source.registerId);
     const reg = src && src.reg;
-    const source = isCalc(t)
-      ? `<span class="tm-calc">계산 태그</span><br><small title="${esc(exprText(t))}">${esc(exprText(t))}</small>`
-      : src
-      ? `${esc(src.dev.displayName || src.dev.name)}${src.dev.enabled === false ? ' <span class="tm-off">비활성</span>' : ''}<br><small>${esc(reg.tagName)}${reg.displayName ? ` · ${esc(reg.displayName)}` : ''}</small>`
-      : `<span class="tm-err">레지스터 없음 (#${esc(t.source && t.source.registerId)})</span>`;
+    // 소스는 한 줄로: 레지스터 태그는 "장비 · 레지스터", 로직 태그는 식. 넘치면 …, 전체 내용은 마우스를 올리면
+    //  (로직 태그는 식 + 입력 태그의 지금 값까지)
+    const srcText = isCalc(t) ? exprText(t)
+      : src ? `${src.dev.displayName || src.dev.name} · ${reg.tagName}` : `레지스터 없음 (#${t.source && t.source.registerId})`;
+    const srcTip = isCalc(t) ? `${exprText(t)}${inputsText(t, data)}`
+      : src ? `${src.dev.displayName || src.dev.name}${src.dev.enabled === false ? ' (비활성)' : ''} · ${reg.tagName}${reg.displayName ? ` — ${reg.displayName}` : ''}` : srcText;
+    const source = `<span class="${!isCalc(t) && !src ? 'tm-err' : ''}">${esc(srcText)}</span>${src && src.dev.enabled === false ? ' <span class="tm-off">비활성</span>' : ''}`;
+    const kind = t.kind || 'register';
     const inh = reg ? RAW.limits({ ...t, min: null, max: null }, reg) : {};   // 물려받는 값(태그 스케일로 환산)
     const rMin = inh.min ?? null;
     const rMax = inh.max ?? null;
@@ -290,9 +313,11 @@
       : v.v == null || v.q === 'bad' ? '<span class="tm-err">통신 불량</span>'
       : `<span class="tm-val">${esc(typeof v.v === 'number' ? v.v.toFixed(v.decimals ?? 0) : String(v.v))}</span>` + (v.unit ? ` <small>${esc(v.unit)}</small>` : '');
     const u = data.usage.get(t.id);
-    const used = u
-      ? `<span title="${esc([...u.screens].join(', '))}">화면 ${u.screens.size} · 위젯 ${u.widgets}</span>`
-      : '<span class="tm-inh">사용 안 함</span>';
+    const rf = data.refs.get(t.id);   // 이 태그를 식에 쓰는 로직 태그
+    // 사용처는 한 줄: 화면·위젯 수, 다른 태그의 식에서 쓰이면 "식 N". 자세한 목록은 마우스를 올리면
+    const useTip = [u ? `화면: ${[...u.screens].join(', ')}` : '', rf ? `식에서 참조: ${rf.join(', ')}` : ''].filter(Boolean).join('\n');
+    const useText = [u ? `화면 ${u.screens.size} · 위젯 ${u.widgets}` : '', rf ? `식 ${rf.length}` : ''].filter(Boolean).join(' · ');
+    const used = useText ? `<span title="${esc(useTip)}">${esc(useText)}</span>` : '<span class="tm-inh">사용 안 함</span>';
     // 점검 결과: id 앞 점(가장 높은 등급 색), 마우스를 올리면 이유
     const issues = (data.tagIssues && data.tagIssues.get(t.id)) || [];
     const mark = issues.length
@@ -300,8 +325,9 @@
     return `<tr data-id="${esc(t.id)}">
       <td class="tm-chk"><input type="checkbox" data-sel="${esc(t.id)}"${picked && picked.has(t.id) ? ' checked' : ''}></td>
       <td class="tm-id" title="${esc(t.id)}">${mark}${esc(t.id)}</td>
-      <td>${esc(t.name || '')}</td>
-      <td>${source}</td>
+      <td class="tm-1l" title="${esc(t.name || '')}">${esc(t.name || '')}</td>
+      <td><span class="tm-kind ${esc(kind)}">${esc(KIND_NAME[kind] || kind)}</span></td>
+      <td class="tm-1l" title="${esc(srcTip)}">${source}</td>
       <td class="tm-r">${cell(t.unit, reg ? reg.unit || null : null)}</td>
       <td class="tm-r">${range}</td>
       <td class="tm-r">${cell(t.scale, reg ? reg.scale : null)}</td>
@@ -385,17 +411,17 @@
   }
 
   // firstDev: 이 장비의 레지스터를 맨 앞에(속성 창에서 장비를 고른 채 "+ 새 태그…"로 열었을 때)
-  // 새 태그 폼 맨 위의 종류 고르기(레지스터 태그 / 계산 태그). 만든 뒤에는 종류를 바꿀 수 없다
-  const kindRow = (kind) => `<div class="form-field full"><label>종류</label><div><span class="cb-kind">
-      <button type="button" data-k="kind" data-kind="register" class="${kind === 'register' ? 'on' : ''}">레지스터 태그</button><button type="button" data-k="kind" data-kind="expr" class="${kind === 'expr' ? 'on' : ''}">계산 태그</button>
-    </span></div></div>`;
+  // 새 태그 폼 맨 위의 종류 고르기(라디오). 만든 뒤에는 종류를 바꿀 수 없다. 설정(param)은 hmi-todo.md 단계 C
+  const KINDS = [['register', '레지스터', '장비 레지스터의 값'], ['expr', '로직', '다른 태그로 계산'], ['param', '설정', '준비 중']];
+  const kindRow = (kind) => `<div class="form-field full"><label>종류</label><div class="tm-kinds">${KINDS.map(([k, name, hint]) =>
+    `<label class="${k === 'param' ? 'off' : ''}"><input type="radio" name="tmkind" value="${k}"${k === kind ? ' checked' : ''}${k === 'param' ? ' disabled' : ''}><span>${name}</span><small>${hint}</small></label>`).join('')}</div></div>`;
   const VALUE_TYPES = [['bool', '참 / 거짓'], ['number', '숫자'], ['string', '글자']];
 
-  // 계산 태그 폼 — 규칙은 조건 빌더(whmi-expr.js)가 [data-cb]에, 미리보기는 [data-prev]에 그린다
+  // 로직 태그 폼 — 규칙은 조건 빌더(whmi-expr.js)가 [data-cb]에, 미리보기는 [data-prev]에 그린다
   function exprFormHtml(t) {
     const opts = (list) => list.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
     return `<div class="tm-form tm-form-expr">
-      <div class="tm-form-title">${t ? '계산 태그 수정' : '새 태그 정보'}</div>
+      <div class="tm-form-title">${t ? '태그 수정 <small>로직</small>' : '새 태그 정보'}</div>
       <div class="form-grid">
         ${t ? '' : kindRow('expr')}
         <div class="form-field"><label>TAG ID${t ? ' (변경 불가)' : ''}</label>${t ? `<input class="input" value="${esc(t.id)}" disabled>` : '<input class="input" data-ff="id" spellcheck="false" autocomplete="off">'}</div>
@@ -664,7 +690,7 @@
       }
     };
 
-    // ---- 계산 태그 폼: 조건 빌더 + 미리보기(백엔드 평가 API) + 저장 --------------------
+    // ---- 로직 태그 폼: 조건 빌더 + 미리보기(백엔드 평가 API) + 저장 --------------------
     let prevTimer = null;      // 미리보기 지연 호출
     let prevSeq = 0;           // 늦게 온 응답 버리기
     const Q_LABEL = { good: '품질 정상', normal: '응답 지연', bad: '불량', disabled: '장비 비활성' };
@@ -715,7 +741,7 @@
       const b = editing.builder;
       const expr = b.getExpr();
       const text = window.WHMI.rules.exprText(expr);
-      const fail = (msg) => { box.innerHTML = `<code>${esc(text)}</code><div class="cb-res"><span class="cb-err">${esc(msg)}</span></div>`; editing.inputIds = ''; };
+      const fail = (msg) => { box.innerHTML = `<div class="cb-phead"><b>미리보기</b></div><code class="cb-expr">${esc(text)}</code><div class="cb-result"><span class="cb-err">${esc(msg)}</span></div>`; editing.inputIds = ''; };
       const bad = b.validate();
       if (bad) return fail(bad);
       let r;
@@ -725,37 +751,50 @@
         const res = await apiFetch('/api/hmi/eval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (seq !== prevSeq || !editing || editing.kind !== 'expr') return;
         r = await res.json().catch(() => ({}));
-        if (!res.ok) return fail(res.status === 404 ? '장치가 아직 계산 태그를 지원하지 않습니다.' : r.error || `HTTP ${res.status}`);
+        if (!res.ok) return fail(res.status === 404 ? '장치가 아직 로직 태그를 지원하지 않습니다.' : r.error || `HTTP ${res.status}`);
       } catch (e) {
         if (seq !== prevSeq) return;
         return fail(e.message);
       }
       const missing = r.missingRefs || [];
-      const cls = r.q === 'bad' ? 'bad' : r.value === true ? 't' : 'f';
-      const result = `${editing.test ? '시험 결과' : '지금 결과'} <b class="${cls}">${r.q === 'bad' ? '불량' : esc(showVal(r.value))}</b>
-        <span>${missing.length ? `없는 태그: ${esc(missing.join(', '))}` : esc(Q_LABEL[r.q] || r.q || '')}</span>`;
+      const cls = r.q === 'bad' ? 'bad' : r.value === true ? 't' : r.value === false ? 'f' : 'v';
+      const result = `<b class="${cls}">${r.q === 'bad' ? '불량' : esc(showVal(r.value))}</b>
+        <span class="cb-q ${esc(r.q || '')}">${missing.length ? `없는 태그: ${esc(missing.join(', '))}` : esc(Q_LABEL[r.q] || r.q || '')}</span>`;
       const inputs = r.inputs || {};
       const ids = Object.keys(inputs).sort();
       const key = `${editing.test}|${ids.join(',')}`;
-      // 입력 칩은 태그 구성이나 보기 방식이 바뀔 때만 다시 그린다(시험 값 입력 중 포커스를 지키려고)
-      if (key !== editing.inputIds || !box.querySelector('.cb-ins')) {
+      // 입력 표는 태그 구성이나 보기 방식이 바뀔 때만 다시 그린다(시험 값 입력 중 포커스를 지키려고)
+      if (key !== editing.inputIds || !box.querySelector('.cb-inputs')) {
         editing.inputIds = key;
-        const chip = (id) => {
+        const cell = (id) => {
           const x = inputs[id], t = data.tags.find((y) => y.id === id);
-          const unit = t && t.unit ? ` ${t.unit}` : (t && t.source && t.source.registerId && (data.regs.get(t.source.registerId) || {}).reg ? ` ${data.regs.get(t.source.registerId).reg.unit || ''}` : '');
-          const shown = x.q === 'bad' || x.q === 'disabled' ? '불량' : showVal(x.value).replace(/^"|"$/g, '');
-          if (!editing.test) return `<span>${esc(id)}<b>${esc(shown)}${esc(x.q === 'bad' ? '' : unit)}</b></span>`;
-          if (!(id in editing.testInputs)) editing.testInputs[id] = x.q === 'bad' || x.value == null ? '' : String(x.value);
-          return `<span>${esc(id)}<input data-ptin="${esc(id)}" value="${esc(editing.testInputs[id])}" spellcheck="false">${esc(unit)}</span>`;
+          const reg = t && t.source && t.source.registerId != null ? (data.regs.get(t.source.registerId) || {}).reg : null;
+          const unit = (t && t.unit) || (reg && reg.unit) || '';
+          const isBad = x.q === 'bad' || x.q === 'disabled';
+          let v;
+          if (editing.test) {
+            if (!(id in editing.testInputs)) editing.testInputs[id] = isBad || x.value == null ? '' : String(x.value);
+            v = `<input data-ptin="${esc(id)}" value="${esc(editing.testInputs[id])}" spellcheck="false">`;
+          } else v = `<b class="${isBad ? 'bad' : ''}">${isBad ? '불량' : esc(showVal(x.value).replace(/^"|"$/g, ''))}</b>`;
+          return `<div class="cb-in"><span class="cb-in-id" title="${esc(t && t.name ? t.name : '')}">${esc(id)}</span>${v}<small>${esc(unit)}</small></div>`;
         };
-        box.innerHTML = `<code></code><div class="cb-res"><span data-pres></span>
-          <label class="cb-test"><input type="checkbox" data-ptest${editing.test ? ' checked' : ''}> 시험 값으로 보기</label></div>
-          <div class="cb-ins">${ids.map(chip).join('')}</div>`;
+        box.innerHTML = `<div class="cb-phead"><b>미리보기</b>
+            <label class="cb-test"><input type="checkbox" data-ptest${editing.test ? ' checked' : ''}> 시험 값으로 보기</label></div>
+          <code class="cb-expr"></code>
+          <div class="cb-result"><span class="cb-rl" data-plabel></span><span data-pres></span></div>
+          <div class="cb-inputs-head">${editing.test ? '입력 값 (바꿔 볼 수 있음 — 장비에는 쓰지 않음)' : '입력 태그의 지금 값'}</div>
+          <div class="cb-inputs">${ids.map(cell).join('')}</div>`;
       }
       box.querySelector('code').textContent = text;
+      box.querySelector('[data-plabel]').textContent = editing.test ? '시험 결과' : '지금 결과';
       box.querySelector('[data-pres]').innerHTML = result;
     };
 
+    // 새 태그의 종류 라디오 — 입력한 id·이름은 유지하고 폼을 바꾼다
+    formWrap.addEventListener('change', (e) => {
+      if (e.target.name !== 'tmkind' || !editing || editing.tag || e.target.value === editing.kind) return;
+      showForm(null, e.target.value, { id: ff('id') && ff('id').value, name: ff('name') && ff('name').value });
+    });
     formWrap.addEventListener('change', (e) => {
       if (!editing || editing.kind !== 'expr' || e.target.dataset.ptest === undefined) return;
       editing.test = e.target.checked;
@@ -1054,7 +1093,7 @@
           const res = await apiFetch(`/api/hmi/tags/${encodeURIComponent(ids[i])}`, { method: 'DELETE' });
           if (!res.ok && res.status !== 404) {
             const err = res.status === 409 ? await res.json().catch(() => ({})) : {};
-            failed.push(`${ids[i]}: ${res.status === 403 ? '권한 없음' : res.status === 409 ? `계산 태그 ${(err.referencedBy || []).join(', ')}이(가) 참조 중` : `HTTP ${res.status}`}`);
+            failed.push(`${ids[i]}: ${res.status === 403 ? '권한 없음' : res.status === 409 ? `로직 태그 ${(err.referencedBy || []).join(', ')}이(가) 참조 중` : `HTTP ${res.status}`}`);
           }
         } catch (e) {
           failed.push(`${ids[i]}: ${e.message}`);
@@ -1070,6 +1109,15 @@
     const askDelete = () => {
       const box = formWrap.querySelector('.tm-del-confirm');
       const used = usageList(editing.tag.id, data);
+      const rf = data.refs.get(editing.tag.id);
+      // 로직 태그가 참조 중이면 서버가 거부한다(409) — 미리 알려 주고 삭제 버튼을 두지 않는다
+      if (rf) {
+        box.innerHTML = `<b>'${esc(editing.tag.id)}' 태그는 지금 삭제할 수 없습니다.</b>
+          <div>로직 태그 ${rf.length}개가 식에서 이 태그를 참조합니다. 그 태그의 식을 먼저 고치거나 지우세요:</div><ul>${rf.map((id) => `<li>${esc(id)}</li>`).join('')}</ul>
+          <div class="tm-del-btns"><button type="button" data-k="del-cancel">닫기</button></div>`;
+        box.hidden = false;
+        return;
+      }
       box.innerHTML = `<b>'${esc(editing.tag.id)}' 태그를 삭제할까요?</b>` +
         (used.length ? `<div>이 태그를 쓰는 위젯 ${used.length}개는 값이 표시되지 않게 됩니다(점검에서 오류로 표시):</div><ul>${used.map((u) => `<li>${esc(u)}</li>`).join('')}</ul>`
           : '<div>이 태그를 쓰는 위젯은 없습니다.</div>') +
@@ -1082,7 +1130,7 @@
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           return formError(res.status === 401 || res.status === 403 ? '권한이 없습니다(Manager 이상).'
-            : res.status === 409 && err.referencedBy ? `계산 태그 ${err.referencedBy.join(', ')}이(가) 이 태그를 참조하고 있어 지울 수 없습니다. 그 태그의 식부터 고치세요.`
+            : res.status === 409 && err.referencedBy ? `로직 태그 ${err.referencedBy.join(', ')}이(가) 이 태그를 참조하고 있어 지울 수 없습니다. 그 태그의 식부터 고치세요.`
             : (err.error || `HTTP ${res.status}`));
         }
       } catch (e) {

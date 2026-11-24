@@ -78,8 +78,8 @@
     ['bitNone', '비트 모두 0', (c) => `비트 ${[].concat(c.bits || []).join(', ') || '(없음)'} 모두 0`],
   ];
   const NO_DEV = 'none';
-  const CALC_DEV = 'calc';   // 태그 고르기에서 계산 태그 묶음
-  const NO_TAG_TYPES = ['rect', 'label', 'screenlink', 'image'];     // 고정 위젯 — 값을 받지 않으므로 tag 칸 없음(동작 조건은 사용 가능)
+  const CALC_DEV = 'calc';   // 태그 고르기에서 로직 태그 묶음
+  const NO_TAG_TYPES = ['rect', 'screenlink', 'image'];     // 고정 위젯 — 값을 받지 않으므로 tag 칸 없음(동작 조건은 사용 가능)
   const WRITE_TYPES = ['input', 'button', 'switch', 'selector'];   // 쓰기 위젯 — 쓰기 태그(writeTag) 칸                    // 태그 고르기: 소스 장비를 모르는 태그 묶음
   const KEEP = '__keep__';                  // 태그 고르기: 다른 장비 태그가 연결된 상태(선택 전)              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
   const DRAFT_DELAY_MS = 400;               // 임시 저장(localStorage) 지연
@@ -166,6 +166,7 @@
     const decimals = pick(raw && raw.decimals, lim.decimals, 0);
     return {
       value: raw && raw.v != null ? raw.v : Number((min + (max - min) * 0.6).toFixed(decimals)),
+      preview: !(raw && raw.v != null),   // 실제 값이 없어 넣은 예시 값 — 텍스트 위젯은 이때 "글자"를 그대로 보여 준다
       ok: true,
       quality: 'good',
       min, max,
@@ -2171,11 +2172,11 @@
       for (const t of Object.values(this.tags)) {
         const src = t.source || {};
         const key = this.tagDevKey(t);
-        if (!groups.has(key)) groups.set(key, { key, name: key === CALC_DEV ? '계산 태그' : src.deviceDisplayName || src.deviceCode || '(장비 없음)', tags: [] });
+        if (!groups.has(key)) groups.set(key, { key, name: key === CALC_DEV ? '로직' : src.deviceDisplayName || src.deviceCode || '(장비 없음)', tags: [] });
         groups.get(key).tags.push(t);
       }
       for (const g of groups.values()) g.tags.sort((a, b) => a.id.localeCompare(b.id));
-      const rank = (g) => (g.key === NO_DEV ? 2 : g.key === CALC_DEV ? 1 : 0);   // 장비들 → 계산 태그 → (장비 없음)
+      const rank = (g) => (g.key === NO_DEV ? 2 : g.key === CALC_DEV ? 1 : 0);   // 장비들 → 로직 태그 → (장비 없음)
       return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'ko'));
     }
 
@@ -2191,7 +2192,7 @@
     //  devKey   보여 줄 장비(생략 시 태그의 장비 → 마지막으로 고른 장비 → 첫 장비)
     fillTagPicker(tagSel, tagId, isWidget, devKey) {
       const devSel = tagSel.previousElementSibling;
-      // 쓰기 태그에는 계산 태그를 고를 수 없다(읽기 전용)
+      // 쓰기 태그에는 로직 태그를 고를 수 없다(읽기 전용)
       const groups = this.tagGroups().filter((g) => isWidget !== 'write' || g.key !== CALC_DEV);
       const defined = tagId && this.tags[tagId];
       const own = defined ? this.tagDevKey(defined) : tagId ? NO_DEV : null;
