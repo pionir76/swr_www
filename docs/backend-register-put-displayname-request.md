@@ -1,8 +1,9 @@
 ---
 from: frontend
 to: backend
-status: open
-waiting_on: backend
+status: done
+waiting_on: none
+reply: docs/backend-register-put-displayname-response.md
 ---
 
 # 레지스터 수정 시 표시 이름이 지워지는 문제 — 백엔드 확인 요청

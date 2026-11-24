@@ -19,7 +19,7 @@
 | `id` | ● | 화면 내 고유 id |
 | `type` | ● | 위젯 타입 (§3) |
 | `x`,`y`,`w`,`h` | ● | 설계 해상도 기준 위치·크기(px) |
-| `tag` | | 바인딩할 **HMI 태그 id**(`referencs/api-spec.md` §14). 고정 위젯(rect/label/image/screenlink)은 값을 받지 않으므로 생략 — 편집기 속성 창에도 tag 칸이 없다. 태그에 따라 보이기·숨기기는 동작 조건(`visibleWhen`)으로 |
+| `tag` | | 바인딩할 **HMI 태그 id**(`referencs/api-spec.md` §14). 고정 위젯(rect/image/screenlink)은 값을 받지 않으므로 생략 — 편집기 속성 창에도 tag 칸이 없다. 태그에 따라 보이기·숨기기는 동작 조건(`visibleWhen`)으로 |
 | `props` | | 타입별 속성. 생략 시 기본값. 편집기는 기본값과 다른 값만 저장한다 |
 | `writeTag` | | **쓰기 태그**(쓰기 위젯: input·button·switch·selector). 지정하면 값은 `tag`에서 보여 주고 쓰기는 이 태그에(예: NSP 표시 / TSP 쓰기). 쓰기 가능 여부는 이 태그의 권한·통신 상태로 판단하고 함께 폴링. 비우면 `tag`에 씀 |
 | `visibleWhen` | | **보이기** 조건(모든 위젯). 거짓이면 숨김(클릭 통과), 판정 불가(통신 불량 등)면 보임 |
@@ -97,7 +97,7 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 |---|---|---|
 | `rect` | 패널·구분 박스 | `fill`(`#1b212b`), `stroke`(`#2e3846`), `strokeWidth`(1), `radius`(8) |
 | `image` | 이미지(로고 등) | `src`(data URL — 편집기에서 파일을 고르면 긴 변 1024px 이하, 150KB 이하로 자동 축소해 화면 데이터에 넣음, 작은 SVG는 그대로), `fit`(ratio=비율 고정(기본, 상자가 그림 비율을 유지) \| stretch=상자에 맞춤), `ratio`(그림 원래 너비/높이 — 편집기가 기록, 폼에는 없음), `opacity`(1), `radius`(0) |
-| `label` | 고정 텍스트 | `preset`(title\|subtitle\|caption\|info\|caution\|danger\|neon — 고른 스타일 값이 기본값), `text`, `fontSize`(15), `color`(`#e6e9ef`), `align`(left\|center\|right), `bold`(false), `italic`(false), `padding`(0, 안쪽 여백 — 정렬한 쪽), `bg`/`border`(null=없음, 위젯 상자 전체), `radius`(4), `glow`(false, 글자 발광), `shadow`(false, 글자 그림자) |
+| `label` | 텍스트. **태그를 연결하면 `text` 대신 태그 값을 그대로 표시**(2026-11-24): 글자 태그는 그 글자, 숫자는 자릿수 맞춤(단위 없음), 참/거짓은 "참"/"거짓", 통신 불량은 `----`. 값에 따라 글자·색을 바꾸려면 `status` | `preset`(title\|subtitle\|caption\|info\|caution\|danger\|neon — 고른 스타일 값이 기본값), `text`, `fontSize`(15), `color`(`#e6e9ef`), `align`(left\|center\|right), `bold`(false), `italic`(false), `padding`(0, 안쪽 여백 — 정렬한 쪽), `bg`/`border`(null=없음, 위젯 상자 전체), `radius`(4), `glow`(false, 글자 발광), `shadow`(false, 글자 그림자) |
 
 ### 표시 위젯 (읽기, `access` 무관하게 표시만)
 
