@@ -103,20 +103,26 @@
     };
   }
 
+  // 계산·설정 태그(레지스터가 아닌 태그)와 식 글자
+  const isCalc = (t) => RAW.isCalc(t);
+  const exprText = (t) => (t.source && t.source.expr ? window.WHMI.rules.exprText(t.source.expr) : '');
+
   // ---- 점검 규칙 -------------------------------------------------------------
   // 규칙 하나 = [등급, 판정 함수]. 판정 함수가 문구를 돌려주면 문제, 아니면 null.
   // 새 점검이 필요하면 아래 목록에 한 줄 추가하면 된다.
 
   // 태그 규칙: (t 태그, src {reg, dev} | undefined, ctx { e 실제 값, v 현재 값, data })
   const TAG_RULES = [
-    ['error', (t, src) => (!src ? `소스 레지스터(#${t.source && t.source.registerId})가 없습니다` : null)],
+    ['error', (t, src) => (!src && !isCalc(t) ? `소스 레지스터(#${t.source && t.source.registerId})가 없습니다` : null)],
+    ['error', (t) => (isCalc(t) && (t.missingRefs || []).length ? `식이 참조하는 태그가 없습니다: ${t.missingRefs.join(', ')} — 값은 늘 불량입니다` : null)],
     ['error', (t, src) => (src && multiWord(src.reg) ? `소스 레지스터가 ${src.reg.length}워드입니다 — HMI는 1워드 레지스터만 지원합니다(값 없음, 쓰기 불가)` : null)],
     ['error', (t, src, { e }) => (e.min != null && e.max != null && e.min >= e.max ? `최소값(${e.min})이 최대값(${e.max})보다 작지 않습니다` : null)],
     ['warn', (t, src) => (src && t.unit && t.unit !== (src.reg.unit || '')
       ? `태그 단위 '${t.unit}'와 레지스터 단위 '${src.reg.unit || '없음'}'가 다릅니다 — 레지스터 연결을 확인하세요` : null)],
     ['warn', (t, src, { e, v }) => (v && typeof v.v === 'number' && ((e.min != null && v.v < e.min) || (e.max != null && v.v > e.max))
       ? `현재 값 ${v.v}이(가) 범위(${e.min ?? '—'} ~ ${e.max ?? '—'}) 밖입니다` : null)],
-    ['warn', (t, src, { v }) => (src && v && v.q === 'bad' ? '통신 불량 — 지금 값을 받지 못합니다' : null)],
+    ['warn', (t, src, { v }) => ((src || isCalc(t)) && v && v.q === 'bad' && !(t.missingRefs || []).length
+      ? (isCalc(t) ? '입력 태그 중 통신 불량이 있어 지금 값을 계산하지 못합니다' : '통신 불량 — 지금 값을 받지 못합니다') : null)],
     ['info', (t, src, { data }) => (!data.usage.has(t.id) ? '어느 화면에서도 쓰지 않습니다' : null)],
     ['info', (t, src, { data }) => {
       const same = data.tags.filter((o) => o !== t && o.source && t.source && o.source.registerId === t.source.registerId);
@@ -267,7 +273,9 @@
   function tagRowHtml(t, data, picked) {
     const src = data.regs.get(t.source && t.source.registerId);
     const reg = src && src.reg;
-    const source = src
+    const source = isCalc(t)
+      ? `<span class="tm-calc">계산 태그</span><br><small title="${esc(exprText(t))}">${esc(exprText(t))}</small>`
+      : src
       ? `${esc(src.dev.displayName || src.dev.name)}${src.dev.enabled === false ? ' <span class="tm-off">비활성</span>' : ''}<br><small>${esc(reg.tagName)}${reg.displayName ? ` · ${esc(reg.displayName)}` : ''}</small>`
       : `<span class="tm-err">레지스터 없음 (#${esc(t.source && t.source.registerId)})</span>`;
     const inh = reg ? RAW.limits({ ...t, min: null, max: null }, reg) : {};   // 물려받는 값(태그 스케일로 환산)
@@ -377,6 +385,31 @@
   }
 
   // firstDev: 이 장비의 레지스터를 맨 앞에(속성 창에서 장비를 고른 채 "+ 새 태그…"로 열었을 때)
+  // 새 태그 폼 맨 위의 종류 고르기(레지스터 태그 / 계산 태그). 만든 뒤에는 종류를 바꿀 수 없다
+  const kindRow = (kind) => `<div class="form-field full"><label>종류</label><div><span class="cb-kind">
+      <button type="button" data-k="kind" data-kind="register" class="${kind === 'register' ? 'on' : ''}">레지스터 태그</button><button type="button" data-k="kind" data-kind="expr" class="${kind === 'expr' ? 'on' : ''}">계산 태그</button>
+    </span></div></div>`;
+  const VALUE_TYPES = [['bool', '참 / 거짓'], ['number', '숫자'], ['string', '글자']];
+
+  // 계산 태그 폼 — 규칙은 조건 빌더(whmi-expr.js)가 [data-cb]에, 미리보기는 [data-prev]에 그린다
+  function exprFormHtml(t) {
+    const opts = (list) => list.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+    return `<div class="tm-form tm-form-expr">
+      <div class="tm-form-title">${t ? '계산 태그 수정' : '새 태그 정보'}</div>
+      <div class="form-grid">
+        ${t ? '' : kindRow('expr')}
+        <div class="form-field"><label>TAG ID${t ? ' (변경 불가)' : ''}</label>${t ? `<input class="input" value="${esc(t.id)}" disabled>` : '<input class="input" data-ff="id" spellcheck="false" autocomplete="off">'}</div>
+        <div class="form-field"><label>TAG NAME</label><input class="input" data-ff="name" spellcheck="false"></div>
+        <div class="form-field"><label>값 형식</label><select class="select" data-ff="valueType">${opts(VALUE_TYPES)}</select></div>
+        <div class="form-field" data-unit-field hidden><label>단위</label><select class="select" data-ff="unit"><option value="">없음</option>${opts(UNIT_OPTIONS)}</select></div>
+      </div>
+      <div data-cb></div>
+      <div class="cb-prev" data-prev></div>
+      <div class="tm-form-err"></div>
+      <div class="tm-del-confirm" hidden></div>
+    </div>`;
+  }
+
   function formHtml(t, data, firstDev) {
     // 장비별로 묶은 레지스터 목록. 이미 태그가 있는 레지스터는 그 태그 id를 함께 보여준다.
     const byDev = new Map();
@@ -399,6 +432,7 @@
     return `<div class="tm-form">
       <div class="tm-form-title">${t ? '태그 수정' : '새 태그 정보'}</div>
       <div class="form-grid">
+        ${t ? '' : kindRow('register')}
         <div class="form-field full"><label>소스 레지스터</label><select class="select" data-ff="source">${t ? '' : '<option value="">레지스터를 고르세요</option>'}${missing}${groups}</select></div>
         <div class="form-field"><label>TAG ID${t ? ' (변경 불가)' : ''}</label>${t ? `<input class="input" value="${esc(t.id)}" disabled>` : '<input class="input" data-ff="id" spellcheck="false" autocomplete="off">'}</div>
         <div class="form-field"><label>TAG NAME</label><input class="input" data-ff="name" spellcheck="false"></div>
@@ -630,12 +664,152 @@
       }
     };
 
-    const showForm = (tag) => {
-      editing = { tag };
-      formWrap.innerHTML = formHtml(tag, data, tag ? null : opts.deviceId);
+    // ---- 계산 태그 폼: 조건 빌더 + 미리보기(백엔드 평가 API) + 저장 --------------------
+    let prevTimer = null;      // 미리보기 지연 호출
+    let prevSeq = 0;           // 늦게 온 응답 버리기
+    const Q_LABEL = { good: '품질 정상', normal: '응답 지연', bad: '불량', disabled: '장비 비활성' };
+    const showVal = (v) => (v === true ? '참' : v === false ? '거짓' : v == null ? '—' : typeof v === 'string' ? `"${v}"` : String(v));
+
+    const initExprForm = (tag) => {
+      const vt = (tag && tag.source && tag.source.valueType) || 'bool';
+      ff('valueType').value = vt;
+      if (tag) { ff('name').value = tag.name || ''; if (tag.unit) { if (![...ff('unit').options].some((o) => o.value === tag.unit)) ff('unit').add(new Option(tag.unit, tag.unit)); ff('unit').value = tag.unit; } }
+      formWrap.querySelector('[data-unit-field]').hidden = vt !== 'number';
+      editing.test = false;            // 시험 값으로 보기
+      editing.testInputs = {};         // 태그 id → 입력한 글자
+      editing.inputIds = '';           // 미리보기 입력 칩을 다시 그릴지 판단
+      editing.builder = window.WHMI.ExprBuilder.mount(formWrap.querySelector('[data-cb]'), {
+        tags: data.tags, selfId: tag ? tag.id : null, valueType: vt, expr: tag && tag.source ? tag.source.expr : null,
+        onChange: () => schedulePreview(),
+      });
+      ff('valueType').addEventListener('change', () => {
+        editing.builder.setValueType(ff('valueType').value);
+        formWrap.querySelector('[data-unit-field]').hidden = ff('valueType').value !== 'number';
+        schedulePreview(0);
+      });
+      for (const k of ['id', 'name']) ff(k)?.addEventListener('input', (e) => { e.target.dataset.touched = '1'; });
+      schedulePreview(0);
+      (tag ? ff('name') : ff('id')).focus();
+    };
+
+    const schedulePreview = (ms = 500) => { clearTimeout(prevTimer); prevTimer = setTimeout(runPreview, ms); };
+
+    // 시험 값 → 평가 API의 inputs. register 태그는 표시 값을 원본으로 바꿔 보낸다(변환 함수까지 함께 시험)
+    const testInputsBody = () => {
+      const out = {};
+      for (const [id, s] of Object.entries(editing.testInputs)) {
+        if (s === '' || s == null) continue;
+        const t = data.tags.find((x) => x.id === id);
+        if (!t) continue;
+        if (isCalc(t)) out[id] = { value: s === 'true' || s === '참' ? true : s === 'false' || s === '거짓' ? false : Number.isFinite(Number(s)) ? Number(s) : s };
+        else { if (!Number.isFinite(Number(s))) throw new Error(`${id}: 숫자를 입력하세요`); out[id] = { raw: RAW.toRaw(Number(s), t) }; }
+      }
+      return out;
+    };
+
+    const runPreview = async () => {
+      if (!editing || editing.kind !== 'expr') return;
+      const box = formWrap.querySelector('[data-prev]');
+      if (!box) return;
+      const seq = ++prevSeq;
+      const b = editing.builder;
+      const expr = b.getExpr();
+      const text = window.WHMI.rules.exprText(expr);
+      const fail = (msg) => { box.innerHTML = `<code>${esc(text)}</code><div class="cb-res"><span class="cb-err">${esc(msg)}</span></div>`; editing.inputIds = ''; };
+      const bad = b.validate();
+      if (bad) return fail(bad);
+      let r;
+      try {
+        const body = { valueType: ff('valueType').value, expr };
+        if (editing.test) body.inputs = testInputsBody();
+        const res = await apiFetch('/api/hmi/eval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (seq !== prevSeq || !editing || editing.kind !== 'expr') return;
+        r = await res.json().catch(() => ({}));
+        if (!res.ok) return fail(res.status === 404 ? '장치가 아직 계산 태그를 지원하지 않습니다.' : r.error || `HTTP ${res.status}`);
+      } catch (e) {
+        if (seq !== prevSeq) return;
+        return fail(e.message);
+      }
+      const missing = r.missingRefs || [];
+      const cls = r.q === 'bad' ? 'bad' : r.value === true ? 't' : 'f';
+      const result = `${editing.test ? '시험 결과' : '지금 결과'} <b class="${cls}">${r.q === 'bad' ? '불량' : esc(showVal(r.value))}</b>
+        <span>${missing.length ? `없는 태그: ${esc(missing.join(', '))}` : esc(Q_LABEL[r.q] || r.q || '')}</span>`;
+      const inputs = r.inputs || {};
+      const ids = Object.keys(inputs).sort();
+      const key = `${editing.test}|${ids.join(',')}`;
+      // 입력 칩은 태그 구성이나 보기 방식이 바뀔 때만 다시 그린다(시험 값 입력 중 포커스를 지키려고)
+      if (key !== editing.inputIds || !box.querySelector('.cb-ins')) {
+        editing.inputIds = key;
+        const chip = (id) => {
+          const x = inputs[id], t = data.tags.find((y) => y.id === id);
+          const unit = t && t.unit ? ` ${t.unit}` : (t && t.source && t.source.registerId && (data.regs.get(t.source.registerId) || {}).reg ? ` ${data.regs.get(t.source.registerId).reg.unit || ''}` : '');
+          const shown = x.q === 'bad' || x.q === 'disabled' ? '불량' : showVal(x.value).replace(/^"|"$/g, '');
+          if (!editing.test) return `<span>${esc(id)}<b>${esc(shown)}${esc(x.q === 'bad' ? '' : unit)}</b></span>`;
+          if (!(id in editing.testInputs)) editing.testInputs[id] = x.q === 'bad' || x.value == null ? '' : String(x.value);
+          return `<span>${esc(id)}<input data-ptin="${esc(id)}" value="${esc(editing.testInputs[id])}" spellcheck="false">${esc(unit)}</span>`;
+        };
+        box.innerHTML = `<code></code><div class="cb-res"><span data-pres></span>
+          <label class="cb-test"><input type="checkbox" data-ptest${editing.test ? ' checked' : ''}> 시험 값으로 보기</label></div>
+          <div class="cb-ins">${ids.map(chip).join('')}</div>`;
+      }
+      box.querySelector('code').textContent = text;
+      box.querySelector('[data-pres]').innerHTML = result;
+    };
+
+    formWrap.addEventListener('change', (e) => {
+      if (!editing || editing.kind !== 'expr' || e.target.dataset.ptest === undefined) return;
+      editing.test = e.target.checked;
+      if (!editing.test) editing.testInputs = {};
+      schedulePreview(0);
+    });
+    formWrap.addEventListener('input', (e) => {
+      if (!editing || editing.kind !== 'expr' || e.target.dataset.ptin === undefined) return;
+      editing.testInputs[e.target.dataset.ptin] = e.target.value.trim();
+      schedulePreview();
+    });
+
+    const saveExpr = async () => {
+      const tag = editing.tag;
+      const id = tag ? tag.id : ff('id').value.trim();
+      const name = ff('name').value.trim();
+      const valueType = ff('valueType').value;
+      if (!tag && !ID_RE.test(id)) return formError('id는 영문·숫자·_·- 1~64자입니다.');
+      if (!tag && data.tags.some((t) => t.id === id)) return formError(`"${id}"은(는) 이미 있는 태그입니다.`);
+      if (!name) return formError('이름을 입력하세요.');
+      const bad = editing.builder.validate();
+      if (bad) return formError(bad);
+      formError('');
+      const body = { name, kind: 'expr', source: { valueType, expr: editing.builder.getExpr() }, unit: valueType === 'number' ? ff('unit').value || null : null };
+      const btn = btns.querySelector('[data-k="save"]');
+      btn.disabled = true;
+      try {
+        const res = await apiFetch(tag ? `/api/hmi/tags/${encodeURIComponent(id)}` : '/api/hmi/tags', {
+          method: tag ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tag ? body : { id, ...body }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          btn.disabled = false;
+          return formError(res.status === 409 ? `"${id}"은(는) 이미 있는 태그입니다.`
+            : res.status === 401 || res.status === 403 ? '권한이 없습니다(Manager 이상).'
+            : res.status === 422 ? `식을 저장할 수 없습니다: ${err.error || ''}` : (err.error || `HTTP ${res.status}`));
+        }
+      } catch (e) {
+        btn.disabled = false;
+        return formError(e.message);
+      }
+      await afterChange(tag ? null : id);
+    };
+
+    // kind: 새 태그에서 종류를 바꿀 때('register' | 'expr'). keep: 종류를 바꿔도 남길 입력({ id, name })
+    const showForm = (tag, kind, keep) => {
+      clearTimeout(prevTimer);
+      editing = { tag, kind: tag ? (isCalc(tag) ? 'expr' : 'register') : kind || 'register' };
+      formWrap.innerHTML = editing.kind === 'expr' ? exprFormHtml(tag) : formHtml(tag, data, tag ? null : opts.deviceId);
       d.querySelector('.tm').classList.add('editing');
       formWrap.hidden = false;
       drawButtons();
+      if (keep) for (const k of ['id', 'name']) if (keep[k] && ff(k)) { ff(k).value = keep[k]; ff(k).dataset.touched = '1'; }
+      if (editing.kind === 'expr') return initExprForm(tag);
       if (tag) {
         ff('source').value = String(tag.source && tag.source.registerId);
         ff('name').value = tag.name || '';
@@ -680,6 +854,7 @@
 
     const num = (k) => (ff(k).value.trim() === '' ? null : Number(ff(k).value));
     const save = async () => {
+      if (editing.kind === 'expr') return saveExpr();
       const tag = editing.tag;
       const registerId = Number(ff('source').value);
       const id = tag ? tag.id : ff('id').value.trim();
@@ -877,7 +1052,10 @@
           `<span class="tm-progress"><i style="width:${(i / ids.length) * 100}%"></i></span>`;
         try {
           const res = await apiFetch(`/api/hmi/tags/${encodeURIComponent(ids[i])}`, { method: 'DELETE' });
-          if (!res.ok && res.status !== 404) failed.push(`${ids[i]}: ${res.status === 403 ? '권한 없음' : `HTTP ${res.status}`}`);
+          if (!res.ok && res.status !== 404) {
+            const err = res.status === 409 ? await res.json().catch(() => ({})) : {};
+            failed.push(`${ids[i]}: ${res.status === 403 ? '권한 없음' : res.status === 409 ? `계산 태그 ${(err.referencedBy || []).join(', ')}이(가) 참조 중` : `HTTP ${res.status}`}`);
+          }
         } catch (e) {
           failed.push(`${ids[i]}: ${e.message}`);
         }
@@ -903,7 +1081,9 @@
         const res = await apiFetch(`/api/hmi/tags/${encodeURIComponent(editing.tag.id)}`, { method: 'DELETE' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          return formError(res.status === 401 || res.status === 403 ? '권한이 없습니다(Manager 이상).' : (err.error || `HTTP ${res.status}`));
+          return formError(res.status === 401 || res.status === 403 ? '권한이 없습니다(Manager 이상).'
+            : res.status === 409 && err.referencedBy ? `계산 태그 ${err.referencedBy.join(', ')}이(가) 이 태그를 참조하고 있어 지울 수 없습니다. 그 태그의 식부터 고치세요.`
+            : (err.error || `HTTP ${res.status}`));
         }
       } catch (e) {
         return formError(e.message);
@@ -960,6 +1140,7 @@
       else if (b.dataset.k === 'md-none') setSection(b.dataset.sec, false);
       else if (b.dataset.k === 'back') { if (opts.createFor) close(); else showList(); }
       else if (b.dataset.k === 'save') save();
+      else if (b.dataset.k === 'kind') { if (editing && !editing.tag && b.dataset.kind !== editing.kind) showForm(null, b.dataset.kind, { id: ff('id') && ff('id').value, name: ff('name') && ff('name').value }); }
       else if (b.dataset.k === 'delete') askDelete();
       else if (b.dataset.k === 'del-cancel') formWrap.querySelector('.tm-del-confirm').hidden = true;
       else if (b.dataset.k === 'del-ok') doDelete();

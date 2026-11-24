@@ -87,5 +87,33 @@
     return out;
   }
 
-  window.WHMI.rules = { TESTS, test, pick, normalize, tagsOf, bitList, usable, same, num };
+  // ---- 식(AST) → 읽을 글자 — 계산 태그의 식을 목록·미리보기에 보여 줄 때(hmi.md §5.3). 계산은 백엔드가 한다.
+  //  노드: { tag } | { value } | { op, args }. 바깥(top)이 아니면 그리고/또는 묶음에 괄호
+  const CMP = { eq: '=', ne: '≠', gt: '>', ge: '≥', lt: '<', le: '≤' };
+  function exprText(n, top = true) {
+    if (!n || typeof n !== 'object') return '?';
+    if ('tag' in n) return String(n.tag);
+    if ('value' in n) return typeof n.value === 'string' ? `"${n.value}"` : n.value === null ? '없음' : String(n.value);
+    const a = (n.args || []), t = (i) => exprText(a[i], false);
+    if (CMP[n.op]) return `${t(0)} ${CMP[n.op]} ${t(1)}`;
+    if (n.op === 'range') return `${t(0)}이(가) ${a[1] && a[1].value != null ? t(1) : '…'} ~ ${a[2] && a[2].value != null ? t(2) : '…'}`;
+    if (n.op === 'bitAny' || n.op === 'bitNone') {
+      const bits = bitList(a[1] && a[1].value).join('·') || '?';
+      return `${t(0)} 비트 ${bits} ${n.op === 'bitAny' ? (bits.includes('·') ? '중 하나라도 1' : '= 1') : (bits.includes('·') ? '모두 0' : '= 0')}`;
+    }
+    if (n.op === 'and' || n.op === 'or') { const s = a.map((x) => exprText(x, false)).join(n.op === 'and' ? ' 그리고 ' : ' 또는 '); return top ? s : `(${s})`; }
+    if (n.op === 'not') return `아님(${exprText(a[0], true)})`;
+    if (n.op === 'select') {
+      const rows = []; for (let i = 0; i + 1 < a.length; i += 2) rows.push(`${exprText(a[i], true)} → ${t(i + 1)}`);
+      return `${rows.join(', ')}, 그 외 → ${t(a.length - 1)}`;
+    }
+    return `${n.op}(${a.map((x) => exprText(x, true)).join(', ')})`;
+  }
+  // 식이 참조하는 태그 id(중복 없이)
+  function exprTags(n, out = new Set()) {
+    if (n && typeof n === 'object') { if ('tag' in n) out.add(String(n.tag)); else (n.args || []).forEach((x) => exprTags(x, out)); }
+    return [...out];
+  }
+
+  window.WHMI.rules = { TESTS, test, pick, normalize, tagsOf, bitList, usable, same, num, exprText, exprTags };
 })();

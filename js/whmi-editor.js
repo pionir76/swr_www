@@ -78,6 +78,7 @@
     ['bitNone', '비트 모두 0', (c) => `비트 ${[].concat(c.bits || []).join(', ') || '(없음)'} 모두 0`],
   ];
   const NO_DEV = 'none';
+  const CALC_DEV = 'calc';   // 태그 고르기에서 계산 태그 묶음
   const NO_TAG_TYPES = ['rect', 'label', 'screenlink', 'image'];     // 고정 위젯 — 값을 받지 않으므로 tag 칸 없음(동작 조건은 사용 가능)
   const WRITE_TYPES = ['input', 'button', 'switch', 'selector'];   // 쓰기 위젯 — 쓰기 태그(writeTag) 칸                    // 태그 고르기: 소스 장비를 모르는 태그 묶음
   const KEEP = '__keep__';                  // 태그 고르기: 다른 장비 태그가 연결된 상태(선택 전)              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
@@ -1882,7 +1883,7 @@
         if (el.value === '__new__') {
           const dev = el.previousElementSibling.value;
           this.fillTagPicker(el, w.tag, true, dev);
-          window.WHMI.TagManager.open(this, { createFor: w.id, deviceId: dev === NO_DEV ? null : Number(dev) });
+          window.WHMI.TagManager.open(this, { createFor: w.id, deviceId: dev === NO_DEV || dev === CALC_DEV ? null : Number(dev) });
           return;
         }
         if (el.value === KEEP) return;
@@ -2169,12 +2170,19 @@
       const groups = new Map();
       for (const t of Object.values(this.tags)) {
         const src = t.source || {};
-        const key = src.deviceId != null ? String(src.deviceId) : NO_DEV;
-        if (!groups.has(key)) groups.set(key, { key, name: src.deviceDisplayName || src.deviceCode || '(장비 없음)', tags: [] });
+        const key = this.tagDevKey(t);
+        if (!groups.has(key)) groups.set(key, { key, name: key === CALC_DEV ? '계산 태그' : src.deviceDisplayName || src.deviceCode || '(장비 없음)', tags: [] });
         groups.get(key).tags.push(t);
       }
       for (const g of groups.values()) g.tags.sort((a, b) => a.id.localeCompare(b.id));
-      return [...groups.values()].sort((a, b) => (a.key === NO_DEV) - (b.key === NO_DEV) || a.name.localeCompare(b.name, 'ko'));
+      const rank = (g) => (g.key === NO_DEV ? 2 : g.key === CALC_DEV ? 1 : 0);   // 장비들 → 계산 태그 → (장비 없음)
+      return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'ko'));
+    }
+
+    // 태그 고르기의 묶음 키 — 장비 id, 계산·설정 태그는 한 묶음, 소스가 끊긴 태그는 (장비 없음)
+    tagDevKey(t) {
+      if (window.WHMI.raw.isCalc(t)) return CALC_DEV;
+      return t.source && t.source.deviceId != null ? String(t.source.deviceId) : NO_DEV;
     }
 
     // tagSel 바로 앞의 장비 선택 상자와 함께 채운다.
@@ -2183,9 +2191,10 @@
     //  devKey   보여 줄 장비(생략 시 태그의 장비 → 마지막으로 고른 장비 → 첫 장비)
     fillTagPicker(tagSel, tagId, isWidget, devKey) {
       const devSel = tagSel.previousElementSibling;
-      const groups = this.tagGroups();
+      // 쓰기 태그에는 계산 태그를 고를 수 없다(읽기 전용)
+      const groups = this.tagGroups().filter((g) => isWidget !== 'write' || g.key !== CALC_DEV);
       const defined = tagId && this.tags[tagId];
-      const own = defined ? (defined.source && defined.source.deviceId != null ? String(defined.source.deviceId) : NO_DEV) : tagId ? NO_DEV : null;
+      const own = defined ? this.tagDevKey(defined) : tagId ? NO_DEV : null;
       if (tagId && !defined && !groups.some((g) => g.key === NO_DEV)) groups.push({ key: NO_DEV, name: '(장비 없음)', tags: [] });
       const key = [devKey, own, this.tagDev].find((k) => k && groups.some((g) => g.key === k)) || (groups[0] && groups[0].key) || '';
       devSel.innerHTML = groups.map((g) => `<option value="${esc(g.key)}">${esc(g.name)} (${g.tags.length})</option>`).join('');

@@ -614,11 +614,15 @@
       const total = t.total ?? 0;
       $('#hmiImpSummary').innerHTML =
         `<div class="xfer-stat"><span>화면</span><b>${v.screens ?? 0}</b></div>`
-        + `<div class="xfer-stat"><span>태그</span><b>${miss.length ? `${t.linked ?? 0} <small>/ ${total}</small>` : total}</b></div>`;
+        + `<div class="xfer-stat"><span>태그</span><b>${miss.length ? `${total - miss.length} <small>/ ${total}</small>` : total}</b></div>`;   // linked는 register 태그만 세므로 전체에서 빠지는 수를 뺀다
       // 빠지는 태그: id만 꼬리표로, 통합 주소는 마우스를 올리면
       const warns = (v.warnings ?? []).map((w) => `<div>⚠ ${esc(w)}</div>`);
       if (miss.length) warns.unshift(`<div>⚠ 이 장치에 없는 레지스터 — 태그 ${miss.length}개 제외</div>
         <div class="xfer-chips">${miss.map((m) => `<i title="통합 주소 ${m.unifiedAddress == null ? '없음' : esc(m.unifiedAddress)}">${esc(m.id)}</i>`).join('')}</div>`);
+      // 참조가 끊기는 계산 태그(들어가지만 값은 불량)
+      const broken = t.brokenExpr ?? [];
+      if (broken.length) warns.push(`<div>⚠ 참조가 끊겨 값이 불량이 되는 계산 태그 ${broken.length}개</div>
+        <div class="xfer-chips">${broken.map((x) => `<i title="없는 태그: ${esc((x.missingRefs ?? []).join(', '))}">${esc(x.id)}</i>`).join('')}</div>`);
       const warnEl = $('#hmiImpMissing');
       warnEl.innerHTML = warns.join('');
       warnEl.hidden = !warns.length;
