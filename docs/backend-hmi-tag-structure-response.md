@@ -1,8 +1,8 @@
 ---
 from: backend
 to: frontend
-status: open
-waiting_on: frontend
+status: done
+waiting_on: none
 ---
 
 # HMI 태그 구조 — 백엔드 답변

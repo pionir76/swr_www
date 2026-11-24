@@ -1,0 +1,151 @@
+{
+ "about": "원본 → 표시 값 변환. 값 = (isSigned면 2의 보수) × 배율(tagScale이 있으면 그것, 없으면 registerScale). 코일·접점은 0/1",
+ "source": "기대 값은 프론트 코드(js/whmi-runtime.js WHMI.raw, js/whmi-rules.js)로 계산했다. 규칙은 docs/architecture/hmi.md §5.3·§5.4·§5.6",
+ "updated": "2026-11-24",
+ "cases": [
+  {
+   "name": "부호 없음, 배율 1",
+   "raw": 1234,
+   "registerType": "holding_register",
+   "isSigned": false,
+   "registerScale": 1,
+   "tagScale": null,
+   "expect": 1234
+  },
+  {
+   "name": "레지스터 배율 0.1",
+   "raw": 1234,
+   "registerType": "holding_register",
+   "isSigned": false,
+   "registerScale": 0.1,
+   "tagScale": null,
+   "expect": 123.4
+  },
+  {
+   "name": "태그 배율이 레지스터 배율보다 우선(원본 기준)",
+   "raw": 1234,
+   "registerType": "holding_register",
+   "isSigned": false,
+   "registerScale": 0.1,
+   "tagScale": 0.01,
+   "expect": 12.34
+  },
+  {
+   "name": "부동소수 오차 없음(2472 × 0.1)",
+   "raw": 2472,
+   "registerType": "holding_register",
+   "isSigned": false,
+   "registerScale": 0.1,
+   "tagScale": null,
+   "expect": 247.2
+  },
+  {
+   "name": "부호 있음, 음수",
+   "raw": 65531,
+   "registerType": "holding_register",
+   "isSigned": true,
+   "registerScale": 1,
+   "tagScale": null,
+   "expect": -5
+  },
+  {
+   "name": "부호 있음, 음수 + 배율",
+   "raw": 65036,
+   "registerType": "input_register",
+   "isSigned": true,
+   "registerScale": 0.1,
+   "tagScale": null,
+   "expect": -50
+  },
+  {
+   "name": "부호 있음, 양수 최대",
+   "raw": 32767,
+   "registerType": "holding_register",
+   "isSigned": true,
+   "registerScale": 1,
+   "tagScale": null,
+   "expect": 32767
+  },
+  {
+   "name": "부호 있음, 음수 최소",
+   "raw": 32768,
+   "registerType": "holding_register",
+   "isSigned": true,
+   "registerScale": 1,
+   "tagScale": null,
+   "expect": -32768
+  },
+  {
+   "name": "부호 없음, 32768은 그대로",
+   "raw": 32768,
+   "registerType": "holding_register",
+   "isSigned": false,
+   "registerScale": 1,
+   "tagScale": null,
+   "expect": 32768
+  },
+  {
+   "name": "부호 없음 최대",
+   "raw": 65535,
+   "registerType": "holding_register",
+   "isSigned": false,
+   "registerScale": 0.001,
+   "tagScale": null,
+   "expect": 65.535
+  },
+  {
+   "name": "배율 10",
+   "raw": 25,
+   "registerType": "holding_register",
+   "isSigned": false,
+   "registerScale": 1,
+   "tagScale": 10,
+   "expect": 250
+  },
+  {
+   "name": "배율 100, 음수",
+   "raw": 65535,
+   "registerType": "holding_register",
+   "isSigned": true,
+   "registerScale": 100,
+   "tagScale": null,
+   "expect": -100
+  },
+  {
+   "name": "0",
+   "raw": 0,
+   "registerType": "holding_register",
+   "isSigned": true,
+   "registerScale": 0.01,
+   "tagScale": null,
+   "expect": 0
+  },
+  {
+   "name": "코일 1 (배율 무시)",
+   "raw": 1,
+   "registerType": "coil",
+   "isSigned": false,
+   "registerScale": 0.1,
+   "tagScale": null,
+   "expect": 1
+  },
+  {
+   "name": "접점 0",
+   "raw": 0,
+   "registerType": "discrete_input",
+   "isSigned": false,
+   "registerScale": 1,
+   "tagScale": null,
+   "expect": 0
+  },
+  {
+   "name": "원본 없음(null)은 null",
+   "raw": null,
+   "registerType": "holding_register",
+   "isSigned": false,
+   "registerScale": 0.1,
+   "tagScale": null,
+   "expect": null
+  }
+ ]
+}

@@ -101,4 +101,4 @@ http://localhost:8088
 | 사용자 관리 | users.html | users.css | users.js | 구현 완료 |
 | 로그 | logs.html | logs.css | logs.js | 구현 완료 |
 | 트렌드 | trends.html | trends.css | trends.js | 구현 예정 (2차) |
-| HMI 빌더 | hmi.html | hmi.css | hmi.js | 구현 예정 (2차) |
+| HMI 빌더 | hmi.html | hmi.css | hmi.js (+ `whmi-*.js`) | 구현 중 — 설계 `hmi.md`, 할 일 `hmi-todo.md` |

@@ -1,0 +1,1265 @@
+{
+ "about": "식(AST) 평가. inputs는 register 태그의 원본(raw)과 품질(q). 주지 않은 태그는 쓰이지 않는다",
+ "source": "기대 값은 프론트 코드(js/whmi-runtime.js WHMI.raw, js/whmi-rules.js)로 계산했다. 규칙은 docs/architecture/hmi.md §5.3·§5.4·§5.6",
+ "updated": "2026-11-24",
+ "tags": {
+  "STS": {
+   "kind": "register",
+   "source": {
+    "registerType": "holding_register",
+    "isSigned": false,
+    "scale": 1
+   },
+   "scale": null
+  },
+  "ALM": {
+   "kind": "register",
+   "source": {
+    "registerType": "holding_register",
+    "isSigned": false,
+    "scale": 1
+   },
+   "scale": null
+  },
+  "TEMP": {
+   "kind": "register",
+   "source": {
+    "registerType": "holding_register",
+    "isSigned": true,
+    "scale": 0.1
+   },
+   "scale": null
+  },
+  "PRESS": {
+   "kind": "register",
+   "source": {
+    "registerType": "holding_register",
+    "isSigned": false,
+    "scale": 1
+   },
+   "scale": 0.01
+  },
+  "RUNC": {
+   "kind": "register",
+   "source": {
+    "registerType": "coil",
+    "isSigned": false,
+    "scale": 1
+   },
+   "scale": null
+  },
+  "RUNNING": {
+   "kind": "expr",
+   "source": {
+    "valueType": "bool",
+    "expr": {
+     "op": "bitAny",
+     "args": [
+      {
+       "tag": "STS"
+      },
+      {
+       "value": [
+        1,
+        2
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "CAN_START": {
+   "kind": "expr",
+   "source": {
+    "valueType": "bool",
+    "expr": {
+     "op": "and",
+     "args": [
+      {
+       "op": "not",
+       "args": [
+        {
+         "tag": "RUNNING"
+        }
+       ]
+      },
+      {
+       "op": "eq",
+       "args": [
+        {
+         "tag": "ALM"
+        },
+        {
+         "value": 0
+        }
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ "cases": [
+  {
+   "name": "비트 0 추출(1)",
+   "valueType": "bool",
+   "expr": {
+    "op": "bitAny",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": [
+       0
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 1,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "비트 0 추출(0)",
+   "valueType": "bool",
+   "expr": {
+    "op": "bitAny",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": [
+       0
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 65534,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
+   }
+  },
+  {
+   "name": "비트 15 추출(1)",
+   "valueType": "bool",
+   "expr": {
+    "op": "bitAny",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": [
+       15
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 32768,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "비트 15 추출(0)",
+   "valueType": "bool",
+   "expr": {
+    "op": "bitAny",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": [
+       15
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 32767,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
+   }
+  },
+  {
+   "name": "비트 여러 개 중 하나라도",
+   "valueType": "bool",
+   "expr": {
+    "op": "bitAny",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": [
+       1,
+       2
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 4,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "비트 모두 0",
+   "valueType": "bool",
+   "expr": {
+    "op": "bitNone",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": [
+       1,
+       2
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 9,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "비트 모두 0 — 하나가 1이면 거짓",
+   "valueType": "bool",
+   "expr": {
+    "op": "bitNone",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": [
+       1,
+       2
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 2,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
+   }
+  },
+  {
+   "name": "같음: 배율 적용 값과 비교",
+   "valueType": "bool",
+   "expr": {
+    "op": "eq",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 247.5
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 2475,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "같음: 숫자와 글자 숫자",
+   "valueType": "bool",
+   "expr": {
+    "op": "eq",
+    "args": [
+     {
+      "tag": "ALM"
+     },
+     {
+      "value": "0"
+     }
+    ]
+   },
+   "inputs": {
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "다름",
+   "valueType": "bool",
+   "expr": {
+    "op": "ne",
+    "args": [
+     {
+      "tag": "ALM"
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "ALM": {
+     "raw": 3,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "큼: 경계는 거짓",
+   "valueType": "bool",
+   "expr": {
+    "op": "gt",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 80
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 800,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
+   }
+  },
+  {
+   "name": "크거나 같음: 경계는 참",
+   "valueType": "bool",
+   "expr": {
+    "op": "ge",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 80
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 800,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "작음: 음수(부호 있음)",
+   "valueType": "bool",
+   "expr": {
+    "op": "lt",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 65486,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "작거나 같음: 경계는 참",
+   "valueType": "bool",
+   "expr": {
+    "op": "le",
+    "args": [
+     {
+      "tag": "PRESS"
+     },
+     {
+      "value": 12.34
+     }
+    ]
+   },
+   "inputs": {
+    "PRESS": {
+     "raw": 1234,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "범위: 양 끝 포함(아래 끝)",
+   "valueType": "bool",
+   "expr": {
+    "op": "range",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 10
+     },
+     {
+      "value": 20
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 100,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "범위: 양 끝 포함(위 끝)",
+   "valueType": "bool",
+   "expr": {
+    "op": "range",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 10
+     },
+     {
+      "value": 20
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 200,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "범위: 밖",
+   "valueType": "bool",
+   "expr": {
+    "op": "range",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 10
+     },
+     {
+      "value": 20
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 201,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
+   }
+  },
+  {
+   "name": "범위: 위 끝 없음(null)",
+   "valueType": "bool",
+   "expr": {
+    "op": "range",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 10
+     },
+     {
+      "value": null
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 9999,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "다른 태그와 비교",
+   "valueType": "bool",
+   "expr": {
+    "op": "gt",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "PRESS"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 300,
+     "q": "good"
+    },
+    "PRESS": {
+     "raw": 2999,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "AND 안의 OR",
+   "valueType": "bool",
+   "expr": {
+    "op": "and",
+    "args": [
+     {
+      "op": "bitAny",
+      "args": [
+       {
+        "tag": "STS"
+       },
+       {
+        "value": [
+         3
+        ]
+       }
+      ]
+     },
+     {
+      "op": "or",
+      "args": [
+       {
+        "op": "ge",
+        "args": [
+         {
+          "tag": "TEMP"
+         },
+         {
+          "value": 80
+         }
+        ]
+       },
+       {
+        "op": "ge",
+        "args": [
+         {
+          "tag": "PRESS"
+         },
+         {
+          "value": 30
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 8,
+     "q": "good"
+    },
+    "TEMP": {
+     "raw": 500,
+     "q": "good"
+    },
+    "PRESS": {
+     "raw": 3000,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "AND 안의 OR — 바깥이 거짓",
+   "valueType": "bool",
+   "expr": {
+    "op": "and",
+    "args": [
+     {
+      "op": "bitAny",
+      "args": [
+       {
+        "tag": "STS"
+       },
+       {
+        "value": [
+         3
+        ]
+       }
+      ]
+     },
+     {
+      "op": "or",
+      "args": [
+       {
+        "op": "ge",
+        "args": [
+         {
+          "tag": "TEMP"
+         },
+         {
+          "value": 80
+         }
+        ]
+       },
+       {
+        "op": "ge",
+        "args": [
+         {
+          "tag": "PRESS"
+         },
+         {
+          "value": 30
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 0,
+     "q": "good"
+    },
+    "TEMP": {
+     "raw": 900,
+     "q": "good"
+    },
+    "PRESS": {
+     "raw": 3000,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
+   }
+  },
+  {
+   "name": "NOT",
+   "valueType": "bool",
+   "expr": {
+    "op": "not",
+    "args": [
+     {
+      "op": "eq",
+      "args": [
+       {
+        "tag": "ALM"
+       },
+       {
+        "value": 0
+       }
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
+   }
+  },
+  {
+   "name": "태그 값을 참/거짓으로(코일)",
+   "valueType": "bool",
+   "expr": {
+    "op": "and",
+    "args": [
+     {
+      "tag": "RUNC"
+     },
+     {
+      "op": "eq",
+      "args": [
+       {
+        "tag": "ALM"
+       },
+       {
+        "value": 0
+       }
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "RUNC": {
+     "raw": 1,
+     "q": "good"
+    },
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "계산 태그 참조(RUNNING)",
+   "valueType": "bool",
+   "expr": {
+    "tag": "RUNNING"
+   },
+   "inputs": {
+    "STS": {
+     "raw": 2,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "계산 태그 이어 쓰기(CAN_START) — 운전 중이면 거짓",
+   "valueType": "bool",
+   "expr": {
+    "tag": "CAN_START"
+   },
+   "inputs": {
+    "STS": {
+     "raw": 2,
+     "q": "good"
+    },
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
+   }
+  },
+  {
+   "name": "계산 태그 이어 쓰기(CAN_START) — 정지 + 경보 없음",
+   "valueType": "bool",
+   "expr": {
+    "tag": "CAN_START"
+   },
+   "inputs": {
+    "STS": {
+     "raw": 1,
+     "q": "good"
+    },
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "name": "선택: 처음 맞는 줄",
+   "valueType": "string",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "op": "bitAny",
+      "args": [
+       {
+        "tag": "STS"
+       },
+       {
+        "value": [
+         2
+        ]
+       }
+      ]
+     },
+     {
+      "value": "PROG"
+     },
+     {
+      "op": "bitAny",
+      "args": [
+       {
+        "tag": "STS"
+       },
+       {
+        "value": [
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "value": "FIX"
+     },
+     {
+      "value": "STOP"
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 6,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": "PROG",
+    "q": "good"
+   }
+  },
+  {
+   "name": "선택: 둘째 줄",
+   "valueType": "string",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "op": "bitAny",
+      "args": [
+       {
+        "tag": "STS"
+       },
+       {
+        "value": [
+         2
+        ]
+       }
+      ]
+     },
+     {
+      "value": "PROG"
+     },
+     {
+      "op": "bitAny",
+      "args": [
+       {
+        "tag": "STS"
+       },
+       {
+        "value": [
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "value": "FIX"
+     },
+     {
+      "value": "STOP"
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 2,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": "FIX",
+    "q": "good"
+   }
+  },
+  {
+   "name": "선택: 기본값",
+   "valueType": "string",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "op": "bitAny",
+      "args": [
+       {
+        "tag": "STS"
+       },
+       {
+        "value": [
+         2
+        ]
+       }
+      ]
+     },
+     {
+      "value": "PROG"
+     },
+     {
+      "op": "bitAny",
+      "args": [
+       {
+        "tag": "STS"
+       },
+       {
+        "value": [
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "value": "FIX"
+     },
+     {
+      "value": "STOP"
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 1,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": "STOP",
+    "q": "good"
+   }
+  },
+  {
+   "name": "선택: 숫자 결과",
+   "valueType": "number",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "op": "gt",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "value": 50
+       }
+      ]
+     },
+     {
+      "value": 2
+     },
+     {
+      "op": "gt",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "value": 20
+       }
+      ]
+     },
+     {
+      "value": 1
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 300,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 1,
+    "q": "good"
+   }
+  },
+  {
+   "name": "품질: 입력 하나가 bad면 bad",
+   "valueType": "bool",
+   "expr": {
+    "op": "or",
+    "args": [
+     {
+      "op": "eq",
+      "args": [
+       {
+        "tag": "ALM"
+       },
+       {
+        "value": 0
+       }
+      ]
+     },
+     {
+      "op": "ge",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "value": 80
+       }
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    },
+    "TEMP": {
+     "raw": null,
+     "q": "bad"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "name": "품질: disabled도 bad",
+   "valueType": "bool",
+   "expr": {
+    "op": "eq",
+    "args": [
+     {
+      "tag": "ALM"
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "ALM": {
+     "raw": null,
+     "q": "disabled"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "name": "품질: normal이 섞이면 normal",
+   "valueType": "bool",
+   "expr": {
+    "op": "and",
+    "args": [
+     {
+      "op": "eq",
+      "args": [
+       {
+        "tag": "ALM"
+       },
+       {
+        "value": 0
+       }
+      ]
+     },
+     {
+      "op": "lt",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "value": 80
+       }
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    },
+    "TEMP": {
+     "raw": 250,
+     "q": "normal"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "normal"
+   }
+  },
+  {
+   "name": "품질: 이어 쓴 태그의 bad 전파",
+   "valueType": "bool",
+   "expr": {
+    "tag": "CAN_START"
+   },
+   "inputs": {
+    "STS": {
+     "raw": null,
+     "q": "bad"
+    },
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "name": "품질: 없는 태그 참조는 bad",
+   "valueType": "bool",
+   "expr": {
+    "op": "eq",
+    "args": [
+     {
+      "tag": "NO_SUCH_TAG"
+     },
+     {
+      "value": 1
+     }
+    ]
+   },
+   "inputs": {},
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "name": "품질: 원본이 null(여러 워드 등)이면 bad",
+   "valueType": "bool",
+   "expr": {
+    "op": "eq",
+    "args": [
+     {
+      "tag": "ALM"
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "ALM": {
+     "raw": null,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  }
+ ]
+}
