@@ -34,10 +34,9 @@
     ['color', '색상'],
     ['action', '동작'],
     ['effect', '효과'],
-    ['cond', '동작 조건'],   // 다른 태그에 따른 보이기·조작 허용·켜짐(위젯 필드, docs/architecture/hmi-conditions.md)
+    ['cond', '동작 조건'],   // 다른 태그에 따른 보이기·조작 허용·켜짐(위젯 필드, docs/architecture/hmi.md §5.5)
   ];
 
-  const hasBits = (p) => p.bit != null && [].concat(p.bit).length > 0;
   const fontSize = { key: 'fontSize', label: '글자 크기', type: 'num', group: 'basic', min: 6, max: 200 };
   const confirm  = { key: 'confirm', label: '확인 문구', type: 'opttext', group: 'action', placeholder: '없음' };
   // 켜고 끄는 위젯: 켤 때 / 끌 때 문구를 따로(끌 때 문구가 비면 켤 때 문구를 양쪽에 — 예전 동작)
@@ -127,11 +126,7 @@
       { key: 'onColor', label: '켜짐 색', type: 'color', group: 'color' },
       { key: 'offColor', label: '꺼짐 색', type: 'color', group: 'color' },
       { key: 'textColor', label: '글자색', type: 'color', group: 'color' },
-      { key: 'bit', label: '비트', type: 'bits', group: 'value' },
-      // 켜짐 값: 비트를 쓰면 0/1만 의미가 있으므로 선택 상자로(같은 속성 onValue, 칸 id만 다름)
-      { key: 'onValue', label: '켜짐 값', type: 'value', group: 'value', placeholder: '값이 참이면 켜짐', when: (p) => !hasBits(p) },
-      { key: 'onValue', id: 'onValueBit', label: '켜짐 조건', type: 'select', group: 'value', numeric: true, nullAs: '1',
-        options: [['1', '비트 = 1일 때'], ['0', '비트 = 0일 때']], when: hasBits },
+      // 언제 켜지나는 "켜짐 조건"(activeWhen) 한 칸으로 정한다 — 아래에서 추가. 예전 bit·onValue는 편집기가 열 때 조건으로 바꾼다
     ],
     screenlink: [
       { key: 'screen', label: '이동할 화면', type: 'screen', group: 'basic' },
@@ -163,9 +158,7 @@
       { key: 'color', label: '버튼색', type: 'color', group: 'color' },
       { key: 'activeColor', label: '켜짐일 때 색', type: 'optcolor', group: 'color', placeholder: '버튼색과 같음' },
       { key: 'textColor', label: '글자색', type: 'color', group: 'color' },
-      // 값 쓰기 버튼에서 켜짐 글자·색을 쓸 때만 — 현재 값이 이 값이면 "켜짐"으로 표시
-      { key: 'onValue', label: '켜짐 표시 기준 값', type: 'value', group: 'value',
-        when: (p) => p.action !== 'toggle' && (p.onText != null || p.offText != null || p.activeColor != null) },
+      // 값 쓰기 버튼의 켜짐 글자·색은 동작 조건 "켜짐 상태"(activeWhen)로 정한다(예전 onValue는 편집기가 열 때 조건으로 바꿈)
       { ...confirm, when: (p) => p.action !== 'toggle' },
       { ...confirmOn, when: (p) => p.action === 'toggle' },
       { ...confirmOff, when: (p) => p.action === 'toggle' },
@@ -253,18 +246,19 @@
     animMs,
   ];
 
-  // ── 태그 값 덮어쓰기(값 위젯 공통) — 비우면 태그 정의 값 사용.
-  // 소수점(배율)은 위젯에서 덮어쓰지 않는다 — 태그 배율 하나로 정한다(원본 데이터 원칙, overview.md §5.1).
-  const valueOverride = [
-    { key: 'min', label: '최소값', type: 'optnum', group: 'value', step: 'any', placeholder: '태그 값 사용' },
-    { key: 'max', label: '최대값', type: 'optnum', group: 'value', step: 'any', placeholder: '태그 값 사용' },
-    { key: 'unit', label: '단위', type: 'opttext', group: 'value', placeholder: '태그 값 사용' },
+  // ── 눈금 범위(게이지·탱크·막대만) — 비우면 태그 범위. 눈금은 표시 문제라 위젯에서 정할 수 있다.
+  // 단위·소수점(배율)·입력 범위는 위젯에서 덮어쓰지 않는다 — 태그 하나로 정한다(hmi.md §4, overview.md §5.1).
+  const scaleRange = [
+    { key: 'min', label: '눈금 최소값', type: 'optnum', group: 'value', step: 'any', placeholder: '태그 값 사용' },
+    { key: 'max', label: '눈금 최대값', type: 'optnum', group: 'value', step: 'any', placeholder: '태그 값 사용' },
   ];
   // 동작 조건(위젯 필드 — props가 아님). 조건 하나 = 태그 + 비교(판정 엔진 whmi-rules.js)
   //  none: 조건을 두지 않았을 때의 동작(선택 상자 첫 항목), effect: 요약 문구 "…일 때 ○○"
   const visibleWhen = { key: 'visibleWhen', label: '보이기', type: 'cond', group: 'cond', none: '항상 보임', effect: '보임' };
   const enableWhen  = { key: 'enableWhen', label: '조작 허용', type: 'cond', group: 'cond', none: '항상 허용', effect: '조작 허용' };
   const activeWhen  = { key: 'activeWhen', label: '켜짐 상태', type: 'cond', group: 'cond', none: '자기 값으로 판단', effect: '켜짐' };
+  // 램프는 켜짐이 핵심이라 "값" 그룹에 둔다(같은 위젯 필드 activeWhen)
+  const lampOn      = { key: 'activeWhen', label: '켜짐 조건', type: 'cond', group: 'value', none: '값이 참이면 켜짐', effect: '켜짐' };
 
   // ── 숫자 표시 / 숫자 입력 상자 공통
   const seg = (p) => p.font === 'seg7';
@@ -278,7 +272,6 @@
     { key: 'padding', label: '안쪽 여백', type: 'num', group: 'basic', min: 0, max: 200 },
     { key: 'radius', label: '모서리 둥글기', type: 'num', group: 'basic', min: 0, max: 100 },
     { key: 'borderWidth', label: '테두리 두께', type: 'num', group: 'basic', min: 0, max: 20, step: 0.5 },
-    ...valueOverride,
     { key: 'showUnit', label: '단위 표시', type: 'bool', group: 'value' },
     { key: 'unitAlign', label: '단위 맞춤', type: 'select', group: 'value', options: [['bottom', '하단'], ['middle', '중간'], ['top', '상단']], when: (p) => p.showUnit },
     { key: 'color', label: '숫자색', type: 'color', group: 'color' },
@@ -307,11 +300,12 @@
   TYPES.input = [...box, confirm];
 
   // 값 위젯에 공통 항목 추가
-  for (const t of ['gauge', 'tank', 'bar']) TYPES[t].unshift(...valueOverride);
+  for (const t of ['gauge', 'tank', 'bar']) TYPES[t].unshift(...scaleRange);
   // 동작 조건: 보이기는 모든 위젯, 조작 허용은 쓰기 위젯, 켜짐 상태는 켜짐이 있는 위젯
   for (const t of Object.keys(TYPES)) TYPES[t].push(visibleWhen);
   for (const t of ['button', 'switch', 'selector', 'input']) TYPES[t].push(enableWhen);
-  for (const t of ['lamp', 'button', 'switch']) TYPES[t].push(activeWhen);
+  for (const t of ['button', 'switch']) TYPES[t].push(activeWhen);
+  TYPES.lamp.push(lampOn);
 
   if (window.WHMI) window.WHMI.schema = { groups: GROUPS, types: TYPES };   // 페이지를 떠나며 정리됐으면 건너뜀
 })();

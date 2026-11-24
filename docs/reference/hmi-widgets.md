@@ -26,7 +26,7 @@
 | `enableWhen` | | **조작 허용** 조건(쓰기 위젯: button·switch·selector·input). 참일 때만 조작·쓰기 가능(거짓·판정 불가면 막음). 예전 형식 `{ "tag", "equals" }`도 같음 비교로 읽음 |
 | `activeWhen` | | **켜짐 상태** 조건(lamp·button·switch). 참이면 켜짐, 거짓·판정 불가면 꺼짐. 없으면 자기 값(켜짐 값·비트)으로 판단. 전환 버튼·스위치는 켜짐이면 꺼짐 값을 씀(예: 명령은 OPMODE에 쓰고 상태는 NOW_STS로). 태그 없는 램프도 이 조건만으로 동작 |
 
-**동작 조건 형식**(판정 엔진 `js/whmi-rules.js`, 설계 `docs/architecture/hmi-conditions.md`):
+**동작 조건 형식**(판정 엔진 `js/whmi-rules.js`, 설계 `docs/architecture/hmi.md` §5.5·§5.6):
 
 ```json
 { "tag": "TP2KMF_NOWSTS", "test": "bitAny", "bits": [1, 2] }
@@ -63,12 +63,14 @@
 
 | 항목 | 1순위 | 2순위 | 3순위 |
 |---|---|---|---|
-| `unit` | 위젯 `props` (명시한 경우만) | 실시간 값 응답 | 태그 정의 |
+| `unit` | 실시간 값 응답 | 태그 정의 | — |
 | `access` | 실시간 값 응답 | 태그 정의 | — |
 | `decimals` | 태그 배율에서 계산 | — | — |
-| `min`/`max` | 위젯 `props` | 태그 정의(비면 레지스터 `minValue`/`maxValue`를 태그 배율로 환산, "제한 없음"(double 최댓값)은 비움) | 기본값(0/100) |
+| `min`/`max` | 위젯 `props`(**게이지·탱크·막대의 눈금 범위만**) | 태그 정의(비면 레지스터 `minValue`/`maxValue`를 태그 배율로 환산, "제한 없음"(double 최댓값)은 비움) | 기본값(0/100) |
 
-`props`의 `min`/`max`/`unit`은 값 위젯(numeric·input·bar·gauge·tank) 공통 덮어쓰기다. 편집기 속성 창 "값" 그룹에서 비워 두면 태그 값을 쓴다. 소수점(배율)은 위젯에서 덮어쓰지 않는다(2026-11-13 폐지 — 예전 화면의 `props.decimals`는 무시됨).
+위젯이 덮어쓸 수 있는 것은 **눈금 범위**(`props.min`/`max`, 게이지·탱크·막대)뿐이다. 단위·소수점(배율)·입력 범위는 태그가 정한다(2026-11-24 — 예전 화면의 `props.unit`, 숫자 표시·입력의 `props.min`/`max`, `props.decimals`는 무시되고 편집기가 열 때 지운다).
+
+**켜짐 판정**(2026-11-24 통합): 램프와 값 쓰기 버튼의 켜짐은 `activeWhen` 조건 하나로 정한다(속성 창: 램프 "켜짐 조건", 버튼 "켜짐 상태"). 조건이 없으면 램프는 값이 참일 때, 버튼·스위치는 현재 값이 켜짐 값(`onValue`)일 때 켜짐이다. 예전 램프 `bit`·`onValue`, 값 쓰기 버튼의 `onValue`(켜짐 표시 기준)는 실행 화면이 계속 읽지만 속성 창에는 없고, 편집기가 화면을 열 때 같은 뜻의 `activeWhen`으로 바꾼다.
 
 ### 2.2 품질(`q`) 3단계 처리
 
@@ -158,7 +160,7 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 편집기 속성 창의 폼은 위젯 타입별 필드 목록으로 만든다. 기본값은 여기 두지 않고 위젯 구현의 `defaults`(numeric·input은 `presets`까지)를 그대로 쓴다.
 
 - 필드: `{ key, label, type, group, min?, max?, step?, options?, placeholder?, when?(p) }`
-- 칸 `id`: 같은 속성(key)을 조건(`when`)에 따라 다른 칸으로 보여 줄 때 구분 이름(예: 램프 `onValue` — 비트가 없으면 "켜짐 값" 입력, 있으면 "켜짐 조건" 선택). select 칸 `numeric`(숫자로 저장)·`nullAs`(값이 없을 때 보일 항목)
+- 칸 `id`: 같은 속성(key)을 조건(`when`)에 따라 다른 칸으로 보여 줄 때 구분 이름(예: 버튼 `onValue` — 전환일 때만 "켜짐 값"). select 칸 `numeric`(숫자로 저장)·`nullAs`(값이 없을 때 보일 항목)
 - 목록(`list`) 칸: `type`(num\|text\|color\|value\|bool\|select+options), `width?`, `when?(p)`(거짓이면 숨김 — 숨은 칸 값은 보존), `newRow(rows, p)`
 - 입력 종류: `text`, `opttext`, `num`, `optnum`, `color`, `optcolor`, `bool`, `select`, `screen`, `value`(true/false/숫자/글자), `list`(행 추가/삭제), `anim`(사용 체크 + ms), `cond`(위젯 필드 `visibleWhen`/`enableWhen`/`activeWhen` — "동작 조건" 그룹, 조건 편집 부품: 방식 → 장비·태그 → 비교 → 값/범위/비트)
 - 그룹: 기본 / 눈금 / 값 / 색상 / 동작 / 효과

@@ -159,15 +159,16 @@
     const t = tags[w.tag] || {};
     const pick = (...xs) => xs.find((x) => x != null);
     const lim = window.WHMI.raw.limits(t);   // 런타임 info()와 같은 규칙
-    const min = pick(p.min, lim.min, 0);
-    const max = pick(p.max, lim.max, 100);
+    const sc = window.WHMI.SCALE_TYPES.has(w.type) ? p : {};   // 눈금 범위 덮어쓰기는 게이지·탱크·막대만
+    const min = pick(sc.min, lim.min, 0);
+    const max = pick(sc.max, lim.max, 100);
     const decimals = pick(raw && raw.decimals, lim.decimals, 0);
     return {
       value: raw && raw.v != null ? raw.v : Number((min + (max - min) * 0.6).toFixed(decimals)),
       ok: true,
       quality: 'good',
       min, max,
-      unit: pick(p.unit, raw && raw.unit, t.unit, ''),
+      unit: pick(raw && raw.unit, t.unit, ''),
       decimals,
       writable: false,
       tag: t,
@@ -840,7 +841,7 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         this.screenId = id;
-        this.doc = data.content;
+        this.doc = this.migrate(data.content);
         this.revision = data.revision;
         this.sel.clear();
         this.resetHistory();
@@ -1258,7 +1259,7 @@
       this.past = [this.current];
       this.future = [];
       this.current = dr.doc;
-      this.doc = JSON.parse(dr.doc);
+      this.doc = this.migrate(JSON.parse(dr.doc));
       this.revision = dr.baseRevision;
       this.sel.clear();
       this.render();
@@ -1824,6 +1825,31 @@
     }
 
     // 위젯 객체 키 순서를 id,type,x,y,w,h,tag,… 로 고정(같은 내용이면 같은 JSON이 되도록)
+    // 예전 형식을 지금 형식으로(편집기가 화면을 열 때) — 실행 화면은 예전 형식도 그대로 읽으므로 저장 전까지 동작은 같다.
+    //  · 램프 bit·onValue, 값 쓰기 버튼의 onValue(켜짐 표시 기준) → 켜짐 조건(activeWhen)
+    //  · 위젯 단위 덮어쓰기, 숫자 표시·입력의 최소·최대 덮어쓰기 → 없앰(태그가 정함)
+    migrate(doc) {
+      for (const w of (doc && doc.widgets) || []) {
+        const p = w.props;
+        if (!p) continue;
+        const toCond = (c) => { if (!w.activeWhen && w.tag) w.activeWhen = Object.assign({ tag: w.tag }, c); };
+        if (w.type === 'lamp') {
+          const bits = p.bit == null ? [] : [].concat(p.bit);
+          const off = p.onValue === 0 || p.onValue === false || p.onValue === '0';
+          if (bits.length) toCond({ test: off ? 'bitNone' : 'bitAny', bits });
+          else if (p.onValue != null) toCond({ test: 'eq', value: p.onValue });
+          delete p.bit; delete p.onValue;
+        } else if (w.type === 'button' && p.action !== 'toggle' && p.onValue != null) {
+          toCond({ test: 'eq', value: p.onValue });
+          delete p.onValue;
+        }
+        delete p.unit;
+        if (!window.WHMI.SCALE_TYPES.has(w.type)) { delete p.min; delete p.max; }
+        if (!Object.keys(p).length) delete w.props;
+      }
+      return doc;
+    }
+
     canonical(w) {
       const entries = Object.entries(w);
       for (const k of Object.keys(w)) delete w[k];

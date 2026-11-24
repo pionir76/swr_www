@@ -513,11 +513,7 @@
       $('#hmiStUpdated').textContent = last ? `${hmiTime(last.updatedAt)} · ${last.updatedBy ?? '—'} (${last.title || last.id})` : '—';
 
       $('#hmiNameInput').value = p.name ?? '';
-      const sel = $('#hmiStartSelect');
-      sel.innerHTML = screens.length
-        ? screens.map((s) => `<option value="${esc(s.id)}">${esc(s.title || s.id)} (${esc(s.id)})</option>`).join('')
-        : '<option value="">화면 없음</option>';
-      sel.value = p.startScreen ?? '';
+      // 시작 화면은 편집기(화면 설정·화면 관리)에서만 정한다
       // 값 갱신 주기는 서버가 pollMs를 줄 때만 보인다(백엔드 반영 전에는 숨김)
       const hasPoll = p.pollMs != null;
       $('#hmiPollField').hidden = !hasPoll;
@@ -531,7 +527,7 @@
   function updateHmiPerm() {
     const ok = canEditHmi();
     $('#hmiPermNote').hidden = ok || currentUserRole == null;
-    for (const id of ['#hmiNameInput', '#hmiStartSelect', '#hmiPollSelect', '#hmiSaveBtn', '#hmiExportBtn', '#hmiImpFile'])
+    for (const id of ['#hmiNameInput', '#hmiPollSelect', '#hmiSaveBtn', '#hmiExportBtn', '#hmiImpFile'])
       { const el = $(id); if (el) el.disabled = !ok; }
     $('#hmiImpIdle')?.classList.toggle('disabled', !ok);
   }
@@ -539,8 +535,6 @@
   async function saveHmiSettings() {
     if (!_hmiProject) return;
     const body = { revision: _hmiProject.revision, name: $('#hmiNameInput').value.trim() };
-    const start = $('#hmiStartSelect').value;
-    if (start) body.startScreen = start;
     if (!$('#hmiPollField').hidden) body.pollMs = Number($('#hmiPollSelect').value);
     const btn = $('#hmiSaveBtn');
     btn.disabled = true;

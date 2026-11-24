@@ -165,6 +165,7 @@
     },
   };
   WHMI.raw = RAW;
+  WHMI.SCALE_TYPES = new Set(['gauge', 'tank', 'bar']);   // 눈금 범위(min/max)를 위젯에서 덮어쓸 수 있는 타입
 
   // swr_web 백엔드의 HMI 태그 API(referencs/api-spec.md §14) 전용 데이터소스.
   // HttpSource와 달리 인증이 필요해 apiFetch(config.js, 토큰 자동 첨부)를 쓰고,
@@ -319,7 +320,7 @@
       }
     }
 
-    // 상태 칸 3개 판정 — 판정 엔진(WHMI.rules) 결과를 칸별 규칙으로(docs/architecture/hmi-conditions.md §3.2)
+    // 상태 칸 3개 판정 — 판정 엔진(WHMI.rules) 결과를 칸별 규칙으로(docs/architecture/hmi.md §5.5)
     //  visible  조건 거짓이면 숨김, 판정 불가(통신 불량 등)면 보임 — 정보를 감추지 않는 쪽
     //  enabled  조건이 참일 때만 조작 허용(거짓·판정 불가면 막음)
     //  active   조건 참이면 켜짐, 거짓·판정 불가면 꺼짐. 조건이 없으면 undefined(위젯이 자기 값으로 판단)
@@ -370,13 +371,15 @@
       const wt = w.writeTag ? this.tags[w.writeTag] || {} : t;
       const writable = !(wraw && wraw.q === 'disabled') && pick(wraw && wraw.access, wt.access) === 'rw' && st.enabled;
       const lim = RAW.limits(t);
+      // 위젯이 덮어쓸 수 있는 것은 눈금 범위(게이지·탱크·막대)뿐 — 단위·입력 범위는 태그가 정한다(hmi.md §4)
+      const sc = WHMI.SCALE_TYPES.has(w.type) ? p : {};
       return {
         value: raw ? raw.v : undefined,
         ok: quality !== 'bad',
         quality,
-        min: pick(p.min, lim.min, 0),
-        max: pick(p.max, lim.max, 100),
-        unit: pick(p.unit, raw && raw.unit, t.unit, ''),
+        min: pick(sc.min, lim.min, 0),
+        max: pick(sc.max, lim.max, 100),
+        unit: pick(raw && raw.unit, t.unit, ''),
         decimals: pick(raw && raw.decimals, lim.decimals, 0),
         writable,
         active: st.active,

@@ -1,6 +1,6 @@
 // WHMI 판정 엔진 — "태그 값 → 결과"를 정하는 규칙을 한 곳에서 판정한다.
 // 상태 칸(보이기·조작 허용·켜짐), 램프 켜짐, 상태 표시 목록, 구간 색이 모두 이 규칙을 쓴다.
-// 설계: docs/architecture/hmi-conditions.md §6-1
+// 설계: docs/architecture/hmi.md §5.6
 //
 // 조건(cond): { tag?, test, value?, min?, max?, bits? }
 //   test  eq / ne      같음 / 다름 — 둘 다 숫자로 읽히면(참거짓은 1/0) 숫자 비교, 아니면 글자 비교
