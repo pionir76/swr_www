@@ -1,5 +1,5 @@
 {
- "about": "식(AST) 평가. inputs는 register 태그의 원본(raw)과 품질(q). 주지 않은 태그는 쓰이지 않는다. 사례의 decimals(있으면)는 숫자 결과의 소수 자릿수. group \"arith\"는 산술·집계 연산(단계 C-2)",
+ "about": "식(AST) 평가. inputs는 register 태그의 원본(raw)과 품질(q). 주지 않은 태그는 쓰이지 않는다. 사례의 decimals(있으면)는 숫자 결과의 소수 자릿수. group \"arith\"는 산술·집계 연산(단계 C-2), \"param\"은 설정 태그(단계 C-1) — 설정 태그는 inputs의 value가 현재 값이고 없으면 source.initial",
  "source": "기대 값은 프론트 코드(js/whmi-runtime.js WHMI.raw, js/whmi-rules.js)로 계산했다. 규칙은 docs/architecture/hmi.md §5.3·§5.4·§5.6. 산술 사례(group \"arith\")는 같은 규칙의 기준 계산기로 계산했다(반올림은 JavaScript Number(x.toFixed(n)) — 정확히 절반이면 0에서 먼 쪽으로)",
  "updated": "2026-11-25",
  "tags": {
@@ -120,6 +120,45 @@
       },
       {
        "tag": "PRESS"
+      }
+     ]
+    }
+   }
+  },
+  "ALARM_TEMP": {
+   "kind": "param",
+   "decimals": 1,
+   "source": {
+    "valueType": "number",
+    "initial": 80
+   }
+  },
+  "NIGHT": {
+   "kind": "param",
+   "source": {
+    "valueType": "bool",
+    "initial": false
+   }
+  },
+  "MODE": {
+   "kind": "param",
+   "source": {
+    "valueType": "string",
+    "initial": "주간"
+   }
+  },
+  "OVER": {
+   "kind": "expr",
+   "source": {
+    "valueType": "bool",
+    "expr": {
+     "op": "ge",
+     "args": [
+      {
+       "tag": "TEMP"
+      },
+      {
+       "tag": "ALARM_TEMP"
       }
      ]
     }
@@ -2392,6 +2431,251 @@
    "expect": {
     "value": false,
     "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "설정 태그와 비교: 현재 값 20",
+   "valueType": "bool",
+   "expr": {
+    "op": "ge",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "ALARM_TEMP"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "ALARM_TEMP": {
+     "value": 20
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "설정 태그와 비교: inputs에 없으면 초기값 80",
+   "valueType": "bool",
+   "expr": {
+    "op": "ge",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "ALARM_TEMP"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "설정 태그를 산술에 사용",
+   "valueType": "number",
+   "expr": {
+    "op": "sub",
+    "args": [
+     {
+      "tag": "ALARM_TEMP"
+     },
+     {
+      "value": 2
+     }
+    ]
+   },
+   "inputs": {
+    "ALARM_TEMP": {
+     "value": 85.5
+    }
+   },
+   "expect": {
+    "value": 83.5,
+    "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "참/거짓 설정 태그를 조건으로: 참",
+   "valueType": "string",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "tag": "NIGHT"
+     },
+     {
+      "value": "야간"
+     },
+     {
+      "value": "주간"
+     }
+    ]
+   },
+   "inputs": {
+    "NIGHT": {
+     "value": true
+    }
+   },
+   "expect": {
+    "value": "야간",
+    "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "참/거짓 설정 태그: 초기값 거짓",
+   "valueType": "string",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "tag": "NIGHT"
+     },
+     {
+      "value": "야간"
+     },
+     {
+      "value": "주간"
+     }
+    ]
+   },
+   "inputs": {},
+   "expect": {
+    "value": "주간",
+    "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "글자 설정 태그 비교",
+   "valueType": "bool",
+   "expr": {
+    "op": "eq",
+    "args": [
+     {
+      "tag": "MODE"
+     },
+     {
+      "value": "야간"
+     }
+    ]
+   },
+   "inputs": {
+    "MODE": {
+     "value": "야간"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "글자 설정 태그: 초기값",
+   "valueType": "bool",
+   "expr": {
+    "op": "eq",
+    "args": [
+     {
+      "tag": "MODE"
+     },
+     {
+      "value": "주간"
+     }
+    ]
+   },
+   "inputs": {},
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "설정 태그 값 그대로 내보내기(숫자)",
+   "valueType": "number",
+   "expr": {
+    "tag": "ALARM_TEMP"
+   },
+   "inputs": {
+    "ALARM_TEMP": {
+     "value": 85.5
+    }
+   },
+   "expect": {
+    "value": 85.5,
+    "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "로직 태그가 설정 태그를 참조(OVER)",
+   "valueType": "bool",
+   "expr": {
+    "tag": "OVER"
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "ALARM_TEMP": {
+     "value": 20
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "group": "param",
+   "name": "품질: 설정 태그는 주지 않으면 good, 다른 입력이 normal이면 normal",
+   "valueType": "bool",
+   "expr": {
+    "op": "ge",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "ALARM_TEMP"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "normal"
+    },
+    "ALARM_TEMP": {
+     "value": 20
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "normal"
    }
   }
  ]

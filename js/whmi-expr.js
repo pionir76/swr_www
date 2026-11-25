@@ -27,7 +27,7 @@
   const ARITH = [['add', '더하기 ( + )', 2, 16], ['sub', '빼기 ( − )', 2, 2], ['mul', '곱하기 ( × )', 2, 16], ['div', '나누기 ( ÷ )', 2, 2],
     ['min', '최소', 2, 16], ['max', '최대', 2, 16], ['avg', '평균', 2, 16], ['abs', '절댓값', 1, 1]];
   const arith = (op) => ARITH.find((x) => x[0] === op);
-  const CALC = 'calc', NONE = 'none';
+  const CALC = 'calc', PARAM = 'param', NONE = 'none';
 
   const parseValue = (s) => (s === 'true' || s === 'false' ? s === 'true' : s !== '' && Number.isFinite(Number(s)) ? Number(s) : s);
   const fmtValue = (v) => (v == null ? '' : String(v));
@@ -117,15 +117,15 @@
   function mount(root, opts) {
     const tags = opts.tags.filter((t) => t.id !== opts.selfId);
     const byId = new Map(tags.map((t) => [t.id, t]));
-    const devKey = (t) => (RAW.isCalc(t) ? CALC : t.source && t.source.deviceId != null ? String(t.source.deviceId) : NONE);
+    const devKey = (t) => (t.kind === 'param' ? PARAM : RAW.isCalc(t) ? CALC : t.source && t.source.deviceId != null ? String(t.source.deviceId) : NONE);
     const groups = (() => {
       const m = new Map();
       for (const t of tags) {
         const k = devKey(t);
-        if (!m.has(k)) m.set(k, { key: k, name: k === CALC ? '로직' : (t.source && (t.source.deviceDisplayName || t.source.deviceCode)) || '(장비 없음)', tags: [] });
+        if (!m.has(k)) m.set(k, { key: k, name: k === CALC ? '로직' : k === PARAM ? '설정값' : (t.source && (t.source.deviceDisplayName || t.source.deviceCode)) || '(장비 없음)', tags: [] });
         m.get(k).tags.push(t);
       }
-      const rank = (g) => (g.key === NONE ? 2 : g.key === CALC ? 1 : 0);
+      const rank = (g) => (g.key === NONE ? 3 : g.key === CALC ? 2 : g.key === PARAM ? 1 : 0);
       return [...m.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'ko'));
     })();
     const firstTag = () => (groups[0] && groups[0].tags[0] ? groups[0].tags[0].id : '');

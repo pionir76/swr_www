@@ -109,11 +109,11 @@
     };
   }
 
-  // 계산·설정 태그(레지스터가 아닌 태그)와 식 글자
+  // 계산·설정값 태그(레지스터가 아닌 태그)와 식 글자
   const isCalc = (t) => RAW.isCalc(t);
   const exprText = (t) => (t.source && t.source.expr ? window.WHMI.rules.exprText(t.source.expr) : '');
   // 태그 종류의 화면 이름(용어: 레지스터 / 로직 / 설정 — 문서의 register·expr·param 태그)
-  const KIND_NAME = { register: '레지스터', expr: '로직', param: '설정' };
+  const KIND_NAME = { register: '레지스터', expr: '로직', param: '설정값' };
   // 로직 태그의 입력 태그와 지금 값 — 목록의 소스 칸에 마우스를 올리면 보인다(값이 왜 그렇게 나왔는지)
   function inputsText(t, data) {
     const ids = t.source && t.source.expr ? window.WHMI.rules.exprTags(t.source.expr) : [];
@@ -311,7 +311,8 @@
     const reg = src && src.reg;
     // 소스는 한 줄로: 레지스터 태그는 "장비 · 레지스터", 로직 태그는 식. 넘치면 …, 전체 내용은 마우스를 올리면
     //  (로직 태그는 식 + 입력 태그의 지금 값까지)
-    const srcText = isCalc(t) ? exprText(t)
+    const srcText = t.kind === 'param' ? `초기값 ${t.source && t.source.initial === true ? '참' : t.source && t.source.initial === false ? '거짓' : t.source ? t.source.initial : ''}`
+      : isCalc(t) ? exprText(t)
       : src ? `${src.dev.displayName || src.dev.name} · ${reg.tagName}` : `레지스터 없음 (#${t.source && t.source.registerId})`;
     const srcTip = isCalc(t) ? `${exprText(t)}${inputsText(t, data)}`
       : src ? `${src.dev.displayName || src.dev.name}${src.dev.enabled === false ? ' (비활성)' : ''} · ${reg.tagName}${reg.displayName ? ` — ${reg.displayName}` : ''}` : srcText;
@@ -428,9 +429,9 @@
 
   // firstDev: 이 장비의 레지스터를 맨 앞에(속성 창에서 장비를 고른 채 "+ 새 태그…"로 열었을 때)
   // 새 태그 폼 맨 위의 종류 고르기(라디오). 만든 뒤에는 종류를 바꿀 수 없다. 설정(param)은 hmi-todo.md 단계 C
-  const KINDS = [['register', '레지스터', '장비 레지스터의 값'], ['expr', '로직', '다른 태그로 계산'], ['param', '설정', '준비 중']];
+  const KINDS = [['register', '레지스터', '장비 레지스터의 값'], ['expr', '로직', '다른 태그로 계산'], ['param', '설정값', '화면에서 바꾸는 값']];
   const kindRow = (kind) => `<div class="form-field full"><label>종류</label><div class="tm-kinds">${KINDS.map(([k, name, hint]) =>
-    `<label class="${k === 'param' ? 'off' : ''}"><input type="radio" name="tmkind" value="${k}"${k === kind ? ' checked' : ''}${k === 'param' ? ' disabled' : ''}><span>${name}</span><small>${hint}</small></label>`).join('')}</div></div>`;
+    `<label><input type="radio" name="tmkind" value="${k}"${k === kind ? ' checked' : ''}><span>${name}</span><small>${hint}</small></label>`).join('')}</div></div>`;
   const VALUE_TYPES = [['bool', '참 / 거짓'], ['number', '숫자'], ['string', '글자']];
 
   // 로직 태그 폼 — 규칙은 조건 빌더(whmi-expr.js)가 [data-cb]에, 미리보기는 [data-prev]에 그린다
@@ -448,6 +449,29 @@
       </div>
       <div data-cb></div>
       <div class="cb-prev" data-prev></div>
+      <div class="tm-form-err"></div>
+      <div class="tm-del-confirm" hidden></div>
+    </div>`;
+  }
+
+  // 설정값 태그 폼 — 화면에서 바꾸는 값(장치에 저장). 1차는 숫자·참/거짓(글자는 입력 위젯이 아직 없어 기존 태그만 보여 준다)
+  function paramFormHtml(t) {
+    const opts = (list) => list.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+    const types = VALUE_TYPES.filter(([v]) => v !== 'string' || (t && t.source && t.source.valueType === 'string'));
+    return `<div class="tm-form tm-form-param">
+      <div class="tm-form-title">${t ? '태그 수정 <small>설정값</small>' : '새 태그 정보'}</div>
+      <div class="form-grid">
+        ${t ? '' : kindRow('param')}
+        <div class="form-field"><label>TAG ID${t ? ' (변경 불가)' : ''}</label>${t ? `<input class="input" value="${esc(t.id)}" disabled>` : '<input class="input" data-ff="id" spellcheck="false" autocomplete="off">'}</div>
+        <div class="form-field"><label>TAG NAME</label><input class="input" data-ff="name" spellcheck="false"></div>
+        <div class="form-field"><label>값 형식</label><select class="select" data-ff="valueType">${opts(types)}</select></div>
+        <div class="form-field"><label>초기값</label><span data-initial-wrap></span><small class="tm-hint">처음 만들 때의 값. 나중에 고쳐도 현재 값은 바뀌지 않습니다</small></div>
+        <div class="form-field" data-num-field><label>단위</label><select class="select" data-ff="unit"><option value="">없음</option>${opts(UNIT_OPTIONS)}</select></div>
+        <div class="form-field" data-num-field><label>소수 자릿수</label><select class="select" data-ff="decimals" title="쓸 때 이 자릿수로 반올림해 저장합니다"><option value="">지정 안 함</option>${[0, 1, 2, 3, 4, 5, 6].map((n) => `<option value="${n}">${n}자리</option>`).join('')}</select></div>
+        <div class="form-field" data-num-field><label>최소값</label><input class="input" data-ff="min" inputmode="decimal" placeholder="제한 없음"></div>
+        <div class="form-field" data-num-field><label>최대값</label><input class="input" data-ff="max" inputmode="decimal" placeholder="제한 없음"></div>
+        ${t ? `<div class="form-field full"><label>현재 값</label><div class="tm-param-now"><b data-pnow></b><button type="button" data-k="param-reset" title="현재 값을 초기값으로 씁니다">초기값으로 되돌리기</button></div></div>` : ''}
+      </div>
       <div class="tm-form-err"></div>
       <div class="tm-del-confirm" hidden></div>
     </div>`;
@@ -870,16 +894,103 @@
       await afterChange(tag ? null : id);
     };
 
-    // kind: 새 태그에서 종류를 바꿀 때('register' | 'expr'). keep: 종류를 바꿔도 남길 입력({ id, name })
+    // ---- 설정값 태그 폼 -------------------------------------------------------
+    const showParamVal = (v) => (v === true ? '참' : v === false ? '거짓' : v == null ? '—' : String(v));
+    const drawInitial = (vt, v) => {
+      const wrap = formWrap.querySelector('[data-initial-wrap]');
+      wrap.innerHTML = vt === 'bool' ? '<select class="select" data-ff="initial"><option value="false">거짓</option><option value="true">참</option></select>'
+        : `<input class="input" data-ff="initial" ${vt === 'number' ? 'inputmode="decimal"' : 'maxlength="64"'} spellcheck="false">`;
+      if (v !== undefined && v !== null) ff('initial').value = String(v);
+      for (const el of formWrap.querySelectorAll('[data-num-field]')) el.hidden = vt !== 'number';
+    };
+    const initParamForm = (tag) => {
+      const vt = (tag && tag.source && tag.source.valueType) || 'number';
+      ff('valueType').value = vt;
+      drawInitial(vt, tag && tag.source ? tag.source.initial : vt === 'number' ? 0 : undefined);
+      if (tag) {
+        ff('name').value = tag.name || '';
+        if (tag.unit) { if (![...ff('unit').options].some((o) => o.value === tag.unit)) ff('unit').add(new Option(tag.unit, tag.unit)); ff('unit').value = tag.unit; }
+        ff('min').value = tag.min ?? ''; ff('max').value = tag.max ?? '';
+        if (tag.decimals != null) ff('decimals').value = String(tag.decimals);
+        const v = data.values[tag.id];
+        formWrap.querySelector('[data-pnow]').textContent = showParamVal(v && v.v != null ? v.v : tag.value);
+      }
+      ff('valueType').addEventListener('change', () => drawInitial(ff('valueType').value, ff('valueType').value === 'number' ? 0 : undefined));
+      for (const k of ['id', 'name']) ff(k)?.addEventListener('input', (e) => { e.target.dataset.touched = '1'; });
+      (tag ? ff('name') : ff('id')).focus();
+    };
+    const paramBody = () => {
+      const vt = ff('valueType').value, isNum = vt === 'number', s = ff('initial').value;
+      const numOf = (k) => (ff(k).value.trim() === '' ? null : Number(ff(k).value));
+      const initial = vt === 'bool' ? s === 'true' : isNum ? (s.trim() === '' ? NaN : Number(s)) : s;
+      const min = isNum ? numOf('min') : null, max = isNum ? numOf('max') : null;
+      if (isNum && !Number.isFinite(initial)) throw new Error('초기값을 숫자로 입력하세요.');
+      if ((min != null && !Number.isFinite(min)) || (max != null && !Number.isFinite(max))) throw new Error('최소값·최대값은 숫자로 입력하세요.');
+      if (min != null && max != null && min > max) throw new Error('최소값이 최대값보다 큽니다.');
+      if (isNum && ((min != null && initial < min) || (max != null && initial > max))) throw new Error(`초기값이 범위(${min ?? '…'} ~ ${max ?? '…'}) 밖입니다.`);
+      return { kind: 'param', source: { valueType: vt, initial }, unit: isNum ? ff('unit').value || null : null, min, max,
+        decimals: isNum && ff('decimals').value !== '' ? Number(ff('decimals').value) : null };   // PUT은 전체 교체 — 항상 보낸다
+    };
+    const saveParam = async () => {
+      const tag = editing.tag;
+      const id = tag ? tag.id : ff('id').value.trim();
+      const name = ff('name').value.trim();
+      if (!tag && !ID_RE.test(id)) return formError('id는 영문·숫자·_·- 1~64자입니다.');
+      if (!tag && data.tags.some((t) => t.id === id)) return formError(`"${id}"은(는) 이미 있는 태그입니다.`);
+      if (!name) return formError('이름을 입력하세요.');
+      let body;
+      try { body = { name, ...paramBody() }; } catch (e) { return formError(e.message); }
+      formError('');
+      const btn = btns.querySelector('[data-k="save"]');
+      btn.disabled = true;
+      try {
+        const res = await apiFetch(tag ? `/api/hmi/tags/${encodeURIComponent(id)}` : '/api/hmi/tags', {
+          method: tag ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tag ? body : { id, ...body }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          btn.disabled = false;
+          return formError(res.status === 409 ? `"${id}"은(는) 이미 있는 태그입니다.`
+            : res.status === 401 || res.status === 403 ? '권한이 없습니다(Manager 이상).' : (err.error || `HTTP ${res.status}`));
+        }
+      } catch (e) {
+        btn.disabled = false;
+        return formError(e.message);
+      }
+      await afterChange(tag ? null : id);
+    };
+    // 현재 값을 초기값으로 — 저장된 초기값을 쓴다(폼에서 고치는 중인 값이 아니라)
+    const resetParam = async () => {
+      const tag = editing && editing.tag;
+      if (!tag || tag.kind !== 'param') return;
+      // 확인: 같은 단추를 한 번 더 눌러야 실행(창 안에 다른 대화상자를 띄울 수 없어서)
+      const btn = formWrap.querySelector('[data-k="param-reset"]');
+      if (btn.dataset.armed !== '1') {
+        btn.dataset.armed = '1'; btn.textContent = `한 번 더 누르면 ${showParamVal(tag.source.initial)}(으)로 되돌립니다`;
+        setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ''; btn.textContent = '초기값으로 되돌리기'; } }, 4000);
+        return;
+      }
+      btn.dataset.armed = ''; btn.textContent = '초기값으로 되돌리기';
+      try {
+        const res = await apiFetch('/api/hmi/write', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag: tag.id, value: tag.source.initial }) });
+        const r = await res.json().catch(() => ({}));
+        if (!res.ok) return formError(r.error || `HTTP ${res.status}`);
+        formError('');
+        formWrap.querySelector('[data-pnow]').textContent = showParamVal(r.value);
+      } catch (e) { formError(e.message); }
+    };
+
+    // kind: 새 태그에서 종류를 바꿀 때('register' | 'expr' | 'param'). keep: 종류를 바꿔도 남길 입력({ id, name })
     const showForm = (tag, kind, keep) => {
       clearTimeout(prevTimer);
-      editing = { tag, kind: tag ? (isCalc(tag) ? 'expr' : 'register') : kind || 'register' };
-      formWrap.innerHTML = editing.kind === 'expr' ? exprFormHtml(tag) : formHtml(tag, data, tag ? null : opts.deviceId);
+      editing = { tag, kind: tag ? (tag.kind === 'param' ? 'param' : isCalc(tag) ? 'expr' : 'register') : kind || 'register' };
+      formWrap.innerHTML = editing.kind === 'expr' ? exprFormHtml(tag) : editing.kind === 'param' ? paramFormHtml(tag) : formHtml(tag, data, tag ? null : opts.deviceId);
       d.querySelector('.tm').classList.add('editing');
       formWrap.hidden = false;
       drawButtons();
       if (keep) for (const k of ['id', 'name']) if (keep[k] && ff(k)) { ff(k).value = keep[k]; ff(k).dataset.touched = '1'; }
       if (editing.kind === 'expr') return initExprForm(tag);
+      if (editing.kind === 'param') return initParamForm(tag);
       if (tag) {
         ff('source').value = String(tag.source && tag.source.registerId);
         ff('name').value = tag.name || '';
@@ -926,6 +1037,7 @@
     const num = (k) => (ff(k).value.trim() === '' ? null : Number(ff(k).value));
     const save = async () => {
       if (editing.kind === 'expr') return saveExpr();
+      if (editing.kind === 'param') return saveParam();
       const tag = editing.tag;
       const registerId = Number(ff('source').value);
       const id = tag ? tag.id : ff('id').value.trim();
@@ -1252,6 +1364,7 @@
       }
       if (b.dataset.k === 'close') close();
       else if (b.dataset.k === 'reload') load();
+      else if (b.dataset.k === 'param-reset') resetParam();
       else if (b.dataset.k === 'check') runCheck();
       else if (b.dataset.k === 'new') { if (data) showForm(null); }
       else if (b.dataset.k === 'bulk') { if (data) showBulk(); }

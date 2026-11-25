@@ -121,7 +121,7 @@
     hasLimit: (v) => v != null && Number.isFinite(v) && Math.abs(v) < 1e15,
     digits: (scale) => (scale > 0 ? Math.max(0, -Math.round(Math.log10(scale))) : 0),
     isBool: (src) => !!src && BOOL_REGS.includes(src.registerType || src.type),
-    // 로직 태그(expr)·설정 태그(param) — 값이 원본이 아니라 서버가 준 value(hmi.md §5.2, §5.4)
+    // 로직 태그(expr)·설정값 태그(param) — 값이 원본이 아니라 서버가 준 value(hmi.md §5.2, §5.4)
     isCalc: (t) => !!t && !!t.kind && t.kind !== 'register',
     scaleOf: (t, src = t && t.source) => (t && t.scale) ?? (src && src.scale) ?? 1,
     // 원본 → 값. 값 없음(null — 통신 불량·2워드 이상 레지스터)은 null
@@ -144,6 +144,13 @@
       }
       return n < 0 ? n + 65536 : n;
     },
+    // 설정값 태그에 쓸 값 — 값 형식에 맞는 타입으로(숫자 / 참·거짓 / 글자). 맞출 수 없으면 오류
+    paramValue(v, t) {
+      const vt = t.source && t.source.valueType;
+      if (vt === 'bool') return !(v === false || v === 0 || v === '' || v === '0' || v === 'false' || v == null);
+      if (vt === 'number') { const n = typeof v === 'boolean' ? (v ? 1 : 0) : Number(v); if (v === '' || v == null || !Number.isFinite(n)) throw new Error(`${v}은(는) 숫자가 아닙니다`); return n; }
+      return String(v);
+    },
     // 태그가 실제로 쓰는 최소/최대·자릿수. 최소/최대가 비면 레지스터 값(레지스터 배율 기준)을 태그 배율로 환산.
     // source가 없는 태그(데모 데이터소스의 tags.json)는 태그 값 그대로.
     limits(t = {}, src = t.source) {
@@ -160,7 +167,7 @@
       for (const id in values) {
         const x = values[id];
         const t = tags[id];
-        // 계산·설정 태그는 value를 그대로 — 자릿수는 태그의 decimals(서버가 그 자릿수로 반올림해 준다),
+        // 계산·설정값 태그는 value를 그대로 — 자릿수는 태그의 decimals(서버가 그 자릿수로 반올림해 준다),
         // 지정하지 않았으면 소수가 있을 때 2자리까지. register 태그는 원본을 변환
         out[id] = x && 'value' in x
           ? { ...x, v: x.value, decimals: t && t.decimals != null ? t.decimals : typeof x.value === 'number' && !Number.isInteger(x.value) ? 2 : 0 }
@@ -188,11 +195,13 @@
       return RAW.decode((await res.json()).values || {}, this.tags);
     }
     async write(id, v) {
-      const raw = RAW.toRaw(v, this.tags[id]);
+      const t = this.tags[id];
+      // 설정값 태그(param)는 원본이 아니라 값으로 쓴다 — 서버가 타입을 엄격히 보므로 값 형식에 맞춰 보낸다
+      const body = t && t.kind === 'param' ? { tag: id, value: RAW.paramValue(v, t) } : { tag: id, raw: RAW.toRaw(v, t) };
       const res = await apiFetch('/api/hmi/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tag: id, raw }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         // 서버의 쓰기 범위 검사(422: min·max·value는 표시 값 기준, 제한 없는 쪽은 null), 읽기 전용·로직 태그(405)

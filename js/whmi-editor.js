@@ -79,6 +79,7 @@
   ];
   const NO_DEV = 'none';
   const CALC_DEV = 'calc';   // 태그 고르기에서 로직 태그 묶음
+  const PARAM_DEV = 'param'; // 태그 고르기에서 설정값 태그 묶음(쓰기 가능)
   const NO_TAG_TYPES = ['rect', 'screenlink', 'image'];     // 고정 위젯 — 값을 받지 않으므로 tag 칸 없음(동작 조건은 사용 가능)
   const WRITE_TYPES = ['input', 'button', 'switch', 'selector'];   // 쓰기 위젯 — 쓰기 태그(writeTag) 칸                    // 태그 고르기: 소스 장비를 모르는 태그 묶음
   const KEEP = '__keep__';                  // 태그 고르기: 다른 장비 태그가 연결된 상태(선택 전)              // 기본 애니메이션이 없는 위젯에서 "사용"을 켤 때 시간
@@ -1916,7 +1917,7 @@
         if (el.value === '__new__') {
           const dev = el.previousElementSibling.value;
           this.fillTagPicker(el, w.tag, true, dev);
-          window.WHMI.TagManager.open(this, { createFor: w.id, deviceId: dev === NO_DEV || dev === CALC_DEV ? null : Number(dev) });
+          window.WHMI.TagManager.open(this, { createFor: w.id, deviceId: dev === NO_DEV || dev === CALC_DEV || dev === PARAM_DEV ? null : Number(dev) });
           return;
         }
         if (el.value === KEEP) return;
@@ -2248,16 +2249,17 @@
       for (const t of Object.values(this.tags)) {
         const src = t.source || {};
         const key = this.tagDevKey(t);
-        if (!groups.has(key)) groups.set(key, { key, name: key === CALC_DEV ? '로직' : src.deviceDisplayName || src.deviceCode || '(장비 없음)', tags: [] });
+        if (!groups.has(key)) groups.set(key, { key, name: key === CALC_DEV ? '로직' : key === PARAM_DEV ? '설정값' : src.deviceDisplayName || src.deviceCode || '(장비 없음)', tags: [] });
         groups.get(key).tags.push(t);
       }
       for (const g of groups.values()) g.tags.sort((a, b) => a.id.localeCompare(b.id));
-      const rank = (g) => (g.key === NO_DEV ? 2 : g.key === CALC_DEV ? 1 : 0);   // 장비들 → 로직 태그 → (장비 없음)
+      const rank = (g) => (g.key === NO_DEV ? 3 : g.key === CALC_DEV ? 2 : g.key === PARAM_DEV ? 1 : 0);   // 장비들 → 설정 → 로직 → (장비 없음)
       return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'ko'));
     }
 
-    // 태그 고르기의 묶음 키 — 장비 id, 계산·설정 태그는 한 묶음, 소스가 끊긴 태그는 (장비 없음)
+    // 태그 고르기의 묶음 키 — 장비 id, 계산·설정값 태그는 한 묶음, 소스가 끊긴 태그는 (장비 없음)
     tagDevKey(t) {
+      if (t.kind === 'param') return PARAM_DEV;
       if (window.WHMI.raw.isCalc(t)) return CALC_DEV;
       return t.source && t.source.deviceId != null ? String(t.source.deviceId) : NO_DEV;
     }
