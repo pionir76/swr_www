@@ -26,6 +26,19 @@
 
 ---
 
+## 2026-11-25 — HMI 계산 태그 산술·집계 연산자 8개, 숫자 계산 태그 `decimals` (단계 C-2)
+
+`docs/backend-hmi-expr-arith-request.md` / `-response.md` 반영. 명세 §14.
+
+- **연산자 추가:** `add` `mul` `min` `max` `avg`(2개 이상), `sub` `div`(2개), `abs`(1개). 결과는 number입니다. 인수가 숫자로 읽히지 않거나, 0으로 나누거나, 결과가 유한하지 않으면 `bad`입니다. 인수 개수가 틀리면 저장할 때 422(`path` 포함)입니다.
+- **`decimals`(계산 태그 최상위, 정수 0–6 또는 `null`):** `valueType: "number"`일 때 최종 결과를 반올림합니다. `values`·`eval`·참조하는 계산 태그 모두 반올림된 값을 받습니다. `bool`·`string` 태그는 무시하고 `null`로 저장합니다. 범위 밖이면 422입니다. 태그 PUT은 전체 교체이므로 빼면 `null`이 됩니다.
+- **`POST /api/hmi/eval`:** 바디 최상위 `decimals`로 같은 반올림을 미리 볼 수 있습니다.
+- **내보내기·불러오기·백업:** 계산 태그에 `decimals`가 따라갑니다(값이 있을 때만 키가 있음). 불러오기에서 범위 밖이면 400입니다. 시스템 복원에서는 그 태그만 건너뛰고 경고를 남깁니다.
+- **한계(합의):** 지름길 계산이 없어서 `select(ne(B,0), div(A,B), 0)`은 B가 0이면 `bad`입니다.
+- 공통 시험 데이터 71건(산술 35건 포함)이 서버 PC 시험에서 모두 통과합니다. 기존 태그는 `decimals: null`이고 동작은 바뀌지 않습니다.
+
+---
+
 ## 2026-11-24 (2차) — 레지스터 PUT에서 `displayName`을 빼면 지금 값 유지 (형식 변경 없음)
 
 `docs/backend-register-put-displayname-request.md` 반영.

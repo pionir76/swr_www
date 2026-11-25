@@ -1454,6 +1454,7 @@ Content-Type: `application/octet-stream`
     "expr": { "op": "bitAny", "args": [ { "tag": "NOW_STS" }, { "value": [0] } ] }
   },
   "unit": null,
+  "decimals": null,
   "min": null, "max": null, "scale": null,
   "access": "r",
   "missingRefs": [],
@@ -1467,6 +1468,7 @@ Content-Type: `application/octet-stream`
 | `source.valueType` | `bool` / `number` / `string`. 필수. 결과를 이 타입으로 바꿔 내보냄 |
 | `source.expr` | 식(AST). 필수 |
 | `unit` | 선택. 숫자 결과에 붙일 단위 |
+| `decimals` | 선택. 정수 0–6 또는 `null`. `valueType`이 `number`일 때만 씀: 식의 **최종 결과**를 이 자릿수로 반올림(중간 계산은 그대로). `null`이면 반올림 안 함. `bool`·`string` 태그는 무시하고 `null`로 저장·응답(범위 검사도 안 함). register 태그에는 없음 |
 | `min` / `max` / `scale` / `access` | 쓰지 않음. 요청에 있어도 무시, 응답은 `null`(`access`는 `"r"`) |
 | `missingRefs` | **응답 전용.** 식이 참조하는데 지금 없는 태그 id(정렬). 없으면 `[]` |
 
@@ -1486,14 +1488,23 @@ Content-Type: `application/octet-stream`
 | `bitAny` / `bitNone` | `[a, { "value": [비트…] }]` | bool | a를 정수로 자른 뒤 비트 하나라도 1 / 모두 0. 비트 목록은 **상수 배열**, 0–15. 빈 목록은 거짓 |
 | `and` `or` | 2개 이상 | bool | 인수를 참/거짓으로 읽음 |
 | `not` | 1개 | bool | |
-| `select` | `[조건, 값, 조건, 값, …, 기본값]` 홀수 개, 3개 이상 | 값 | 처음 참인 조건의 값, 없으면 기본값 |
+| `select` | `[조건, 값, 조건, 값, …, 기본값]` 홀수 개, 3개 이상 | 값 | 처음 참인 조건의 값, 없으면 기본값. 조건·값·기본값 자리 모두 상수·태그·연산이 올 수 있음 |
+| `add` | 2개 이상 | number | 모두 더함 |
+| `sub` | `[a, b]` | number | a − b |
+| `mul` | 2개 이상 | number | 모두 곱함 |
+| `div` | `[a, b]` | number | a ÷ b. b가 0이면 `bad` |
+| `min` `max` | 2개 이상 | number | 가장 작은 / 큰 값 |
+| `avg` | 2개 이상 | number | 합 ÷ 개수 |
+| `abs` | 1개 | number | 절댓값 |
 
 - **숫자로 읽기:** 참/거짓은 1/0, 숫자 모양 글자(앞뒤 공백 무시)는 숫자, 그 밖은 숫자 아님
 - **참/거짓으로 읽기:** 숫자 0, `false`, 빈 글자, 글자 `"0"`·`"false"`는 거짓, 나머지는 참
 - **태그 참조의 값:** register 태그는 표시 값(원본 → 부호 해석 × 배율, 배율 자릿수로 반올림. 코일·접점은 0/1), expr 태그는 그 결과
-- **지름길 계산 없음:** 모든 인수를 계산합니다. `or`의 한쪽이 참이어도 다른 쪽이 `bad`면 결과는 `bad`
+- **산술(`add`~`abs`):** 인수를 숫자로 읽습니다. 하나라도 숫자로 읽히지 않거나(`null` 포함) 결과가 유한한 수가 아니면(0으로 나눔, 넘침) `bad`. 배정밀도 실수로 계산하고 중간에 반올림하지 않습니다(`24.72 − 12.45` → `12.269999999999998`, 자릿수는 `decimals`로)
+- **지름길 계산 없음:** 모든 인수를 계산합니다. `or`의 한쪽이 참이어도 다른 쪽이 `bad`면 결과는 `bad`. `select`도 마찬가지라서 `select(ne(B,0), div(A,B), 0)`은 B가 0이면 `bad`입니다(고르지 않은 가지도 계산)
 - **품질:** 참조한 태그(이어 쓴 계산 태그 포함) 중 하나라도 `bad`/`disabled`면 `bad`, `normal`이 섞이면 `normal`, 아니면 `good`. 없는 태그, register 태그의 `raw`가 `null`이면 `bad`. `bad`일 때 `value`는 `null`
 - **`valueType` 변환:** `bool`은 참/거짓으로, `number`는 숫자로(숫자로 읽히지 않으면 `bad`), `string`은 JavaScript `String()`과 같은 글자로
+- **`decimals` 반올림:** register 태그 배율 자릿수와 같은 방식(JavaScript `Number(x.toFixed(n))`과 같음). 정확히 절반은 0에서 먼 쪽(12.5 → 13, 0.125 → 0.13). 실수 표현 때문에 1.005는 1.00499…라서 1.00. `-0`은 `0`. 다른 계산 태그가 참조하면 반올림된 값을 받습니다
 - **한도(저장할 때 검사):** 식 하나의 노드 64개, 식 하나가 참조하는 태그 32개, 계산 태그 → 계산 태그 참조 깊이 8단, 순환 참조 금지
 - 공통 시험 데이터: `referencs/hmi-testdata-convert.json`, `referencs/hmi-testdata-expr.json`(서버 시험도 같은 파일을 씀)
 
@@ -1535,6 +1546,7 @@ Content-Type: `application/octet-stream`
   "unit": ""
 }
 ```
+숫자 계산 태그는 `"decimals": 1`처럼 자릿수를 줄 수 있습니다(없으면 `null`).
 
 **응답** 201: 생성된 HmiTag 객체  
 **에러** 400: 유효하지 않은 id 형식 / registerId 없음 / access 값 오류 / scale 값 오류 / `kind`가 `register`·`expr`가 아님 / `source.valueType` 오류 / `source.expr` 없음  
@@ -1545,7 +1557,7 @@ Content-Type: `application/octet-stream`
 { "error": "tag not found: NOPE", "path": "args[1].args[0]" }
 { "error": "circular reference: CAN_START → RUNNING → CAN_START", "path": "" }
 ```
-422가 되는 경우: 모르는 연산자, 인수 개수, 노드 모양, 비트 목록, 없는 태그 참조, 순환 참조, 노드·참조·깊이 한도, 태그 수 1,000개 초과(`{ "error": ..., "maxTags": 1000 }`, `path` 없음)
+422가 되는 경우: 모르는 연산자, 인수 개수, 노드 모양, 비트 목록, 없는 태그 참조, 순환 참조, 노드·참조·깊이 한도, 태그 수 1,000개 초과(`{ "error": ..., "maxTags": 1000 }`, `path` 없음), 숫자 계산 태그의 `decimals`가 정수 0–6·`null`이 아님(`path` 없음)
 
 ### GET /api/hmi/tags/{id}
 권한: `Any`
@@ -1556,7 +1568,7 @@ Content-Type: `application/octet-stream`
 ### PUT /api/hmi/tags/{id}
 권한: `ManagerOrAbove`
 
-요청 바디: POST와 동일 (`id`는 URL에서 받음). `kind`를 생략하면 지금 종류 그대로
+요청 바디: POST와 동일 (`id`는 URL에서 받음). `kind`를 생략하면 지금 종류 그대로. **전체 교체**라서 빠진 선택 필드(`unit`, `decimals` 등)는 비워집니다. 계산 태그의 `decimals`를 유지하려면 항상 보내세요
 
 **응답** 200: 수정된 HmiTag 객체  
 **에러** 400: POST와 같음 / **`kind` 변경 시도**(만든 뒤 바꿀 수 없음)  
@@ -1656,6 +1668,7 @@ Content-Type: `application/octet-stream`
 ```
 
 - `valueType`, `expr` 필수. `expr`은 저장할 때와 같은 검증을 합니다(없는 태그 참조는 422가 아니라 결과 `bad` + `missingRefs`)
+- `decimals`(선택, 정수 0–6 또는 `null`): `valueType`이 `number`일 때 결과를 저장된 태그와 같은 방식으로 반올림합니다(저장 전 미리보기용). 다른 `valueType`에서는 무시
 - `inputs`(선택): 준 태그는 그 값으로, 주지 않은 태그는 현재 값으로 계산합니다. register 태그는 `raw`(정수 0–65535 또는 `null`), 계산 태그는 `value`(숫자·글자·true/false·`null`). `q`(`good`/`normal`/`bad`/`disabled`)를 함께 주면 그 품질, 없으면 `good`. 이 장치에 없는 태그 id는 무시합니다
 
 **응답** 200:
@@ -1675,7 +1688,7 @@ Content-Type: `application/octet-stream`
 - `missingRefs`: 참조했는데 없는 태그 id(`inputs`에도 `{ "value": null, "q": "bad" }`로 나옴)
 
 **에러** 400: JSON 아님 / `valueType` 오류 / `expr` 없음 / `inputs` 형식 오류(register 태그에 `raw` 없음 등)  
-**에러** 422: 식 검증 실패(`path` 포함, 태그 저장과 같은 형식)
+**에러** 422: 식 검증 실패(`path` 포함, 태그 저장과 같은 형식) / `number`인데 `decimals`가 정수 0–6·`null`이 아님(`path` 없음)
 
 ---
 
@@ -1817,7 +1830,7 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
 ```
 
 - `hmi`는 시스템 백업의 `hmi.json`과 같은 내용입니다. register 태그는 `unifiedAddress`로 레지스터를 가리킵니다. 값이 없는(상속하는) `scale`·`unit`·`minValue`·`maxValue`·`access`는 키가 없습니다.
-- 계산 태그는 `kind: "expr"`, `valueType`, `expr`, (있으면) `unit`을 가집니다. `schemaVersion`은 1 그대로입니다. 계산 태그 이전 펌웨어는 이 태그를 `unifiedAddress`가 없다고 보고 건너뜁니다.
+- 계산 태그는 `kind: "expr"`, `valueType`, `expr`, (있으면) `unit`·`decimals`를 가집니다(`decimals`는 숫자 계산 태그에 값이 있을 때만 키가 있음). `schemaVersion`은 1 그대로입니다. 계산 태그 이전 펌웨어는 이 태그를 `unifiedAddress`가 없다고 보고 건너뜁니다.
 - `kind`가 없는 태그는 register 태그로 읽습니다. 이 장치가 모르는 `kind`(예: `param`)는 건너뛰고 경고에 넣습니다.
 - 불러오기는 **머리 없는 시스템 백업 `hmi.json`**도 받습니다(`format`이 없고 `project`·`screens`·`tags` 중 하나가 있으면).
 - 예전 파일: 태그 `decimals`는 무시하고, `scale`이 없거나 허용 값이 아니면 상속합니다. `pollMs`가 없으면 1000입니다.
@@ -1856,7 +1869,7 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
 
 | 상태 | 경우 |
 |---|---|
-| 400 | JSON 객체가 아님 / `format`이 `swr.hmi`가 아님 / `schemaVersion` > 1 / HMI 파일이 아님 / `project`·`screens`·`tags` 형식 오류 / 화면·태그 id 규칙(영문·숫자·`_`·`-` 1–64자) 위반 또는 중복 / 화면 `title` 64자 초과 / 화면 `content.format`이 `whmi.screen`이 아님 / 태그 `access`가 `r`·`rw`가 아님 / `pollMs`가 정수 500–10000이 아님 / 계산 태그의 `valueType`·`expr` 오류(`"tag 'X': ... (at 'args[0]')"`) / 계산 태그 순환 참조·깊이 초과(**파일 전체 거부**) / 태그 1,000개 초과 |
+| 400 | JSON 객체가 아님 / `format`이 `swr.hmi`가 아님 / `schemaVersion` > 1 / HMI 파일이 아님 / `project`·`screens`·`tags` 형식 오류 / 화면·태그 id 규칙(영문·숫자·`_`·`-` 1–64자) 위반 또는 중복 / 화면 `title` 64자 초과 / 화면 `content.format`이 `whmi.screen`이 아님 / 태그 `access`가 `r`·`rw`가 아님 / `pollMs`가 정수 500–10000이 아님 / 계산 태그의 `valueType`·`expr` 오류(`"tag 'X': ... (at 'args[0]')"`) / 숫자 계산 태그의 `decimals`가 정수 0–6이 아님 / 계산 태그 순환 참조·깊이 초과(**파일 전체 거부**) / 태그 1,000개 초과 |
 | 413 | 화면 하나의 `content`가 256KB 초과 |
 | 409 | 화면 수 > `hmi.maxScreens` (`{ "error": "too many screens: 51 (maxScreens 50)", "maxScreens": 50 }`) |
 
