@@ -106,6 +106,7 @@
     try {
       if (!window.WHMI.Editor) {
         await loadScript('./js/whmi-schema.js');   // 위젯 속성 정의(속성 창 폼)
+        await loadScript('./components/color-picker/color-picker.js');   // 색 선택 창(공통 부품)
         await loadScript('./js/whmi-expr.js');     // 계산 태그 조건 빌더(태그 관리가 사용)
         await loadScript('./js/whmi-tags.js');     // HMI 태그 관리 대화상자
         await loadScript('./js/whmi-editor.js');

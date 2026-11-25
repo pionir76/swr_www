@@ -10,6 +10,8 @@ login.html
 main.js
 config.js
 style.css
+components/            # 독립 UI 부품(폴더째 다른 프로젝트에서 쓸 수 있게) — components/README.md
+  color-picker/        # 색 선택 창: color-picker.js, color-picker.css, README.md
 css/
   login.css
   dashboard.css

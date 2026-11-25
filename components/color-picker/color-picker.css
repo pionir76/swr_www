@@ -1,0 +1,34 @@
+/* 색 선택 창(color-picker.js) — 색을 바꾸려면 .cpk의 변수만 고치면 된다 */
+.cpk {
+  --cpk-bg: #1b212b;        /* 창 바탕 */
+  --cpk-head: #222a35;      /* 제목 줄 */
+  --cpk-line: #2e3846;      /* 테두리 */
+  --cpk-field: #0f1826;     /* 입력 칸 바탕 */
+  --cpk-text: #e6e9ef;
+  --cpk-dim: #8a93a3;
+  --cpk-accent: #2d6cdf;    /* 확인 버튼 */
+  font-family: inherit;
+}
+.cpk { position: fixed; z-index: 100000; width: 248px; box-sizing: border-box; padding: 12px; border-radius: 10px; background: var(--cpk-bg); border: 1px solid var(--cpk-line); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55); user-select: none; }
+.cpk-sv { position: relative; height: 150px; border-radius: 7px; cursor: crosshair; touch-action: none; }
+.cpk-dot { position: absolute; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); transform: translate(-50%, -50%); pointer-events: none; }
+.cpk-bar { position: relative; height: 14px; margin-top: 12px; border-radius: 7px; cursor: pointer; touch-action: none; }
+.cpk-hue { background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.cpk-chk { background: repeating-conic-gradient(#c8ced8 0 25%, #f4f6f9 0 50%) 0 0 / 10px 10px; }
+.cpk-alpha { position: absolute; inset: 0; border-radius: 7px; }
+.cpk-knob { position: absolute; top: 50%; width: 8px; height: 18px; border-radius: 4px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); transform: translate(-50%, -50%); pointer-events: none; }
+.cpk-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.cpk-sw { position: relative; flex: 0 0 34px; width: 34px; height: 30px; border-radius: 6px; border: 1px solid var(--cpk-line); overflow: hidden; }
+.cpk-sw i { position: absolute; inset: 0; }
+.cpk input { box-sizing: border-box; min-width: 0; height: 30px; border-radius: 6px; border: 1px solid var(--cpk-line); background: var(--cpk-field); color: var(--cpk-text); user-select: text; }
+.cpk input:focus { outline: none; border-color: #3fa7ff; }
+.cpk-hex { flex: 1; padding: 0 9px; font: 13px "Consolas", "D2Coding", ui-monospace, monospace; text-transform: uppercase; }
+.cpk-nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.cpk-nums.no-a { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cpk-nums label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--cpk-dim); text-align: center; }
+.cpk-nums input { width: 100%; height: 28px; padding: 0; font-size: 12.5px; text-align: center; }
+.cpk-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--cpk-line); }
+.cpk-btns button { height: 28px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--cpk-line); background: #2a313c; color: var(--cpk-text); font-size: 12.5px; cursor: pointer; }
+.cpk-btns button.primary { background: var(--cpk-accent); border-color: var(--cpk-accent); }
+.cpk-head { margin: -12px -12px 10px; padding: 7px 12px; border-radius: 10px 10px 0 0; border-bottom: 1px solid var(--cpk-line); background: var(--cpk-head); color: #b3c0d1; font-size: 12px; font-weight: 700; cursor: move; touch-action: none; }
+.cpk.moving, .cpk.moving * { cursor: move !important; }

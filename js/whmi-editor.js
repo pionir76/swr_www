@@ -63,7 +63,7 @@
   const MAX_SCREEN_BYTES = 256 * 1024;      // 서버 화면 content 상한(413)
   const ANIM_DEFAULT_MS = 400;
   const MIXED = '__mixed__';                // 여러 개 선택에서 값이 서로 다른 선택 상자의 표시 항목
-  const MULTI_SKIP = ['list', 'cond', 'image', 'bits'];   // 여러 개 동시 편집에서 빼는 필드(하나씩 편집)
+  const MULTI_SKIP = ['image', 'bits'];   // 여러 개 동시 편집에서 빼는 필드(하나씩 편집). 동작 조건·목록은 2026-11-25부터 함께 편집
   const IMAGE_MAX_BYTES = 150 * 1024;       // 이미지 위젯: 화면 데이터에 넣는 그림 상한(data URL 길이) — 넘으면 자동으로 더 줄임
   const IMAGE_MAX_SIDE = 1024;              // 이미지 위젯: 긴 변 최대 픽셀
   const TAG_LABEL_PX = 10;                  // 태그 보기 글자 크기(실제 픽셀, 10pt 이하)
@@ -184,8 +184,12 @@
   const bitList = (v) => (v == null ? [] : [].concat(v).map(Number).filter((n) => Number.isInteger(n) && n >= 0));
   // 색 + 투명도: 투명도 100%면 #rrggbb(기존 데이터 그대로), 미만이면 #rrggbbaa
   const splitColor = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v)
-    ? { rgb: v.slice(0, 7).toLowerCase(), a: v.length === 9 ? Math.round(parseInt(v.slice(7), 16) / 2.55) : 100 } : null);
-  const joinColor = (rgb, a) => (a >= 100 ? rgb : rgb + Math.round(Math.max(0, a) * 2.55).toString(16).padStart(2, '0'));
+    ? { rgb: v.slice(0, 7).toLowerCase(), a: v.length === 9 ? Math.round((parseInt(v.slice(7), 16) * 100) / 255) : 100 } : null);
+  // 화면에 보이는 색 값은 항상 대문자 8자리(#RRGGBBAA). 저장은 joinColor 형식 그대로
+  const showColor = (v) => { const c = splitColor(v); return c ? (c.rgb + Math.round((c.a * 255) / 100).toString(16).padStart(2, '0')).toUpperCase() : (v == null ? '' : String(v)); };
+  // 색 견본 버튼 — 누르면 색 선택 창. value에 지금 색을 들고 있다(목록·화면 배경은 이 값을 그대로 읽는다)
+  const swatchBtn = (attrs, v) => `<span class="ed-swatch"><button type="button" class="ed-sw-btn" ${attrs} value="${esc(v || '')}" title="색 고르기"><i style="background:${esc(v || 'transparent')}"></i></button></span>`;
+  const joinColor = (rgb, a) => (a >= 100 ? rgb : rgb + Math.round((Math.max(0, a) * 255) / 100).toString(16).padStart(2, '0'));
   const VIEW_KEY = 'whmi.editorView';   // 보기 메뉴 설정(브라우저별)
   const loadView = () => {
     try { return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
@@ -398,6 +402,25 @@
         const el = e.target;
         if (el.type === 'number' && e.offsetX > el.clientWidth - 20) fillDefault(el);   // 오른쪽 ▲▼ 버튼
       });
+      // 마우스 휠: 포커스가 있는 숫자 칸만(그냥 지나가며 굴릴 때는 속성 창이 스크롤되어야 한다).
+      // 브라우저 기본 동작에 맡기면 빈 칸(기본값 상태)이 최소값부터 시작하고 칸을 떠나야 반영되므로 직접 처리한다 —
+      // 기본값부터 한 칸씩 움직이고, 굴리는 동안 바로 위젯에 반영(연속으로 굴린 것은 실행 취소 한 단계).
+      this.inspector.addEventListener('wheel', (e) => {
+        const el = e.target;
+        const geo = ['x', 'y', 'w', 'h'].includes(el.dataset.f);   // 위치·크기 칸도 같은 방식
+        if (el.type !== 'number' || (!el.dataset.p && !geo) || el.disabled || document.activeElement !== el || !e.deltaY) return;
+        e.preventDefault();
+        fillDefault(el);
+        const cur = Number(el.value);
+        if (el.value === '' || !Number.isFinite(cur)) return;
+        const step = Number(el.step) > 0 ? Number(el.step) : 1;
+        const digits = (String(step).split('.')[1] || '').length;
+        let n = cur + (e.deltaY < 0 ? step : -step);
+        if (el.min !== '') n = Math.max(Number(el.min), n);
+        if (el.max !== '') n = Math.min(Number(el.max), n);
+        el.value = String(Number(n.toFixed(digits)));
+        if (geo) this.onFieldChange(el, true); else this.onPropChange(el, true);
+      }, { passive: false });
       this.inspector.addEventListener('focusout', (e) => {
         const el = e.target;
         if (el.dataset.filled === undefined) return;
@@ -407,6 +430,11 @@
       // 속성 그룹 접힘 상태는 위젯을 바꿔도 유지 — 사용자가 제목을 눌러 바꾼 것만 기억한다
       // (그릴 때 open 속성으로 생기는 toggle 이벤트까지 기억하면, 조건 있는 위젯에서 자동으로 펼친
       // "동작 조건" 그룹이 다른 위젯에서도 계속 펼쳐진다)
+      // 색 견본을 누르면 색 선택 창을 연다(다시 누르면 닫힘)
+      this.inspector.addEventListener('click', (e) => {
+        const btn = e.target.closest('.ed-sw-btn[data-cpick]');
+        if (btn) this.openColorPicker(btn);
+      });
       this.inspector.addEventListener('click', (e) => {
         const sm = e.target.closest('details[data-g] > summary');
         if (!sm) return;
@@ -1695,14 +1723,14 @@
     }
 
     // 위치만 바뀐 위젯은 transform만, 크기가 바뀐 위젯은 다시 그린다
-    applyGeometry(before, handle) {
+    applyGeometry(before, handle, mergeKey) {
       for (const w of this.selected()) {
         const b = before.get(w.id);
         if (b.w !== w.w || b.h !== w.h) { this.redrawOne(w); this.fitBox(w, handle); }
         else if (b.x !== w.x || b.y !== w.y) this.nodes.get(w.id).g.setAttribute('transform', `translate(${w.x},${w.y})`);
       }
       this.drawSelection();
-      this.commit();
+      this.commit(mergeKey);
     }
 
     // 바운딩 박스는 항상 내용을 감싼다 — 그린 내용(WHMI.contentBox)이 상자 밖으로 나가면 상자를
@@ -1864,7 +1892,8 @@
       if (el) el.textContent = text || '';
     }
 
-    onFieldChange(el) {
+    // live: 휠로 굴리는 중 — 연속 변경을 실행 취소 한 단계로 묶는다
+    onFieldChange(el, live) {
       const w = this.selected()[0];
       if (!w || this.sel.size !== 1) return;
       const f = el.dataset.f;
@@ -1904,7 +1933,7 @@
       if (ar && f === 'w') w.h = Math.max(MIN_SIZE, Math.round(w.w / ar));
       if (ar && f === 'h') w.w = Math.max(MIN_SIZE, Math.round(w.h * ar));
       el.value = w[f];
-      this.applyGeometry(before, 'se');   // w/h 입력은 왼쪽 위 고정
+      this.applyGeometry(before, 'se', live ? `geo:${w.id}:${f}` : undefined);   // w/h 입력은 왼쪽 위 고정
     }
 
     renameWidget(w, id, el) {
@@ -1965,14 +1994,15 @@
         switch (f.type) {
           case 'num': case 'optnum': return `<input type="number" data-p="${k}"${lim}>`;
           case 'color': case 'optcolor':
-            return `<span class="ed-color"><span class="ed-swatch"><input type="color" data-p="${k}"></span>` +
-              `<input type="text" data-p="${k}" data-pct spellcheck="false">` +
-              `<input type="number" class="ed-alpha" data-p="${k}" data-alpha min="0" max="100" step="5" title="투명도(%) — 100이 불투명"><span class="ed-alpha-unit">%</span></span>`;
+            // 견본을 누르면 색 선택 창(components/color-picker: 색·투명도). 값 칸은 항상 8자리(#RRGGBBAA)로 보여 준다
+            return `<span class="ed-color">${swatchBtn(`data-cpick="p" data-p="${k}"`, '')}` +
+              `<input type="text" data-p="${k}" data-pct spellcheck="false" maxlength="9"></span>`;
           case 'bool': return `<input type="checkbox" data-p="${k}">`;
           case 'select': return `<select data-p="${k}">${f.options.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select>`;
           case 'screen': return `<select data-p="${k}"><option value="">(선택 안 함)</option>${screens}</select>`;
           case 'list':
-            return `<div class="ed-list" data-list="${k}"></div><button class="ed-list-add" type="button" data-list-add="${k}">+ 추가</button>`;
+            return `<div class="ed-list-mixed" hidden>위젯마다 다릅니다 — 고치면 고른 위젯이 모두 아래 목록으로 같아집니다</div>` +
+              `<div class="ed-list" data-list="${k}"></div><button class="ed-list-add" type="button" data-list-add="${k}">+ 추가</button>`;
           case 'bits':
             return `<div class="ed-bits" data-bits="${k}">${Array.from({ length: 16 }, (_, i) => `<button type="button" data-bit="${i}">${i}</button>`).join('')}</div>` +
               '<div class="ed-bits-sum"></div>';
@@ -2042,7 +2072,7 @@
         box.classList.toggle('is-set', set);
         box.classList.toggle('is-mixed', mixed);
         if (f.type === 'cond') {
-          this.syncCond(box, f, ws[0]);
+          this.syncCond(box, f, ws);
           continue;
         }
         if (f.type === 'bits') {
@@ -2081,20 +2111,20 @@
           // 입력 중인 목록은 다시 그리지 않음(포커스·커서 유지)
           const listEl = box.querySelector('[data-list]');
           if (!(listEl.contains(active) && active.tagName === 'INPUT')) listEl.innerHTML = this.listRowsHtml(f, (set ? cur : def) || [], items[0].eff);
+          box.querySelector('.ed-list-mixed').hidden = !mixed;
           continue;
         }
         for (const el of box.querySelectorAll('[data-p]')) {
           if (el === active && isTyping(el)) continue;   // 체크 상자는 포커스가 있어도 갱신(실행 취소 반영)
           if (f.type === 'bool') { el.checked = !mixed && !!(set ? cur : def); el.indeterminate = mixed; }
-          else if (el.type === 'color') {
-            const c = splitColor(set ? cur : def);
-            el.value = c ? c.rgb : '#000000';
-            el.style.opacity = c ? c.a / 100 : 1;   // 체크무늬 위에 투명도만큼 비쳐 보이게
-          } else if (el.dataset.alpha !== undefined) {
-            const as = items.map((it) => (splitColor(it.eff[f.key]) || { a: 100 }).a);
-            const c = splitColor(set ? cur : def);
-            el.value = as.some((a) => a !== as[0]) ? '' : set && c && c.a < 100 ? c.a : '';
-            el.placeholder = as.some((a) => a !== as[0]) ? '여러 값' : String(c ? c.a : 100);
+          else if (el.dataset.cpick !== undefined) {
+            // 색 견본: 체크무늬 위에 지금 색(투명도 포함)을 칠한다. 색 선택 창이 시작할 값도 여기에
+            const c = (set ? cur : def) || '';
+            el.value = splitColor(c) ? c : '';
+            el.firstElementChild.style.background = splitColor(c) ? c : 'transparent';
+          } else if ((f.type === 'color' || f.type === 'optcolor') && !mixed) {
+            el.value = set ? showColor(cur) : '';
+            el.placeholder = def != null && def !== '' ? showColor(def) : f.placeholder || '';
           }
           else if (f.type === 'select' || f.type === 'screen') {
             // 값이 섞이면 고를 수 없는 "(여러 값)" 항목을 잠시 넣어 보여 준다
@@ -2116,6 +2146,49 @@
       // 그룹 안 필드가 모두 숨으면 그룹도 숨김
       this.inspector.querySelectorAll('.ed-group[data-g]').forEach((g) => {
         g.hidden = ![...g.querySelectorAll('.ed-pf')].some((b) => !b.hidden);
+      });
+    }
+
+    // ---- 색 선택 창 ---------------------------------------------------------
+    // 견본 버튼 종류(data-cpick): p 위젯 속성 / l 목록 안의 색 / s 화면 배경색(투명도 없음)
+    // 끄는 동안 바로 반영(미리보기)하고, 화면 배경색은 놓았을 때 반영한다.
+    // 닫을 때: 확인이면 창을 연 동안 바꾼 것을 실행 취소 한 단계로 묶고, 취소면 열기 전 상태로 되돌린다(이력에도 안 남김)
+    openColorPicker(btn) {
+      const CP = window.ColorPicker;
+      if (!CP) return;
+      if (CP.isOpenFor(btn)) { CP.close(true); return; }
+      const snap = this.current, pastLen = this.past.length;
+      const kind = btn.dataset.cpick;
+      const paintBtn = (v) => { btn.value = v; btn.firstElementChild.style.background = v; };
+      let start = btn.value;
+      if (kind === 'p' && !start) {   // 여러 값이 섞였거나 색이 없는 칸 — 검정에서 시작
+        start = '#000000';
+      }
+      CP.open(btn, {
+        value: start,
+        alpha: kind !== 's',
+        onInput: (v) => {
+          paintBtn(v);
+          if (kind === 'p') {
+            const text = btn.closest('.ed-color').querySelector('input[data-pct]');
+            text.value = showColor(v);
+            this.onPropChange(text, true);
+          } else if (kind === 'l') this.onListChange(btn.closest('[data-list]'), true);
+        },
+        onChange: (v) => {
+          if (kind !== 's') return;
+          paintBtn(v);
+          this.onScreenField(btn);
+        },
+        onClose: (ok) => {
+          if (this.current === snap || this.past.length < pastLen) return;   // 바꾼 것이 없거나, 그 사이 다른 실행 취소가 있었음
+          this.past.length = pastLen;        // 창을 연 동안 쌓인 단계는 버린다
+          this.lastMerge = null;
+          if (ok) { this.past.push(snap); this.updateToolbar(); return; }   // 확인: 한 단계로
+          this.current = snap;               // 취소: 열기 전 상태로
+          this.future = [];
+          this.restore();
+        },
       });
     }
 
@@ -2227,17 +2300,31 @@
 
     // ---- 동작 조건(위젯 필드 visibleWhen / enableWhen / activeWhen) ----------------------
     // 조건 하나 = 태그 + 비교. 판정은 런타임·미리보기 모두 판정 엔진(WHMI.rules)이 한다.
-    syncCond(box, f, w) {
+    // ws: 고른 위젯들(같은 종류). 조건이 서로 다르면 "(여러 값)"으로 보이고, 바꾸면 전부 같은 조건이 된다
+    syncCond(box, f, ws) {
       const R = window.WHMI.rules;
-      const c = R.normalize(w[f.key]);
+      const cs = ws.map((x) => R.normalize(x[f.key]));
+      const c = cs[0];
+      const mixed = cs.some((x) => JSON.stringify(x) !== JSON.stringify(c));
       const el = box.querySelector('.ed-cond');
       const q = (sel) => el.querySelector(sel);
       const active = document.activeElement;
-      box.querySelector('.ed-reset').hidden = !c;
-      box.classList.toggle('is-set', !!c);
-      q('[data-cm]').value = c ? 'on' : '';
-      q('.ed-cond-body').hidden = !c;
+      box.querySelector('.ed-reset').hidden = !cs.some(Boolean);
+      box.classList.toggle('is-set', cs.some(Boolean));
+      box.classList.toggle('is-mixed', mixed);
+      const cm = q('[data-cm]');
+      let mx = cm.querySelector(`option[value="${MIXED}"]`);
+      if (mixed && !mx) { mx = new Option('(여러 값)', MIXED); mx.disabled = true; cm.add(mx, 0); }
+      if (!mixed && mx) mx.remove();
       const sum = q('.ed-cond-sum');
+      if (mixed) {
+        cm.value = MIXED;
+        q('.ed-cond-body').hidden = true;
+        sum.textContent = '위젯마다 다릅니다 — 바꾸면 고른 위젯이 모두 같아집니다';
+        return;
+      }
+      cm.value = c ? 'on' : '';
+      q('.ed-cond-body').hidden = !c;
       if (!c) { sum.textContent = ''; return; }
       if (q('[data-ct]') !== active) this.fillTagPicker(q('[data-ct]'), c.tag || null, 'cond');
       q('[data-ctest]').value = c.test;
@@ -2257,13 +2344,16 @@
     }
 
     onCondChange(el) {
-      const w = this.selected()[0];
+      const ws = this.propTargets();   // 같은 종류 여러 개면 전부에 같은 조건
+      const w = ws && ws[0];
       if (!w || !el) return;
       const R = window.WHMI.rules;
       const key = el.dataset.cond;
       const q = (sel) => el.querySelector(sel);
-      if (!q('[data-cm]').value) { this.setCond(w, key, undefined); return; }
-      const prev = R.normalize(w[key]);
+      if (q('[data-cm]').value === MIXED) return;
+      if (!q('[data-cm]').value) { this.setCond(ws, key, undefined); return; }
+      // 기준 조건: 조건이 있는 첫 위젯(서로 달랐다면 그 조건에서 시작해 모두 같아진다)
+      const prev = ws.map((x) => R.normalize(x[key])).find(Boolean) || null;
       // 태그: 고른 것 → 이전 조건 → 위젯 자기 태그 → 지금 장비의 첫 태그(조건은 태그가 있어야 판정되므로 바로 채움)
       let tag = q('[data-ct]').value;
       if (!tag || tag === KEEP) {
@@ -2283,11 +2373,12 @@
       } else {
         c.bits = prev && prev.test.startsWith('bit') ? R.bitList(prev.bits) : [];
       }
-      this.setCond(w, key, c);
+      this.setCond(ws, key, c);
     }
 
     toggleCondBit(el, n) {
-      const w = this.selected()[0];
+      const ws = this.propTargets();
+      const w = ws && ws[0];
       if (!w || !el) return;
       const R = window.WHMI.rules;
       const key = el.dataset.cond;
@@ -2295,13 +2386,15 @@
       if (!c || !c.test.startsWith('bit')) return;
       const bits = R.bitList(c.bits);
       const next = (bits.includes(n) ? bits.filter((x) => x !== n) : bits.concat(n)).sort((a, b) => a - b);
-      this.setCond(w, key, { ...c, bits: next });
+      this.setCond(ws, key, { ...c, bits: next });
     }
 
-    setCond(w, key, c) {
-      if (c) w[key] = c; else delete w[key];
-      this.canonical(w);
-      this.redrawOne(w);
+    setCond(target, key, c) {
+      for (const w of Array.isArray(target) ? target : [target]) {
+        if (c) w[key] = clone(c); else delete w[key];
+        this.canonical(w);
+        this.redrawOne(w);
+      }
       this.drawSelection();
       this.commit();
     }
@@ -2327,7 +2420,7 @@
           return `<select data-lc="${k}"><option value=""${v == null ? ' selected' : ''}>–</option>${c.options.map(([ov, ot]) =>
             `<option value="${esc(ov)}"${String(v) === String(ov) ? ' selected' : ''}>${esc(ot)}</option>`).join('')}</select>`;
         }
-        if (c.type === 'color') return `<input type="color" data-lc="${k}" value="${esc(v || '#000000')}">`;
+        if (c.type === 'color') return swatchBtn(`data-cpick="l" data-lc="${k}"`, splitColor(v) ? v : '#000000');
         if (c.type === 'bool') return `<input type="checkbox" data-lc="${k}"${v ? ' checked' : ''}>`;
         if (c.type === 'num') return `<input type="number" step="any" data-lc="${k}" value="${v == null ? '' : v}"${c.required ? '' : ' placeholder="끝없음"'}>`;
         return `<input type="text" data-lc="${k}" data-lt="${c.type}" spellcheck="false" value="${esc(this.fmtVal(v))}">`;
@@ -2347,13 +2440,20 @@
     }
 
     // 화면의 행들을 다시 읽어 목록 전체를 저장
+    // 목록 속성도 같은 종류 여러 개면 전부에 같은 목록이 들어간다. 화면에 보이는 목록은 값을 바꾼 첫 위젯의 것
+    //  (syncPropForm과 같은 기준) — 고치면 그 목록에서 시작해 모두 같아진다
+    listRef(ws, key) {
+      return ws.find((x) => Object.prototype.hasOwnProperty.call(x.props || {}, key)) || ws[0];
+    }
+
     onListChange(listEl, live) {
-      const w = this.selected()[0];
+      const ws = this.propTargets();
+      const w = ws && ws[0];
       if (!w || !listEl) return;
       const f = this.propFields(w).find((x) => x.key === listEl.dataset.list);
       if (!f) return;
       const cols = this.listCols(f, this.effProps(w));
-      const prev = this.currentList(w, f.key);
+      const prev = this.currentList(this.listRef(ws, f.key), f.key);
       const rows = [...listEl.querySelectorAll('.ed-lrow:not(.ed-lhead)')].map((r, i) => {
         // 지금 안 보이는 칸(예: 판정 방식을 바꿔 숨은 조건)은 원래 값을 그대로 둔다
         const o = {};
@@ -2373,7 +2473,7 @@
       const missing = rows.some((o) => cols.some((c) => c.required && o[c.key] === undefined));
       if (missing) { this.formError(`${f.label}: 비어 있으면 안 되는 칸이 있습니다.`); return; }
       this.formError('');
-      this.setProp(w, f.key, rows.length ? rows : undefined, live);
+      this.setProp(ws, f.key, rows.length ? rows : undefined, live);
     }
 
     currentList(w, key) {
@@ -2382,20 +2482,21 @@
     }
 
     addListRow(key) {
-      const w = this.selected()[0];
+      const ws = this.propTargets();
+      const w = ws && ws[0];
       const f = w && this.propFields(w).find((x) => x.key === key);
       if (!f) return;
-      const rows = this.currentList(w, key);
+      const rows = this.currentList(this.listRef(ws, key), key);
       rows.push(f.newRow ? f.newRow(rows, this.effProps(w)) : {});
-      this.setProp(w, key, rows);
+      this.setProp(ws, key, rows);
     }
 
     delListRow(key, i) {
-      const w = this.selected()[0];
-      if (!w) return;
-      const rows = this.currentList(w, key);
+      const ws = this.propTargets();
+      if (!ws) return;
+      const rows = this.currentList(this.listRef(ws, key), key);
       rows.splice(i, 1);
-      this.setProp(w, key, rows.length ? rows : undefined);
+      this.setProp(ws, key, rows.length ? rows : undefined);
     }
 
     // 폼 입력 → 속성(여러 개 선택이면 전부에 같은 값).
@@ -2438,22 +2539,13 @@
           break;
         }
         case 'color': case 'optcolor': {
-          // 위젯마다 지금 색(기본값 포함)을 기준으로 — 여러 개 편집에서도 바꾼 쪽(색 또는 투명도)만 같아진다
-          const now = (x) => splitColor(Object.prototype.hasOwnProperty.call(x.props || {}, f.key) ? x.props[f.key] : this.propDefaults(x)[f.key]);
-          if (el.dataset.alpha !== undefined) {
-            const a = raw === '' ? 100 : Math.round(Number(raw));
-            if (!Number.isFinite(a)) { this.syncPropForm(ws); return; }
-            const al = clamp(a, 0, 100);
-            v = (x) => { const c = now(x); return c ? joinColor(c.rgb, al) : undefined; };
-          } else if (el.type === 'color') {
-            const rgb = el.value.toLowerCase();
-            v = (x) => joinColor(rgb, (now(x) || { a: 100 }).a);
-          } else {
-            if (raw === '') { v = undefined; break; }
-            if (!splitColor(raw)) { this.formError(`${f.label}: #RRGGBB 또는 #RRGGBBAA 형식이어야 합니다.`); this.syncPropForm(ws); return; }
-            const c = splitColor(raw);
-            v = joinColor(c.rgb, c.a);
-          }
+          // 값 칸 직접 입력 또는 색 선택 창(값 칸에 넣어 준 뒤 이 경로로). 6자리는 불투명
+          if (el.dataset.cpick !== undefined) return;
+          if (raw === '') { v = undefined; break; }
+          const c = splitColor(raw);
+          if (!c) { this.formError(`${f.label}: #RRGGBB 또는 #RRGGBBAA 형식이어야 합니다.`); this.syncPropForm(ws); return; }
+          v = joinColor(c.rgb, c.a);
+          if (!live) el.value = showColor(v);   // 직접 입력한 값도 8자리 대문자로 맞춰 보여 준다
           break;
         }
         case 'value': v = raw === '' ? undefined : this.parseValue(raw); break;
@@ -2467,7 +2559,7 @@
       if (!ws) return;
       const f = this.propFields(ws[0]).find((x) => fid(x) === id);
       const key = f ? f.key : id;
-      if (f && f.type === 'cond') { this.setCond(ws[0], key, undefined); return; }
+      if (f && f.type === 'cond') { this.setCond(ws, key, undefined); return; }
       this.setProp(ws, key, undefined);
     }
 
@@ -2595,7 +2687,7 @@
           <label class="ed-field"><span>너비</span><input type="number" data-s="w" value="${W}"></label>
           <label class="ed-field"><span>높이</span><input type="number" data-s="h" value="${H}"></label>
           <label class="ed-field wide"><span>배경색</span><span class="ed-color">
-            <input type="color" data-s="bg" value="${esc(d.background || DEFAULT_BG)}">
+            ${swatchBtn('data-cpick="s" data-s="bg"', d.background || DEFAULT_BG)}
             <input type="text" data-s="bgText" value="${esc(d.background || DEFAULT_BG)}" spellcheck="false"></span></label>
           <label class="ed-check wide"><input type="checkbox" data-s="start"${isStart ? ' checked disabled' : ''}> 시작 화면${isStart ? ' (현재 시작 화면)' : '으로 지정'}</label>
         </div>

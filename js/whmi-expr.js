@@ -5,7 +5,7 @@
 //   조건     { tag, test, value | min,max | bits }     test: true·false(참/거짓일 때) + 비교 + 범위 + 비트
 //   묶음     { mode: 'and'|'or', not, items: [조건 | 묶음] }   묶음 안의 묶음까지(2단)
 //   참/거짓  = 묶음 하나
-//   숫자·글자 = { rows: [{ cond, value }], def }       위에서부터 처음 맞는 줄의 값(select)
+//   숫자·글자 = { rows: [{ g, value }], def }          위에서부터 처음 맞는 줄의 값(select). g = 줄의 조건 묶음(1단, 조건만)
 // 빌더로 나타낼 수 없는 식(다른 태그와 비교, 3단 이상 묶음 등)은 parse가 null — 폼은 글자로만 보여 주고 그대로 둔다.
 (function () {
   'use strict';
@@ -41,7 +41,7 @@
     const body = args.length === 1 ? args[0] : { op: g.mode, args };
     return g.not ? { op: 'not', args: [body] } : body;
   }
-  const selectAst = (m) => ({ op: 'select', args: [...m.rows.flatMap((r) => [condAst(r.cond), V(r.value)]), V(m.def)] });
+  const selectAst = (m) => ({ op: 'select', args: [...m.rows.flatMap((r) => [groupAst(r.g), V(r.value)]), V(m.def)] });
 
   // ---- AST → 모형(안 되면 null) ---------------------------------------------
   const isTag = (n) => n && typeof n === 'object' && 'tag' in n;
@@ -76,13 +76,21 @@
     const c = parseCond(n);
     return c ? { mode: 'and', not: false, items: [c] } : null;
   }
+  // 선택형 한 줄의 조건 — 조건 하나, 또는 조건들만의 and/or(1단). 그 밖은 null
+  function parseRowGroup(n) {
+    const c = parseCond(n);
+    if (c) return { mode: 'and', not: false, items: [c] };
+    if (!n || (n.op !== 'and' && n.op !== 'or') || !Array.isArray(n.args) || n.args.length < 2) return null;
+    const items = n.args.map(parseCond);
+    return items.every(Boolean) ? { mode: n.op, not: false, items } : null;
+  }
   function parseSelect(n) {
     if (!n || n.op !== 'select' || !Array.isArray(n.args) || n.args.length < 3 || n.args.length % 2 === 0) return null;
     const rows = [];
     for (let i = 0; i + 1 < n.args.length; i += 2) {
-      const cond = parseCond(n.args[i]);
-      if (!cond || !isVal(n.args[i + 1])) return null;
-      rows.push({ cond, value: n.args[i + 1].value });
+      const g = parseRowGroup(n.args[i]);
+      if (!g || !isVal(n.args[i + 1])) return null;
+      rows.push({ g, value: n.args[i + 1].value });
     }
     const d = n.args[n.args.length - 1];
     return isVal(d) ? { rows, def: d.value } : null;
@@ -112,19 +120,20 @@
       return t && RAW.isCalc(t) && t.source && t.source.valueType === 'bool' ? { tag: tagId, test: 'true' } : { tag: tagId, test: 'eq', value: 1 };
     };
 
+    const one = (c) => ({ mode: 'and', not: false, items: [c] });
     let valueType = opts.valueType || 'bool';
     let model = opts.expr ? parse(opts.expr, valueType) : null;
     const readonly = !!opts.expr && !model;   // 빌더로 나타낼 수 없는 식
     const fresh = () => (valueType === 'bool'
       ? { mode: 'and', not: false, items: [newCond()] }
-      : { rows: [{ cond: newCond(), value: valueType === 'number' ? 1 : '' }], def: valueType === 'number' ? 0 : '' });
+      : { rows: [{ g: one(newCond()), value: valueType === 'number' ? 1 : '' }], def: valueType === 'number' ? 0 : '' });
     if (!model && !readonly) model = fresh();
 
-    // 경로("1.0")로 조건·묶음 찾기 — 묶음: items의 번호, 선택형: rows의 번호
+    // 경로("1.0")로 조건·묶음 찾기 — 묶음: items의 번호. 선택형은 첫 번호가 줄(rows), 그다음이 줄 안의 조건
     const at = (path) => {
-      if (valueType !== 'bool') return model.rows[Number(path)].cond;
-      let n = model;
-      for (const i of String(path).split('.').filter((x) => x !== '')) n = n.items[Number(i)];
+      const p = String(path).split('.').filter((x) => x !== '');
+      let n = valueType === 'bool' ? model : model.rows[Number(p.shift())].g;
+      for (const i of p) n = n.items[Number(i)];
       return n;
     };
     const parentOf = (path) => { const p = String(path).split('.'); const i = Number(p.pop()); return { g: at(p.join('.')), i }; };
@@ -162,10 +171,21 @@
       ${g.items.map((it, i) => { const p = path === '' ? String(i) : `${path}.${i}`; return it.items ? groupHtml(it, p, depth + 1) : condHtml(it, p, g.items.length > 1 || depth > 1 ? X('data-crm', '조건 지우기') : ''); }).join('')}
       <div class="cb-add"><button type="button" data-gadd="cond">+ 조건</button>${depth < MAX_DEPTH ? '<button type="button" data-gadd="group">+ 묶음</button>' : ''}</div>
     </div>`;
+    // 선택형 한 줄 — 조건이 하나면 한 줄 그대로, 여럿이면 묶음 방식(그리고/또는)이 위에 붙는다. 결과 값은 첫 조건 줄에
+    const ruleHtml = (r, i, rowRm) => {
+      const multi = r.g.items.length > 1;
+      const plus = '<button type="button" class="cb-x cb-plus" data-cadd title="이 줄에 조건 추가">+</button>';
+      const result = `<span class="cb-arrow">→</span><input data-rv value="${esc(fmtValue(r.value))}" placeholder="결과 값" spellcheck="false">`;
+      return `<div class="cb-rule${multi ? ' multi' : ''}" data-row="${i}" data-gpath="${i}">
+        ${multi ? `<div class="cb-rhead">${seg(r.g, String(i))}${rowRm}</div>` : ''}
+        ${r.g.items.map((c, j) => condHtml(c, `${i}.${j}`,
+          `<span class="cb-acts">${j === 0 ? plus : ''}${multi ? X('data-crm', '조건 지우기') : rowRm}</span>`,
+          j === 0 ? result : '<span></span><span></span>')).join('')}
+      </div>`;
+    };
     const selectHtml = (m) => `<div class="cb-group">
       ${colHead(true)}
-      ${m.rows.map((r, i) => condHtml(r.cond, String(i), m.rows.length > 1 ? X('data-rrm', '줄 지우기') : '',
-        `<span class="cb-arrow">→</span><input data-rv value="${esc(fmtValue(r.value))}" placeholder="결과 값" spellcheck="false">`, ` data-row="${i}"`)).join('')}
+      ${m.rows.map((r, i) => ruleHtml(r, i, m.rows.length > 1 ? X('data-rrm', '줄 지우기') : '')).join('')}
       <div class="cb-row cb-srow cb-defrow"><span class="cb-deflabel">위 조건에 모두 맞지 않으면</span><span class="cb-arrow">→</span><input data-rdef value="${esc(fmtValue(m.def))}" placeholder="결과 값" spellcheck="false"><span></span></div>
       <div class="cb-add"><button type="button" data-radd>+ 줄</button></div>
     </div>`;
@@ -220,6 +240,7 @@
       const b = e.target.closest('button');
       if (!b) return;
       const row = b.closest('[data-path]');
+      if (b.dataset.cadd !== undefined) { at(b.closest('[data-row]').dataset.row).items.push(newCond()); return changed(true); }
       if (b.dataset.cbit !== undefined && row) {
         const c = at(row.dataset.path), n = Number(b.dataset.cbit), bits = R.bitList(c.bits);
         c.bits = (bits.includes(n) ? bits.filter((x) => x !== n) : bits.concat(n)).sort((x, y) => x - y);
@@ -236,7 +257,7 @@
         g.items.push(b.dataset.gadd === 'group' ? { mode: g.mode === 'and' ? 'or' : 'and', not: false, items: [newCond()] } : newCond());
         return changed(true);
       }
-      if (b.dataset.radd !== undefined) { model.rows.push({ cond: newCond(), value: valueType === 'number' ? model.rows.length + 1 : '' }); return changed(true); }
+      if (b.dataset.radd !== undefined) { model.rows.push({ g: one(newCond()), value: valueType === 'number' ? model.rows.length + 1 : '' }); return changed(true); }
       if (b.dataset.rrm !== undefined) { model.rows.splice(Number(b.closest('[data-row]').dataset.row), 1); return changed(true); }
     });
     render();
@@ -256,7 +277,7 @@
         if (readonly) return null;
         if (valueType === 'bool') return groupError(model);
         for (const r of model.rows) {
-          const e = condError(r.cond);
+          const e = groupError(r.g);
           if (e) return e;
           if (valueType === 'number' && typeof r.value !== 'number') return '숫자 형식의 줄 값은 숫자로 입력하세요.';
         }

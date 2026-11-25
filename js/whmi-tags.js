@@ -223,14 +223,14 @@
   // 열: [정렬 키, 제목, 오른쪽 정렬]. 머리글을 누르면 그 열로 오름차순 ↔ 내림차순
   const TABLES = {
     tags: {
-      cols: colgroup([3, 13, 12, 8, 21, 5, 8, 5, 7, 8, 10]),
+      widths: [3, 13, 12, 8, 21, 5, 8, 5, 7, 8, 10],   // 열 폭(%) 기본값 — 사용자가 머리글 경계를 끌어 바꾸면 브라우저에 기억
       check: true,   // 맨 앞 선택 체크 상자(여러 개 삭제)
       head: [['id', 'TAG ID'], ['name', 'TAG NAME'], ['kind', '종류'], ['source', '소스'], ['unit', '단위', 1], ['range', '범위', 1],
         ['scale', '스케일', 1], ['access', '읽기/쓰기', 1], ['value', '현재 값', 1], ['used', '사용처', 1]],
       span: 11,
     },
     screens: {
-      cols: colgroup([8, 18, 18, 11, 45]),
+      widths: [8, 18, 18, 11, 45],
       head: [['level', '등급'], ['screen', '화면'], ['widget', '위젯'], ['type', '종류'], ['text', '내용']],
       span: 5,
     },
@@ -278,6 +278,22 @@
   function loadSort() {
     const def = { tags: { key: 'id', dir: 1 }, screens: { key: 'level', dir: 1 } };
     try { return Object.assign(def, JSON.parse(localStorage.getItem(SORT_STORE) || '{}')); } catch (_) { return def; }
+  }
+  // 열 폭(%) — 머리글 경계를 끌어 바꾼 값을 탭별로 기억. 열 구성이 바뀌면(개수가 다르면) 기본값으로
+  const COLS_STORE = 'whmi.tagManagerCols';
+  const COL_MIN = 3;
+  function loadCols() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(COLS_STORE) || '{}') || {}; } catch (_) { /* 무시 */ }
+    const out = {};
+    for (const [tab, T] of Object.entries(TABLES)) {
+      const w = saved[tab];
+      out[tab] = Array.isArray(w) && w.length === T.widths.length && w.every((x) => Number.isFinite(x) && x >= 1) ? w : T.widths.slice();
+    }
+    return out;
+  }
+  function saveCols(cols) {
+    try { localStorage.setItem(COLS_STORE, JSON.stringify(cols)); } catch (_) { /* 무시 */ }
   }
   function saveSort(sort) {
     try { localStorage.setItem(SORT_STORE, JSON.stringify(sort)); } catch (_) { /* 무시 */ }
@@ -546,18 +562,23 @@
     const selected = new Set();   // 목록에서 체크한 태그 id(여러 개 삭제)
     let visibleIds = [];          // 지금 목록에 보이는 태그 — 머리글 체크는 이것만 선택
     const sort = loadSort();   // 탭별 { key, dir }
+    const colW = loadCols();   // 탭별 열 폭(%)
 
     const draw = () => {
       const T = TABLES[tab];
       const so = sort[tab];
       // 화살표는 오른쪽 정렬 열이면 제목 앞에 둬서 제목 끝이 값과 같은 선에 오게 한다
-      headTable.innerHTML = `${T.cols}<thead><tr>${T.check ? '<th class="tm-chk"><input type="checkbox" data-selall title="보이는 태그 전체 선택"></th>' : ''}${T.head.map(([k, label, right]) => {
+      const cols = colgroup(colW[tab]);
+      const off = T.check ? 1 : 0;   // 맨 앞 체크 열
+      // 머리글 오른쪽 경계의 손잡이(.tm-rs)를 끌면 그 열과 다음 열의 폭을 주고받는다(마지막 열은 손잡이 없음)
+      headTable.innerHTML = `${cols}<thead><tr>${T.check ? '<th class="tm-chk"><input type="checkbox" data-selall title="보이는 태그 전체 선택"></th>' : ''}${T.head.map(([k, label, right], i) => {
         const arrow = `<span class="tm-arrow${right ? ' l' : ''}">${so.key === k ? (so.dir > 0 ? '▲' : '▼') : ''}</span>`;
-        return `<th class="tm-sort${right ? ' tm-r' : ''}${so.key === k ? ' on' : ''}" data-sort="${k}" title="눌러서 정렬">` +
-          `${right ? arrow : ''}${esc(label)}${right ? '' : arrow}</th>`;
+        const grip = i < T.head.length - 1 ? `<i class="tm-rs" data-rs="${i + off}" title="끌어서 열 폭 조절 · 두 번 누르면 기본 폭"></i>` : '';
+        return `<th class="tm-sort${right ? ' tm-r' : ''}${so.key === k ? ' on' : ''}" data-sort="${k}" title="${esc(label)} — 눌러서 정렬">` +
+          `${right ? arrow : ''}${esc(label)}${right ? '' : arrow}${grip}</th>`;
       }).join('')}</tr></thead>`;
       d.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-      if (!data) { bodyTable.innerHTML = T.cols; return; }
+      if (!data) { bodyTable.innerHTML = cols; return; }
       tabs.hidden = !checked;
       badges.innerHTML = !checked ? '' : LEVELS.map(([k, name]) => (data.counts[k]
         ? `<button type="button" class="tm-badge ${k}${level === k ? ' on' : ''}" data-level="${k}" title="${name} 항목만 보기">${name} ${data.counts[k]}</button>` : '')).join('') ||
@@ -581,7 +602,7 @@
       }
       const empty = tab === 'screens' && !data.screenIssues.length ? '화면 점검에서 찾은 문제가 없습니다.'
         : tab === 'tags' && !data.tags.length ? '등록된 태그가 없습니다.' : '조건에 맞는 항목이 없습니다.';
-      bodyTable.innerHTML = `${T.cols}<tbody>${rows.length ? rows.join('') : `<tr><td colspan="${T.span}" class="tm-empty">${empty}</td></tr>`}</tbody>`;
+      bodyTable.innerHTML = `${cols}<tbody>${rows.length ? rows.join('') : `<tr><td colspan="${T.span}" class="tm-empty">${empty}</td></tr>`}</tbody>`;
       const n = checked ? data.screenIssues.length : 0;
       d.querySelector('[data-tab="screens"]').textContent = n ? `화면 점검 ${n}` : '화면 점검';
       syncSelection();
@@ -1162,11 +1183,53 @@
       else if (t.dataset.grp) rows.filter((tr) => tr.dataset.dev === t.dataset.grp).forEach((tr) => { tr.querySelector('[data-pick]').checked = t.checked; });
       updateBulk();
     });
+    // 열 폭 조절: 경계를 끄는 동안 머리글·목록 두 표의 <col> 폭만 바꾸고(다시 그리지 않음), 놓으면 기억한다.
+    // 열 폭의 합은 그대로라 표 전체 폭은 변하지 않는다(가로 스크롤 없음).
+    headTable.addEventListener('pointerdown', (e) => {
+      const grip = e.target.closest('.tm-rs');
+      if (!grip) return;
+      e.preventDefault();
+      const i = Number(grip.dataset.rs), w = colW[tab], start = w.slice(), x0 = e.clientX;
+      const total = headTable.getBoundingClientRect().width || 1;
+      const apply = () => [headTable, bodyTable].forEach((t) => t.querySelectorAll('col').forEach((c, k) => { c.style.width = `${w[k]}%`; }));
+      // 넓힐 때는 오른쪽 열들에서 차례로(각 열 최소 폭까지) 가져오고, 줄일 때는 바로 오른쪽 열에 준다
+      const move = (ev) => {
+        let dlt = ((ev.clientX - x0) / total) * 100;
+        const next = start.slice();
+        if (dlt < 0) {
+          dlt = Math.max(dlt, COL_MIN - start[i]);
+          next[i] += dlt; next[i + 1] -= dlt;
+        } else {
+          let need = dlt;
+          for (let k = i + 1; k < next.length && need > 0; k++) {
+            const take = Math.min(need, Math.max(0, start[k] - COL_MIN));
+            next[k] -= take; need -= take;
+          }
+          next[i] += dlt - need;
+        }
+        next.forEach((v, k) => { w[k] = Number(v.toFixed(2)); });
+        apply();
+      };
+      const up = () => {
+        document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up);
+        d.querySelector('.tm').classList.remove('tm-resizing');
+        saveCols(colW);
+      };
+      d.querySelector('.tm').classList.add('tm-resizing');
+      document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
+    });
+    headTable.addEventListener('dblclick', (e) => {
+      if (!e.target.closest('.tm-rs')) return;
+      colW[tab] = TABLES[tab].widths.slice();
+      saveCols(colW);
+      draw();
+    });
     document.addEventListener('keydown', onKey, true);
     search.addEventListener('input', draw);
     d.addEventListener('click', (e) => {
       const row = !editing && tab === 'tags' && !e.target.closest('.tm-chk') && e.target.closest('.tm-body-wrap tr[data-id]');
       if (row && data) { const t = data.tags.find((x) => x.id === row.dataset.id); if (t) showForm(t); return; }
+      if (e.target.closest('.tm-rs')) return;   // 열 폭 손잡이를 누른 것은 정렬이 아님
       const b = e.target.closest('[data-k],[data-tab],[data-level],[data-sort]');
       if (!b) return;
       if (b.dataset.sort) {

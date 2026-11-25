@@ -532,8 +532,6 @@
   background: repeating-conic-gradient(#6b7380 0 25%, #c9ced6 0 50%) 0 0 / 8px 8px;
 }
 .ed-pf .ed-color input[data-pct] { flex: 1 1 0; min-width: 0; width: auto; }
-.ed-pf .ed-color input.ed-alpha { width: 52px; flex: 0 0 52px; text-align: right; }
-.ed-alpha-unit { align-self: center; margin-left: -3px; font-size: 11px; color: #8a93a3; }
 .ed-pf-bool { flex-direction: row; align-items: center; justify-content: space-between; }
 .ed-pf-bool label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c4ccd8; cursor: pointer; }
 .ed-pf-bool.is-set label { color: #cfe1ff; }
@@ -764,7 +762,7 @@
 .dlg .cb-group .cb-modes input, .dlg .cb-group .cb-not input { width: 15px; height: 15px; margin: 0; padding: 0; accent-color: #2f80ff; }
 /* 조건 줄 — 모든 줄이 같은 칸 폭: 장비 · 태그 · 비교 · 값 · 지우기 */
 .cb-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 150px 150px 28px; gap: 8px; align-items: center; margin: 10px 0; }
-.cb-row.cb-srow { grid-template-columns: 160px minmax(0, 1fr) 140px 120px 16px 150px 28px; }   /* … → 결과 값 */
+.cb-row.cb-srow { grid-template-columns: 160px minmax(0, 1fr) 140px 120px 16px 150px 60px; }   /* … → 결과 값 */
 .cb-colhead { margin: 0 0 -4px; }
 .cb-colhead span { padding-left: 2px; font-size: 11px; color: #7f8ea3; }
 .dlg .cb-group select, .dlg .cb-group input:not([type="checkbox"]) {
@@ -786,6 +784,11 @@
 .dlg .cb-x { width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border-radius: 7px; border: 1px solid rgba(148, 163, 184, 0.22); background: none; color: #8fa0b7; font-size: 17px; line-height: 1; cursor: pointer; }
 .dlg .cb-x:hover { color: #ff8c87; border-color: rgba(229, 83, 75, 0.6); }
 .cb-arrow { color: #7f8ea3; text-align: center; }
+.cb-acts { display: flex; justify-content: flex-end; gap: 4px; }
+.dlg .cb-x.cb-plus:hover { color: #9cc4ff; border-color: #4da0ff; }
+.cb-rule.multi { margin: 14px -9px; padding: 8px 8px 2px 6px; border-left: 3px solid #2f80ff; border-radius: 6px; background: rgba(47, 128, 255, 0.05); }
+.cb-rhead { display: flex; align-items: center; gap: 20px; margin: 2px 0 0; }
+.dlg .cb-rhead .cb-x { margin-left: auto; }
 .cb-defrow { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(148, 163, 184, 0.14); }
 .cb-deflabel { grid-column: 1 / 5; justify-self: end; font-size: 12.5px; color: #b3c0d1; }
 .cb-add { display: flex; gap: 8px; margin-top: 14px; }
@@ -821,3 +824,22 @@
 .cb-in b.bad { color: #ff8c87; }
 .cb-in small { color: #7f8ea3; font-size: 11.5px; }
 .dlg .cb-prev .cb-in input { box-sizing: border-box; width: 100%; height: 24px; padding: 0 7px; border-radius: 5px; border: 1px solid rgba(255, 184, 77, 0.5); background: #0f1826; color: #ffb84d; font-size: 12.5px; text-align: right; }
+
+/* ── 태그 목록: 열 폭 조절 손잡이 · 머리글 줄임 ──────────────────────── */
+.tm-table th { position: relative; overflow: hidden; text-overflow: ellipsis; }
+.tm-rs { position: absolute; top: 0; right: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 2; }
+.tm-rs::after { content: ""; position: absolute; top: 25%; left: 6px; width: 1px; height: 50%; background: rgba(148, 163, 184, 0.28); }
+.tm-rs:hover::after, .tm-resizing .tm-rs::after { background: #4da0ff; width: 2px; left: 6px; top: 10%; height: 80%; }
+.tm-resizing, .tm-resizing * { cursor: col-resize !important; user-select: none; }
+.tm-body-wrap .tm-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+
+/* ── 색 견본 버튼(누르면 색 선택 창 — components/color-picker) ──────────── */
+.ed-swatch .ed-sw-btn { display: block; width: 34px; height: 26px; padding: 0; border: 1px solid #2e3846; border-radius: 5px; background: none; cursor: pointer; overflow: hidden; }
+.ed-swatch .ed-sw-btn:hover { border-color: #3fa7ff; }
+.ed-sw-btn i { display: block; width: 100%; height: 100%; }
+.ed-pf.is-mixed .ed-sw-btn i { background: repeating-linear-gradient(45deg, #3a4555 0 3px, #222a35 3px 6px) !important; }
+.ed-pf .ed-color input[data-pct] { font-family: "Consolas", "D2Coding", ui-monospace, monospace; }
+/* 여러 개 선택에서 목록·조건이 서로 다를 때 안내 */
+.ed-list-mixed { margin-bottom: 4px; padding: 4px 8px; border-radius: 5px; background: rgba(255, 173, 50, 0.08); border: 1px solid rgba(255, 173, 50, 0.28); color: #ffd98a; font-size: 11px; line-height: 1.4; }
+.ed-list-mixed[hidden] { display: none; }
+.ed-pf.is-mixed .ed-cond-sum { color: #ffd98a; }
