@@ -26,6 +26,41 @@
 
 ---
 
+## 2026-11-24 (2차) — 레지스터 PUT에서 `displayName`을 빼면 지금 값 유지 (형식 변경 없음)
+
+`docs/backend-register-put-displayname-request.md` 반영.
+
+- **`PUT /api/registers/{registerId}`:** `displayName`이 없으면 지금 표시 이름을 그대로 둡니다. 전에는 태그 이름으로 바뀌었습니다. 이제 명세("변경할 필드만 포함")와 같습니다.
+- `POST`(새로 만들기)는 그대로입니다. 표시 이름이 없으면 태그 이름으로 채웁니다.
+- 레지스터 관리 화면은 모든 필드를 보내므로 영향이 없습니다.
+
+---
+
+## 2026-11-24 — HMI 계산 태그(`kind: "expr"`), 평가 API, 쓰기 범위 검사
+
+요청서 `docs/backend-hmi-expr-tags-request.md`(단계 B) 반영. 답변서 `docs/backend-hmi-expr-tags-response.md`. 자세한 규칙은 `api-spec.md` §14.
+
+- **태그 `kind`:** 모든 태그 응답에 `kind`(`register` | `expr`)가 들어갑니다. 요청에 없으면 `register`(POST) 또는 지금 종류(PUT). 만든 뒤 바꾸면 400.
+- **계산 태그 저장:** `source: { valueType, expr }`. 식 검증 실패는 **422 + `path`**(문제 노드 위치, 맨 위는 `""`). 응답에 `missingRefs`.
+- **태그 삭제:** 계산 태그가 참조 중이면 **409 + `referencedBy`**. 레지스터·장비 삭제, 복원, 불러오기는 막지 않고 끊긴 계산 태그는 `bad`.
+- **`GET /api/hmi/values`:** 계산 태그는 `{ value, q, unit, access: "r" }`. 요청 때 계산합니다. register 태그 형식은 그대로.
+- **신규 `POST /api/hmi/eval`:** 식 + 시험 입력 → `{ value, q, inputs, missingRefs }`. 저장·쓰기 없음.
+- **`POST /api/hmi/write` 변경:**
+  - 범위 밖 값은 **422** `{ error, min, max, value }`. 태그 `min`/`max`, 비면 레지스터 범위를 태그 배율로 환산.
+  - 계산 태그 쓰기는 405.
+- **태그 수 한도:** 최대 1,000개(종류 무관). 넘으면 POST 422.
+- **내보내기·불러오기·시스템 백업:** 계산 태그가 들어갑니다(`kind`, `valueType`, `expr`). `schemaVersion` 1 그대로.
+  - 불러오기 검증의 `tags`에 `expr`(계산 태그 수)와 `brokenExpr`(`[{ id, missingRefs }]`)가 더해집니다.
+  - **`tags.linked`는 이제 register 태그만 셉니다.** 계산 태그는 레지스터에 연결되지 않으므로 `missing`에도 들어가지 않습니다.
+  - 순환 참조가 있는 파일은 400으로 전체 거부합니다.
+  - 적용 응답에 `warnings`가 더해졌습니다.
+- **시스템 복원:**
+  - "장비만 복원, HMI 유지"일 때 계산 태그는 그대로 남습니다. 참조가 끊기면 복원 경고에 이름이 나옵니다.
+  - 백업에 잘못된 계산 태그가 있으면 복원을 멈추지 않고, 그 태그만 건너뛰고 경고합니다.
+- **DB:** `hmi_tags` 테이블을 새 구조로 옮깁니다(펌웨어 첫 기동 때 한 번). 기존 태그는 모두 register 태그로 그대로 남습니다.
+
+---
+
 ## 2026-11-20 (5차) — 시스템 로그가 재부팅 뒤에도 남음, 보관 10,000건 (API 형식 변경 없음)
 
 swr `e2587ff`.

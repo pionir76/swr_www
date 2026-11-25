@@ -1372,12 +1372,22 @@ Content-Type: `application/octet-stream`
 
 레지스터 `tagName`과 별도의 독립된 네임스페이스. 레지스터를 "소스"로 느슨하게 참조하며, 레지스터 이름이 바뀌어도 HMI 화면은 영향받지 않음.
 
-### 데이터 모델
+태그 종류(`kind`)는 두 가지입니다(2026-11-24부터).
+
+| `kind` | 뜻 | 값 |
+|---|---|---|
+| `register` | 레지스터 하나를 가리키는 태그 | 원본 `raw` |
+| `expr` | 다른 태그로 계산하는 태그(계산 태그). 쓰기 불가 | 서버가 계산한 `value` |
+
+`param`(설정 태그)은 예약만 되어 있고 아직 받지 않습니다(400).
+
+### 데이터 모델 — register 태그
 
 ```json
 {
   "id": "TK1_LEVEL",
   "name": "1번 탱크 수위",
+  "kind": "register",
   "source": {
     "registerId": 123,
     "deviceId": 3,
@@ -1422,14 +1432,70 @@ Content-Type: `application/octet-stream`
 | `minValue` / `maxValue` | 레지스터 `minValue` / `maxValue` (레지스터 배율 기준) |
 
 - 소스 레지스터를 찾을 수 없으면 `registerId` 외의 `source` 필드는 모두 `null` (필드는 항상 포함)
-- 소스 레지스터를 삭제하면 그 HMI 태그도 **함께 삭제**됨 (장비 삭제 시 그 장비의 태그도 모두 삭제)
-- **원본 데이터 원칙:** 서버는 태그의 `scale`·`min`·`max`를 **저장하고 돌려주기만** 하고, 계산에 쓰지 않습니다. 배율 적용(값 = 원본 × 배율)과 역변환은 프론트가 합니다.
+- 소스 레지스터를 삭제하면 그 HMI 태그도 **함께 삭제**됨 (장비 삭제 시 그 장비의 태그도 모두 삭제). 그 태그를 참조하던 계산 태그는 **남고**, 값은 `bad`, `missingRefs`에 표시됩니다
+- **원본 데이터 원칙:** register 태그의 값은 응답·쓰기 모두 **원본 그대로**입니다. 표시 값 변환(부호 해석 × 배율, 배율의 소수 자릿수로 반올림)은 프론트가 하고, 서버는 같은 변환을 **계산 태그 평가와 쓰기 범위 검사 안에서만** 씁니다(응답에 싣지 않음).
 - `scale`: `null`이면 레지스터 `scale` 상속. 허용 값은 `100`, `10`, `1`, `0.1`, `0.01`, `0.001`, 그 밖의 값은 400. 레지스터 설정과 무관하게 **원본값 기준**입니다(원본 1234, 태그 `scale` 0.01 → 12.34)
-- `min` / `max`: 태그 배율을 적용한 값 기준. `null`일 때 레지스터 값을 환산해 물려받는 것은 프론트가 합니다
+- `min` / `max`: 태그 배율을 적용한 값 기준. `null`이면 레지스터 `minValue`/`maxValue`를 태그 배율로 환산해 물려받습니다(`레지스터 값 ÷ 레지스터 배율 × 태그 배율`, 프론트 `WHMI.raw.limits`와 같음). 서버는 이 범위로 쓰기를 검사합니다
 - `unit` / `access`: 생략(null) 시 소스 레지스터 값 상속(`values` 응답에는 상속을 적용한 값이 나감)
 - `decimals`는 2026-11-13에 폐지. 요청에 들어와도 무시하고 응답에 없음
 - `access`: `"r"` | `"rw"` — 레지스터 `readOnly` 상속 또는 오버라이드
 - `id` 허용 문자: 영숫자 + `_` + `-`, 최대 64자
+- 태그 수는 종류와 관계없이 **최대 1,000개**
+
+### 데이터 모델 — expr 태그(계산 태그)
+
+```json
+{
+  "id": "RUNNING",
+  "name": "운전중",
+  "kind": "expr",
+  "source": {
+    "valueType": "bool",
+    "expr": { "op": "bitAny", "args": [ { "tag": "NOW_STS" }, { "value": [0] } ] }
+  },
+  "unit": null,
+  "min": null, "max": null, "scale": null,
+  "access": "r",
+  "missingRefs": [],
+  "createdAt": "2026-11-24 05:47:10",
+  "updatedAt": "2026-11-24 05:47:10"
+}
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `source.valueType` | `bool` / `number` / `string`. 필수. 결과를 이 타입으로 바꿔 내보냄 |
+| `source.expr` | 식(AST). 필수 |
+| `unit` | 선택. 숫자 결과에 붙일 단위 |
+| `min` / `max` / `scale` / `access` | 쓰지 않음. 요청에 있어도 무시, 응답은 `null`(`access`는 `"r"`) |
+| `missingRefs` | **응답 전용.** 식이 참조하는데 지금 없는 태그 id(정렬). 없으면 `[]` |
+
+**식(AST):** 노드는 세 가지입니다. 노드에 다른 키가 더 있어도 무시합니다.
+
+```json
+{ "tag": "ID" }                       // 태그 참조
+{ "value": 3 }                        // 상수: 숫자·글자·true/false·null (배열은 비트 목록 자리에만)
+{ "op": "이름", "args": [ ... ] }     // 연산
+```
+
+| 연산자 | 인수 | 결과 | 규칙 |
+|---|---|---|---|
+| `eq` `ne` | `[a, b]` | bool | 둘 다 숫자로 읽히면 숫자 비교, 아니면 글자 비교 |
+| `gt` `ge` `lt` `le` | `[a, b]` | bool | 둘 다 숫자로 읽힐 때만 비교, 아니면 거짓 |
+| `range` | `[a, 최소, 최대]` | bool | 최소 ≤ a ≤ 최대. 최소·최대가 `null`이면 그쪽 끝없음 |
+| `bitAny` / `bitNone` | `[a, { "value": [비트…] }]` | bool | a를 정수로 자른 뒤 비트 하나라도 1 / 모두 0. 비트 목록은 **상수 배열**, 0–15. 빈 목록은 거짓 |
+| `and` `or` | 2개 이상 | bool | 인수를 참/거짓으로 읽음 |
+| `not` | 1개 | bool | |
+| `select` | `[조건, 값, 조건, 값, …, 기본값]` 홀수 개, 3개 이상 | 값 | 처음 참인 조건의 값, 없으면 기본값 |
+
+- **숫자로 읽기:** 참/거짓은 1/0, 숫자 모양 글자(앞뒤 공백 무시)는 숫자, 그 밖은 숫자 아님
+- **참/거짓으로 읽기:** 숫자 0, `false`, 빈 글자, 글자 `"0"`·`"false"`는 거짓, 나머지는 참
+- **태그 참조의 값:** register 태그는 표시 값(원본 → 부호 해석 × 배율, 배율 자릿수로 반올림. 코일·접점은 0/1), expr 태그는 그 결과
+- **지름길 계산 없음:** 모든 인수를 계산합니다. `or`의 한쪽이 참이어도 다른 쪽이 `bad`면 결과는 `bad`
+- **품질:** 참조한 태그(이어 쓴 계산 태그 포함) 중 하나라도 `bad`/`disabled`면 `bad`, `normal`이 섞이면 `normal`, 아니면 `good`. 없는 태그, register 태그의 `raw`가 `null`이면 `bad`. `bad`일 때 `value`는 `null`
+- **`valueType` 변환:** `bool`은 참/거짓으로, `number`는 숫자로(숫자로 읽히지 않으면 `bad`), `string`은 JavaScript `String()`과 같은 글자로
+- **한도(저장할 때 검사):** 식 하나의 노드 64개, 식 하나가 참조하는 태그 32개, 계산 태그 → 계산 태그 참조 깊이 8단, 순환 참조 금지
+- 공통 시험 데이터: `referencs/hmi-testdata-convert.json`, `referencs/hmi-testdata-expr.json`(서버 시험도 같은 파일을 씀)
 
 ### GET /api/hmi/tags
 권한: `Any`
@@ -1455,11 +1521,31 @@ Content-Type: `application/octet-stream`
   "access": "r"
 }
 ```
-`id / name / source.registerId` 필수, 나머지 선택. `source`의 응답 전용 필드가 들어와도 무시
+`id / name / source.registerId` 필수, 나머지 선택. `source`의 응답 전용 필드가 들어와도 무시. `kind`가 없으면 `register`
+
+계산 태그:
+```json
+{
+  "id": "CAN_START",
+  "name": "기동 가능",
+  "kind": "expr",
+  "source": { "valueType": "bool",
+              "expr": { "op": "and", "args": [ { "op": "not", "args": [ { "tag": "RUNNING" } ] },
+                                               { "op": "eq", "args": [ { "tag": "ALSTS" }, { "value": 0 } ] } ] } },
+  "unit": ""
+}
+```
 
 **응답** 201: 생성된 HmiTag 객체  
-**에러** 400: 유효하지 않은 id 형식 / registerId 없음 / access 값 오류 / scale 값 오류  
-**에러** 409: id 중복
+**에러** 400: 유효하지 않은 id 형식 / registerId 없음 / access 값 오류 / scale 값 오류 / `kind`가 `register`·`expr`가 아님 / `source.valueType` 오류 / `source.expr` 없음  
+**에러** 409: id 중복  
+**에러** 422: 식 검증 실패 — 문제 노드의 위치를 `path`로 줍니다(맨 위 노드는 `""`)
+```json
+{ "error": "bit numbers must be integers 0–15", "path": "args[1].args[1]" }
+{ "error": "tag not found: NOPE", "path": "args[1].args[0]" }
+{ "error": "circular reference: CAN_START → RUNNING → CAN_START", "path": "" }
+```
+422가 되는 경우: 모르는 연산자, 인수 개수, 노드 모양, 비트 목록, 없는 태그 참조, 순환 참조, 노드·참조·깊이 한도, 태그 수 1,000개 초과(`{ "error": ..., "maxTags": 1000 }`, `path` 없음)
 
 ### GET /api/hmi/tags/{id}
 권한: `Any`
@@ -1470,21 +1556,30 @@ Content-Type: `application/octet-stream`
 ### PUT /api/hmi/tags/{id}
 권한: `ManagerOrAbove`
 
-요청 바디: POST와 동일 (`id`는 URL에서 받음)
+요청 바디: POST와 동일 (`id`는 URL에서 받음). `kind`를 생략하면 지금 종류 그대로
 
 **응답** 200: 수정된 HmiTag 객체  
-**에러** 404
+**에러** 400: POST와 같음 / **`kind` 변경 시도**(만든 뒤 바꿀 수 없음)  
+**에러** 404  
+**에러** 422: POST와 같음(식 검증 실패, `path` 포함)
 
 ### DELETE /api/hmi/tags/{id}
 권한: `ManagerOrAbove`
 
 **응답** 200: `{ "ok": true }`  
-**에러** 404
+**에러** 404  
+**에러** 409: 계산 태그가 이 태그를 참조 중
+```json
+{ "error": "HMI tag 'RUNNING' is used by computed tag(s): CAN_START, STATE_TXT", "referencedBy": ["CAN_START", "STATE_TXT"] }
+```
+레지스터·장비 삭제, 시스템 복원, HMI 불러오기로 register 태그가 사라지는 것은 막지 않습니다. 그때 참조가 끊긴 계산 태그는 남고 `missingRefs`에 표시됩니다.
 
 ### GET /api/hmi/values?tags=A,B
 권한: `Any`
 
 `tags` 쿼리 파라미터 생략 시 전체 태그 반환
+
+계산 태그는 **이 요청을 받을 때** 계산합니다. 요청한 태그와 그 태그가 참조하는 태그만 계산하고, 한 요청 안에서 같은 태그는 한 번만 계산합니다.
 
 **응답** 200:
 ```json
@@ -1496,10 +1591,20 @@ Content-Type: `application/octet-stream`
       "q": "good",
       "unit": "%",
       "access": "r"
+    },
+    "RUNNING": {
+      "value": true,
+      "q": "good",
+      "unit": "",
+      "access": "r"
     }
   }
 }
 ```
+
+- register 태그는 `raw`, 계산 태그는 `value`(원본이 아니므로). 계산 태그의 `q`는 `good`/`normal`/`bad`이고, `bad`면 `value`는 `null`
+- 계산 태그의 `unit`은 태그 값(없으면 `""`), `access`는 항상 `"r"`
+- 장치 실측(2026-11-24): 태그 3개 요청 약 20ms. 전체 요청은 태그 9개 약 13ms, 계산 태그 100개(노드 14개씩)를 더하면 약 66ms
 
 | `q` 값 | 의미 |
 |--------|------|
@@ -1523,14 +1628,54 @@ Content-Type: `application/octet-stream`
 
 - `raw`: 장비에 쓸 **원본 워드**(정수 0–65535). 서버는 배율 계산 없이 그대로 씁니다. 음수는 프론트가 2의 보수로 바꿔 보냅니다(`-5` → `65531`). `POST /api/registers/{id}/write`의 `rawValues`와 같은 규칙
 - coil: `raw`는 `0` 또는 `1`
-- 서버는 태그 `min`/`max`로 범위를 검사하지 않습니다(프론트 입력 창에서 검사)
+- **범위 검사(2026-11-24부터):** 서버가 `raw`를 표시 값으로 바꿔 태그 `min`/`max`와 비교합니다. 태그 값이 비면 레지스터 `minValue`/`maxValue`를 태그 배율로 환산해 씁니다(±1.797e308은 제한 없음). coil·discrete_input은 0/1 검사만 합니다. 프론트 입력 창 검사(`WHMI.raw.limits`)와 같은 규칙이고, 프론트 검사는 편의용으로 남겨 둡니다
 
 **응답** 202: `{ "ok": true, "tag": "LEVEL_SP" }`  
 **에러** 400: `tag`·`raw` 없음(예전 `v`만 보내도 400) / `raw`가 정수가 아니거나 범위 밖(coil은 0/1 밖)  
 **에러** 404: 태그 없음  
-**에러** 405: `access: "r"` 태그 쓰기 시도  
+**에러** 405: `access: "r"` 태그 쓰기 시도 / **계산 태그** 쓰기 시도  
 **에러** 409: 소스 레지스터의 장비가 비활성 `{ "error": "device disabled", "deviceId": 1 }`  
-**에러** 422: 소스 레지스터 없음 / 2워드 이상 레지스터
+**에러** 422: 소스 레지스터 없음 / 2워드 이상 레지스터 / **표시 값이 허용 범위 밖**
+```json
+{ "error": "value 17 is outside the allowed range of HMI tag 'PID_INH'", "min": 0, "max": 16, "value": 17 }
+```
+`min`/`max`는 실제로 비교한 값(제한이 없는 쪽은 `null`), `value`는 `raw`를 바꾼 표시 값입니다.
+
+### POST /api/hmi/eval
+권한: `Any`
+
+식을 계산해 결과만 돌려줍니다. 장비에 쓰지 않고, 저장하지 않습니다. 편집기 미리보기와 저장 전 검증에 씁니다.
+
+**요청 바디:**
+```json
+{
+  "valueType": "bool",
+  "expr": { "op": "and", "args": [ { "tag": "RUNNING" }, { "op": "eq", "args": [ { "tag": "ALSTS" }, { "value": 0 } ] } ] },
+  "inputs": { "NOW_STS": { "raw": 6 }, "RUNNING": { "value": true, "q": "normal" } }
+}
+```
+
+- `valueType`, `expr` 필수. `expr`은 저장할 때와 같은 검증을 합니다(없는 태그 참조는 422가 아니라 결과 `bad` + `missingRefs`)
+- `inputs`(선택): 준 태그는 그 값으로, 주지 않은 태그는 현재 값으로 계산합니다. register 태그는 `raw`(정수 0–65535 또는 `null`), 계산 태그는 `value`(숫자·글자·true/false·`null`). `q`(`good`/`normal`/`bad`/`disabled`)를 함께 주면 그 품질, 없으면 `good`. 이 장치에 없는 태그 id는 무시합니다
+
+**응답** 200:
+```json
+{
+  "value": true,
+  "q": "good",
+  "inputs": {
+    "ALSTS":   { "raw": 0, "value": 0, "q": "good" },
+    "NOW_STS": { "raw": 6, "value": 6, "q": "good" },
+    "RUNNING": { "value": true, "q": "good" }
+  },
+  "missingRefs": []
+}
+```
+- `inputs`: 식이 직접 또는 계산 태그를 거쳐 참조한 **모든 태그**의 실제 사용 값. register 태그는 `raw`와 표시 값 `value`, 계산 태그는 `value`. `inputs`로 값을 준 계산 태그는 그 아래를 계산하지 않으므로 그 아래 태그는 나오지 않습니다
+- `missingRefs`: 참조했는데 없는 태그 id(`inputs`에도 `{ "value": null, "q": "bad" }`로 나옴)
+
+**에러** 400: JSON 아님 / `valueType` 오류 / `expr` 없음 / `inputs` 형식 오류(register 태그에 `raw` 없음 등)  
+**에러** 422: 식 검증 실패(`path` 포함, 태그 저장과 같은 형식)
 
 ---
 
@@ -1664,12 +1809,16 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
   "hmi": {
     "project": { "name": "...", "startScreen": "main", "revision": 7, "pollMs": 1000 },
     "screens": [ { "id": "main", "title": "...", "revision": 3, "updatedAt": "...", "updatedBy": "...", "content": { "format": "whmi.screen" } } ],
-    "tags":    [ { "id": "TEMI2KMF_NPV", "name": "...", "unifiedAddress": 32, "scale": 0.01, "unit": "°C", "minValue": 0, "maxValue": 100, "access": "rw" } ]
+    "tags":    [ { "id": "TEMI2KMF_NPV", "name": "...", "kind": "register", "unifiedAddress": 32, "scale": 0.01, "unit": "°C", "minValue": 0, "maxValue": 100, "access": "rw" },
+                 { "id": "RUNNING", "name": "운전중", "kind": "expr", "valueType": "bool",
+                   "expr": { "op": "bitAny", "args": [ { "tag": "NOW_STS" }, { "value": [0] } ] } } ]
   }
 }
 ```
 
-- `hmi`는 시스템 백업의 `hmi.json`과 같은 내용입니다. 태그는 `unifiedAddress`로 레지스터를 가리킵니다. 값이 없는(상속하는) `scale`·`unit`·`minValue`·`maxValue`·`access`는 키가 없습니다.
+- `hmi`는 시스템 백업의 `hmi.json`과 같은 내용입니다. register 태그는 `unifiedAddress`로 레지스터를 가리킵니다. 값이 없는(상속하는) `scale`·`unit`·`minValue`·`maxValue`·`access`는 키가 없습니다.
+- 계산 태그는 `kind: "expr"`, `valueType`, `expr`, (있으면) `unit`을 가집니다. `schemaVersion`은 1 그대로입니다. 계산 태그 이전 펌웨어는 이 태그를 `unifiedAddress`가 없다고 보고 건너뜁니다.
+- `kind`가 없는 태그는 register 태그로 읽습니다. 이 장치가 모르는 `kind`(예: `param`)는 건너뛰고 경고에 넣습니다.
 - 불러오기는 **머리 없는 시스템 백업 `hmi.json`**도 받습니다(`format`이 없고 `project`·`screens`·`tags` 중 하나가 있으면).
 - 예전 파일: 태그 `decimals`는 무시하고, `scale`이 없거나 허용 값이 아니면 상속합니다. `pollMs`가 없으면 1000입니다.
 
@@ -1690,13 +1839,16 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
   "fileInfo": { "product": "SmartRoute", "createdAt": "...", "createdBy": "admin", "hostname": "smartroute", "version": "1", "revision": "0" },
   "project": { "name": "냉동 설비 통합 모니터링", "startScreen": "main", "pollMs": 1000 },
   "screens": 3,
-  "tags": { "total": 28, "linked": 25, "missing": [ { "id": "TEMI2KMF_NPV", "unifiedAddress": 32 } ] },
+  "tags": { "total": 28, "linked": 22, "missing": [ { "id": "TEMI2KMF_NPV", "unifiedAddress": 32 } ],
+            "expr": 5, "brokenExpr": [ { "id": "RUNNING", "missingRefs": ["TEMI2KMF_NPV"] } ] },
   "current": { "screens": 2, "tags": 20 },
   "warnings": []
 }
 ```
 - `fileInfo`: 파일에 적힌 그대로. 머리 없는 `hmi.json`이면 `null`
-- `tags.missing`: 이 장치에 레지스터가 없어 **적용 때 건너뛸** 태그(`unifiedAddress`가 없으면 `null`)
+- `tags.total`: 파일의 태그 수(모든 종류). `tags.linked`: 레지스터에 연결되는 **register 태그** 수
+- `tags.missing`: 이 장치에 레지스터가 없어 **적용 때 건너뛸** register 태그(`unifiedAddress`가 없으면 `null`)
+- `tags.expr`: 파일의 계산 태그 수. `tags.brokenExpr`: 적용 뒤 참조가 끊길 계산 태그와 끊길 태그 id(건너뛸 register 태그나 파일에 없는 태그를 참조). 이 태그들도 들어가지만 값은 `bad`입니다
 - `current`: 지금 장치의 화면·태그 수(교체될 대상)
 - `warnings`: 예) 시작 화면이 파일에 없음 → 첫 화면을 시작 화면으로 씀
 
@@ -1704,7 +1856,7 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
 
 | 상태 | 경우 |
 |---|---|
-| 400 | JSON 객체가 아님 / `format`이 `swr.hmi`가 아님 / `schemaVersion` > 1 / HMI 파일이 아님 / `project`·`screens`·`tags` 형식 오류 / 화면·태그 id 규칙(영문·숫자·`_`·`-` 1–64자) 위반 또는 중복 / 화면 `title` 64자 초과 / 화면 `content.format`이 `whmi.screen`이 아님 / 태그 `access`가 `r`·`rw`가 아님 / `pollMs`가 정수 500–10000이 아님 |
+| 400 | JSON 객체가 아님 / `format`이 `swr.hmi`가 아님 / `schemaVersion` > 1 / HMI 파일이 아님 / `project`·`screens`·`tags` 형식 오류 / 화면·태그 id 규칙(영문·숫자·`_`·`-` 1–64자) 위반 또는 중복 / 화면 `title` 64자 초과 / 화면 `content.format`이 `whmi.screen`이 아님 / 태그 `access`가 `r`·`rw`가 아님 / `pollMs`가 정수 500–10000이 아님 / 계산 태그의 `valueType`·`expr` 오류(`"tag 'X': ... (at 'args[0]')"`) / 계산 태그 순환 참조·깊이 초과(**파일 전체 거부**) / 태그 1,000개 초과 |
 | 413 | 화면 하나의 `content`가 256KB 초과 |
 | 409 | 화면 수 > `hmi.maxScreens` (`{ "error": "too many screens: 51 (maxScreens 50)", "maxScreens": 50 }`) |
 
@@ -1714,7 +1866,7 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
 권한: `ManagerOrAbove`  
 요청 바디: validate와 **같은 파일 전체**
 
-같은 검사를 다시 한 뒤 HMI 프로젝트·화면·태그를 한 번에 교체합니다(실패하면 아무것도 바뀌지 않음). `missing` 태그는 건너뜁니다.
+같은 검사를 다시 한 뒤 HMI 프로젝트·화면·태그를 한 번에 교체합니다(실패하면 아무것도 바뀌지 않음). `missing` 태그는 건너뜁니다. register 태그를 먼저, 계산 태그를 나중에 넣습니다.
 
 - **revision:** 프로젝트와 모든 화면이 지금 장치의 어떤 revision보다 1 큰 값을 받습니다. 불러오기 전에 열어 둔 화면·프로젝트를 저장하면 409입니다. 파일의 revision은 쓰지 않습니다.
 - 화면 `updatedAt`·`updatedBy`는 파일 값 그대로입니다.
@@ -1722,9 +1874,10 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
 
 **응답** 200
 ```json
-{ "ok": true, "screens": 3, "tags": 25, "skippedTags": ["TEMI2KMF_NPV"], "revision": 8 }
+{ "ok": true, "screens": 3, "tags": 25, "skippedTags": ["TEMI2KMF_NPV"], "revision": 8,
+  "warnings": ["1 computed HMI tag(s) refer to tags that are not present (their value is bad until fixed): RUNNING (missing: TEMI2KMF_NPV)"] }
 ```
-`revision`: 새 프로젝트 revision(화면 revision도 같음). **에러**: validate와 같음
+`tags`: 실제로 들어간 태그 수(모든 종류). `revision`: 새 프로젝트 revision(화면 revision도 같음). `warnings`(2026-11-24 추가): 건너뛴 태그, 모르는 `kind`, 참조가 끊긴 계산 태그. **에러**: validate와 같음
 
 > 장치 실측(2026-11-20, 화면 50개 × 약 250KB = 12.5MB): 검증 약 3초, 적용 약 4.5초, 내보내기 약 4.5초. 업로드 중 진행 표시를 권합니다.
 
