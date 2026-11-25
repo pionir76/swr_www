@@ -2,12 +2,13 @@
 // 설계: docs/architecture/hmi.md §5.3(식 AST), §7.3. 계산은 백엔드가 한다(미리보기도 POST /api/hmi/eval).
 //
 // 편집 모형(화면용) ↔ AST(저장용)
-//   조건     { tag, test, value | min,max | bits }     test: true·false(참/거짓일 때) + 비교 + 범위 + 비트
+//   조건     { tag, test, value | rtag | min,max | bits }   test: true·false(참/거짓일 때) + 비교 + 범위 + 비트
+//            rtag: 값 대신 다른 태그와 비교(같음·다름·크기 비교 6종에만)
 //   묶음     { mode: 'and'|'or', not, items: [조건 | 묶음] }   묶음 안의 묶음까지(2단)
 //   참/거짓  = 묶음 하나
 //   숫자(계산) = { calc: 연산, args: [{ tag } | { value: 숫자 }] }   연산 하나 + 값 목록(산술·집계, 단계 C-2)
 //   숫자·글자 = { rows: [{ g, value }], def }          위에서부터 처음 맞는 줄의 값(select). g = 줄의 조건 묶음(1단, 조건만)
-// 빌더로 나타낼 수 없는 식(다른 태그와 비교, 3단 이상 묶음 등)은 parse가 null — 폼은 글자로만 보여 주고 그대로 둔다.
+// 빌더로 나타낼 수 없는 식(연산 안의 연산, 3단 이상 묶음 등)은 parse가 null — 폼은 글자로만 보여 주고 그대로 둔다.
 (function () {
   'use strict';
   if (!window.WHMI) return;
@@ -39,7 +40,7 @@
     if (c.test === 'false') return { op: 'not', args: [t] };
     if (c.test === 'range') return { op: 'range', args: [t, V(c.min ?? null), V(c.max ?? null)] };
     if (isBit(c.test)) return { op: c.test, args: [t, V(R.bitList(c.bits))] };
-    return { op: c.test, args: [t, V(c.value)] };
+    return { op: c.test, args: [t, c.rtag !== undefined ? { tag: c.rtag } : V(c.value)] };
   }
   function groupAst(g) {
     const args = g.items.map((i) => (i.items ? groupAst(i) : condAst(i)));
@@ -58,6 +59,7 @@
     const [a, b, c] = n.args;
     if (n.op === 'not' && n.args.length === 1 && isTag(a)) return { tag: String(a.tag), test: 'false' };
     if (!isTag(a)) return null;
+    if (CMP.includes(n.op) && n.args.length === 2 && isTag(b)) return { tag: String(a.tag), test: n.op, rtag: String(b.tag) };
     if (CMP.includes(n.op) && isVal(b) && !Array.isArray(b.value)) return { tag: String(a.tag), test: n.op, value: b.value };
     if (n.op === 'range' && isVal(b) && isVal(c)) return { tag: String(a.tag), test: 'range', min: b.value ?? undefined, max: c.value ?? undefined };
     if (isBit(n.op) && isVal(b)) return { tag: String(a.tag), test: n.op, bits: R.bitList(b.value) };
@@ -157,12 +159,26 @@
     const X = (attr, title) => `<button type="button" class="cb-x" ${attr} title="${title}">×</button>`;
     // 조건 한 줄 — 칸 폭은 모든 줄이 같다(장비 · 태그 · 비교 · 값 · [tail] · 지우기). 값이 없는 비교도 빈 칸을 둔다.
     //  tail: 숫자·글자 형식에서 "→ 결과 값" 칸. 비트 비교면 아래에 0~15 칸(같은 폭 16칸)이 한 줄 더 붙는다
+    // 다른 태그와 비교할 때 조건 줄 아래에 붙는 "비교 태그" 줄(장비 · 태그)
+    const rtagHtml = (c, on) => {
+      if (!on) return '';
+      const t = byId.get(c.rtag);
+      const dk = t ? devKey(t) : (groups[0] ? groups[0].key : '');
+      const g = groups.find((x) => x.key === dk) || { tags: [] };
+      const missing = c.rtag && !t ? opt(c.rtag, `${c.rtag} (없는 태그)`, c.rtag) : '';
+      return `<span class="cb-bitlabel">비교 태그</span><div class="cb-rtag${t || !c.rtag ? '' : ' bad'}">
+        <select data-rdev title="장비">${groups.map((x) => opt(x.key, x.name, dk)).join('')}</select>
+        <select data-rt title="비교할 태그">${missing}${g.tags.map((x) => opt(x.id, x.name ? `${x.id} — ${x.name}` : x.id, c.rtag)).join('')}</select></div>`;
+    };
     const condHtml = (c, path, rm, tail = '', attrs = '') => {
       const t = byId.get(c.tag);
       const dk = t ? devKey(t) : (groups[0] ? groups[0].key : '');
       const g = groups.find((x) => x.key === dk) || { tags: [] };
       const missing = c.tag && !t ? opt(c.tag, `${c.tag} (없는 태그)`, c.tag) : '';
-      const val = CMP.includes(c.test) ? `<input data-cv value="${esc(fmtValue(c.value))}" placeholder="값" spellcheck="false">`
+      const withTag = CMP.includes(c.test) && c.rtag !== undefined;
+      // 비교 6종의 값 칸: 직접 입력한 값, 또는 [태그] 단추로 바꾸면 아래 줄에서 고르는 다른 태그
+      const val = withTag ? '<span class="cb-vcell"><button type="button" class="cb-vk on" data-vkind title="직접 입력한 값과 비교로 되돌리기">태그와 비교 ×</button></span>'
+        : CMP.includes(c.test) ? `<span class="cb-vcell"><input data-cv value="${esc(fmtValue(c.value))}" placeholder="값" spellcheck="false"><button type="button" class="cb-vk" data-vkind title="값 대신 다른 태그와 비교">태그</button></span>`
         : c.test === 'range' ? `<span class="cb-range"><input data-cmin value="${esc(fmtValue(c.min))}" placeholder="최소" inputmode="decimal"><i>~</i><input data-cmax value="${esc(fmtValue(c.max))}" placeholder="최대" inputmode="decimal"></span>`
         : '<span class="cb-nov"></span>';
       const on = R.bitList(c.bits);
@@ -172,7 +188,7 @@
         <select data-cdev title="장비">${groups.map((x) => opt(x.key, x.name, dk)).join('')}</select>
         <select data-ct title="태그">${missing}${g.tags.map((x) => opt(x.id, x.name ? `${x.id} — ${x.name}` : x.id, c.tag)).join('')}</select>
         <select data-ctest title="비교">${TESTS.map(([v, l]) => opt(v, l, c.test)).join('')}</select>
-        ${val}${tail}${rm || '<span></span>'}${bits}
+        ${val}${tail}${rm || '<span></span>'}${bits}${rtagHtml(c, withTag)}
       </div>`;
     };
     const colHead = (sel) => `<div class="cb-row cb-colhead${sel ? ' cb-srow' : ''}"><span>장비</span><span>태그</span><span>비교</span><span>값</span>${sel ? '<span></span><span>결과 값</span>' : ''}<span></span></div>`;
@@ -272,14 +288,19 @@
       if (t.dataset.cdev !== undefined) {           // 장비를 바꾸면 그 장비의 첫 태그로
         const g = groups.find((x) => x.key === t.value);
         Object.assign(c, newCond(g && g.tags[0] ? g.tags[0].id : ''), { tag: g && g.tags[0] ? g.tags[0].id : '' });
-        for (const k of ['min', 'max', 'bits']) delete c[k];
+        for (const k of ['min', 'max', 'bits', 'rtag']) delete c[k];
         return changed(true);
       }
       if (t.dataset.ct !== undefined) { c.tag = t.value; return changed(true); }
+      if (t.dataset.rdev !== undefined) { const g = groups.find((x) => x.key === t.value); c.rtag = g && g.tags[0] ? g.tags[0].id : ''; return changed(true); }
+      if (t.dataset.rt !== undefined) { c.rtag = t.value; return changed(true); }
       if (t.dataset.ctest !== undefined) {
-        const prev = c.test, pv = c.value; c.test = t.value;
-        for (const k of ['value', 'min', 'max', 'bits']) delete c[k];
-        if (CMP.includes(c.test)) c.value = CMP.includes(prev) && pv !== undefined ? pv : 1;   // 비교끼리 바꾸면 값 유지
+        const prev = c.test, pv = c.value, pr = c.rtag; c.test = t.value;
+        for (const k of ['value', 'min', 'max', 'bits', 'rtag']) delete c[k];
+        if (CMP.includes(c.test)) {                 // 비교끼리 바꾸면 값(또는 비교 태그) 유지
+          if (CMP.includes(prev) && pr !== undefined) c.rtag = pr;
+          else c.value = CMP.includes(prev) && pv !== undefined ? pv : 1;
+        }
         if (isBit(c.test)) c.bits = [];
         return changed(true);
       }
@@ -311,6 +332,12 @@
       if (b.dataset.aadd !== undefined && model.calc) { model.args.push({ tag: firstTag() }); return changed(true); }
       if (b.dataset.arm !== undefined && model.calc) { model.args.splice(Number(b.closest('[data-arg]').dataset.arg), 1); return changed(true); }
       if (b.dataset.cadd !== undefined) { at(b.closest('[data-row]').dataset.row).items.push(newCond()); return changed(true); }
+      if (b.dataset.vkind !== undefined && row) {   // 값 ↔ 다른 태그
+        const c = at(row.dataset.path);
+        if (c.rtag !== undefined) { delete c.rtag; c.value = 1; }
+        else { delete c.value; c.rtag = (tags.find((x) => x.id !== c.tag && devKey(x) === (byId.get(c.tag) ? devKey(byId.get(c.tag)) : '')) || tags.find((x) => x.id !== c.tag) || { id: '' }).id; }
+        return changed(true);
+      }
       if (b.dataset.cbit !== undefined && row) {
         const c = at(row.dataset.path), n = Number(b.dataset.cbit), bits = R.bitList(c.bits);
         c.bits = (bits.includes(n) ? bits.filter((x) => x !== n) : bits.concat(n)).sort((x, y) => x - y);
@@ -336,6 +363,7 @@
     const condError = (c) => (!c.tag ? '태그를 고르지 않은 조건이 있습니다.'
       : !byId.has(c.tag) ? `없는 태그 "${c.tag}"를 쓰는 조건이 있습니다.`
       : isBit(c.test) && !R.bitList(c.bits).length ? `${c.tag}: 비트를 하나 이상 고르세요.`
+      : CMP.includes(c.test) && c.rtag !== undefined ? (!c.rtag ? `${c.tag}: 비교할 태그를 고르세요.` : !byId.has(c.rtag) ? `없는 태그 "${c.rtag}"와 비교하는 조건이 있습니다.` : null)
       : CMP.includes(c.test) && (c.value === '' || c.value === undefined) ? `${c.tag}: 비교할 값을 입력하세요.`
       : c.test === 'range' && c.min === undefined && c.max === undefined ? `${c.tag}: 범위의 최소·최대 중 하나는 입력하세요.` : null);
     const groupError = (g) => { for (const i of g.items) { const e = i.items ? groupError(i) : condError(i); if (e) return e; } return g.items.length ? null : '조건이 없는 묶음이 있습니다.'; };

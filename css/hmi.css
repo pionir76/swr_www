@@ -795,6 +795,14 @@
 .dlg .cb-group select option { background: #1b212b; color: #e6e9ef; }
 .cb-row.bad select[data-ct] { border-color: #e5534b; }
 .cb-nov { height: 32px; }
+/* 비교 값 칸: 값 입력 + [태그] 단추. 다른 태그와 비교하면 아래 줄(.cb-rtag)에서 장비·태그를 고른다 */
+.cb-vcell { display: flex; gap: 4px; min-width: 0; }
+.cb-vcell input { flex: 1; min-width: 0; }
+.dlg .cb-vk { flex: none; height: 32px; padding: 0 7px; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.25); background: none; color: #8fa0b7; font-size: 11.5px; white-space: nowrap; cursor: pointer; }
+.dlg .cb-vk:hover { border-color: #4da0ff; color: #e2e9f2; }
+.dlg .cb-vk.on { flex: 1; border-color: #2f80ff; background: rgba(47, 128, 255, 0.14); color: #cfe2ff; }
+.cb-rtag { grid-column: 2 / 5; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px; margin-bottom: 4px; }
+.cb-rtag.bad select[data-rt] { border-color: #e5534b; }
 .cb-range { display: grid; grid-template-columns: 1fr 10px 1fr; align-items: center; gap: 3px; }
 .cb-range i { font-style: normal; color: #8fa0b7; text-align: center; }
 /* 비트 고르기 — 태그·비교·값 칸 아래, 같은 폭 16칸 */
