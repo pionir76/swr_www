@@ -1156,7 +1156,7 @@
 
   // ---- 화면 전환 위젯 -------------------------------------------------------
   register('screenlink', {
-    // mode: "replace"(현재 화면을 통째로 교체) — "modal"은 아직 미지원(후속 작업).
+    // mode: "replace"(현재 화면을 통째로 교체) / "modal"(본 화면 위에 팝업으로 — 런타임 nav.popup).
     // 태그 바인딩이 없는 위젯이라 값 폴링과 무관하게 항상 클릭 가능하다.
     defaults: { text: '화면 이동', screen: null, mode: 'replace', color: '#3a4250', textColor: '#e6e9ef', fontSize: 16 },
     create(g, w, p, ctx) {
@@ -1165,7 +1165,7 @@
         .textContent = p.text;
       g.addEventListener('click', () => {
         if (!p.screen) return;
-        if (p.mode === 'replace' || !p.mode) ctx.goto(p.screen);
+        if (p.mode === 'modal' && ctx.popup) ctx.popup(p.screen); else if (ctx.goto) ctx.goto(p.screen);
       });
       return {};
     },

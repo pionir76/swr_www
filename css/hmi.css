@@ -100,6 +100,14 @@
 
 .whmi-screen { width: 100%; height: 100%; display: block; user-select: none; }
 .whmi-screen text { font-family: inherit; }
+/* 팝업(화면 이동 "팝업") — 화면 영역 안에서 본 화면 위에 뜬다. 입력 대화상자(.dlg-backdrop, 1000)보다 아래 */
+.whmi-pop-backdrop { position: absolute; inset: 0; z-index: 900; display: grid; place-items: center; background: rgba(0, 0, 0, 0.55); }
+.whmi-pop { border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.35); background: #14181f; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6); overflow: hidden; }
+.whmi-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 40px; padding: 0 6px 0 14px; background: #1c232d; border-bottom: 1px solid rgba(148, 163, 184, 0.2); }
+.whmi-pop-head span { font-size: 14px; font-weight: 700; color: #e6e9ef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.whmi-pop-x { flex: none; width: 32px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: none; color: #9fb0c6; font-size: 22px; line-height: 1; cursor: pointer; }
+.whmi-pop-x:hover { background: rgba(229, 83, 75, 0.2); color: #fff; }
+.whmi-pop-body { display: block; }
 
 /* ── 위젯 공통 (whmi-widgets.js가 그리는 요소에 바인딩) ─────────── */
 .w .digits { font-family: "Consolas", "D2Coding", ui-monospace, monospace; font-weight: 700; fill: #e6e9ef; }
@@ -434,6 +442,12 @@
 .ed-img .ed-btn { height: 26px; padding: 0 8px; font-size: 12px; }
 /* 태그 고르기: 장비 → 태그 두 칸을 위아래로 */
 .ed-tagpick { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* 태그 선택 옆 설정 버튼(⚙)이 있으면: 이름·장비는 한 줄 전체, 태그 선택 + 버튼 */
+.ed-tagpick:has(.ed-tagcfg) { display: grid; grid-template-columns: minmax(0, 1fr) 30px; }
+.ed-tagpick:has(.ed-tagcfg) > span, .ed-tagpick:has(.ed-tagcfg) > select[data-tagdev] { grid-column: 1 / -1; }
+.ed-tagcfg { padding: 0; border: 1px solid #2e3846; border-radius: 5px; background: none; color: #9fb0c6; font-size: 15px; line-height: 1; cursor: pointer; }
+.ed-tagcfg:hover:not(:disabled) { border-color: #3fa7ff; color: #fff; }
+.ed-tagcfg:disabled { opacity: 0.35; cursor: default; }
 .ed-field span { font-size: 11px; color: #8a93a3; }
 .ed-field input,
 .ed-field select {

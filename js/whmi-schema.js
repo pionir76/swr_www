@@ -130,6 +130,7 @@
     ],
     screenlink: [
       { key: 'screen', label: '이동할 화면', type: 'screen', group: 'basic' },
+      { key: 'mode', label: '열기 방식', type: 'select', group: 'basic', options: [['replace', '화면 교체'], ['modal', '팝업']] },
       { key: 'text', label: '글자', type: 'text', group: 'basic' },
       fontSize,
       { key: 'color', label: '버튼색', type: 'color', group: 'color' },

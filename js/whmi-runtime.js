@@ -276,8 +276,9 @@
 
   // ---- 화면 런타임 ---------------------------------------------------------
   class ScreenRuntime {
-    constructor(container, screen, tags, source, status, nav) {
-      this.screen = screen;
+    constructor(container, screen, tags, source, status, nav, idPrefix) {
+      // idPrefix: 팝업용 — 위젯이 만드는 clip·gradient id가 위젯 id 기준이라, 본 화면과 같은 위젯 id가 있으면 겹친다
+      this.screen = idPrefix ? { ...screen, widgets: screen.widgets.map((w) => ({ ...w, id: idPrefix + w.id })) } : screen;
       this.tags = tags;
       this.source = source;
       this.status = status;
@@ -295,6 +296,7 @@
     destroy() {
       clearTimeout(this.timer);
       this.timer = null;
+      if (this.onDestroy) this.onDestroy();   // 본 화면이면 떠 있는 팝업도 함께 닫는다
     }
 
     render(container) {
@@ -310,6 +312,7 @@
         write: (w, v, confirmMsg) => this.write(w, v, confirmMsg),
         inputDialog,
         goto: (screenId) => this.nav.goto && this.nav.goto(screenId),
+        popup: (screenId) => (this.nav.popup ? this.nav.popup(screenId) : this.nav.goto && this.nav.goto(screenId)),
       };
 
       // 배열 순서 = 그리기 순서(z-order)
@@ -521,9 +524,64 @@
         if (rt) rt.destroy();
         document.title = screen.title || project.name;
         rt = new ScreenRuntime(container, screen, tags, source, statusFn, nav);
+        rt.onDestroy = closePopup;
         rt.poll();
         return rt;
       },
+    };
+
+    // ---- 팝업(screenlink mode: "modal") --------------------------------------
+    // 보통 화면을 본 화면 위에 창으로 띄운다. 팝업은 자기 ScreenRuntime으로 따로 그리고 따로 폴링한다(본 화면도 계속 갱신).
+    // 한 번에 하나만 — 팝업 안에서 팝업을 열면 내용이 바뀌고, 화면 교체를 누르면 팝업을 닫고 본 화면을 바꾼다.
+    // 닫기: 제목 줄의 ×, Esc(입력 대화상자가 떠 있으면 그쪽이 먼저). 바깥을 눌러서는 닫히지 않는다(터치 실수 방지).
+    let pop = null;
+    function closePopup() {
+      if (!pop) return;
+      const p = pop; pop = null;
+      p.rt.destroy();
+      p.ro.disconnect();
+      document.removeEventListener('keydown', p.onKey, true);
+      p.el.remove();
+    }
+    const popNav = {
+      goto: (screenId) => { closePopup(); return nav.goto(screenId); },
+      popup: (screenId) => { closePopup(); return nav.popup(screenId); },
+    };
+    nav.popup = async (screenId) => {
+      if (!rt) return;
+      let screen;
+      try { screen = await loadScreen(screenId); } catch (e) { statusFn('err', e.message); return; }
+      closePopup();
+      const ref = (project.screens || []).find((s) => s.id === screenId);
+      const el = document.createElement('div');
+      el.className = 'whmi-pop-backdrop';
+      el.innerHTML = `<div class="whmi-pop"><div class="whmi-pop-head"><span>${esc((ref && ref.title) || screen.title || screenId)}</span>`
+        + '<button type="button" class="whmi-pop-x" title="닫기">×</button></div><div class="whmi-pop-body"></div></div>';
+      if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+      container.appendChild(el);
+      const body = el.querySelector('.whmi-pop-body');
+      // 크기: 본 화면과 같은 배율로(작화한 크기 비율 그대로), 화면 영역을 넘으면 줄인다
+      const fit = () => {
+        const cw = container.clientWidth, ch = container.clientHeight;
+        if (!cw || !ch || !rt) return;
+        const head = el.querySelector('.whmi-pop-head').offsetHeight;
+        const { w: W, h: H } = screen.size, m = rt.screen.size;
+        const k = Math.min(cw / m.w, ch / m.h, (cw * 0.94) / W, (ch * 0.94 - head) / H);
+        body.style.width = `${Math.floor(W * k)}px`;
+        body.style.height = `${Math.floor(H * k)}px`;
+      };
+      const ro = new ResizeObserver(fit);
+      ro.observe(container);
+      const onKey = (e) => {
+        if (e.key !== 'Escape' || document.querySelector('.dlg-backdrop:not([hidden])')) return;   // 대화상자는 닫혀도 요소가 남는다
+        e.preventDefault(); e.stopPropagation(); closePopup();
+      };
+      document.addEventListener('keydown', onKey, true);
+      el.querySelector('.whmi-pop-x').addEventListener('click', closePopup);
+      fit();
+      const prt = new ScreenRuntime(body, screen, tags, source, statusFn, popNav, 'pop-');
+      pop = { el, rt: prt, ro, onKey };
+      prt.poll();
     };
 
     const empty = !project.screens || project.screens.length === 0;

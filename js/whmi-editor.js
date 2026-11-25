@@ -434,6 +434,9 @@
       this.inspector.addEventListener('click', (e) => {
         const btn = e.target.closest('.ed-sw-btn[data-cpick]');
         if (btn) this.openColorPicker(btn);
+        // 태그 선택 옆 ⚙ — 태그 관리를 그 태그의 수정 폼으로 바로 연다(저장·취소하면 편집기로 돌아옴)
+        const cfg = e.target.closest('.ed-tagcfg');
+        if (cfg && cfg.dataset.tagcfg) window.WHMI.TagManager.open(this, { editId: cfg.dataset.tagcfg });
       });
       this.inspector.addEventListener('click', (e) => {
         const sm = e.target.closest('details[data-g] > summary');
@@ -2282,6 +2285,9 @@
       const undef = tagId && !defined && key === NO_DEV ? `<option value="${esc(tagId)}">${esc(tagId)} (정의되지 않은 태그)</option>` : '';
       tagSel.innerHTML = `${head}${none}${undef}${opts}${isWidget === true ? '<option value="__new__">+ 새 태그…</option>' : ''}`;
       tagSel.value = head ? KEEP : tagId || '';
+      // 옆의 설정 버튼(⚙) — 위젯에 실제로 연결된 태그를 가리킨다. 정의된 태그일 때만 눌린다
+      const cfg = tagSel.nextElementSibling;
+      if (cfg && cfg.dataset.tagcfg !== undefined) { cfg.dataset.tagcfg = defined ? tagId : ''; cfg.disabled = !defined; }
     }
 
     // 장비를 바꾸면 태그 목록만 바꾼다(연결은 태그를 고를 때 바뀜). 고른 장비는 다음 위젯에서도 먼저 보여 준다.
@@ -2643,8 +2649,8 @@
           <div class="ed-form">
             <label class="ed-field wide"><span>id</span><input type="text" data-f="id" spellcheck="false" autocomplete="off"></label>
             ${num('x')}${num('y')}${num('w')}${num('h')}
-            ${NO_TAG_TYPES.includes(w.type) ? '' : `<div class="ed-field wide ed-tagpick"><span>tag</span><select data-tagdev="f" title="장비"></select><select data-f="tag" title="태그"></select></div>`}
-            ${WRITE_TYPES.includes(w.type) ? `<div class="ed-field wide ed-tagpick" title="표시(tag)와 다른 태그에 써야 할 때 — 예: NSP 표시, TSP 쓰기"><span>쓰기 태그</span><select data-tagdev="w" title="장비"></select><select data-f="writeTag" title="쓰기 태그"></select></div>` : ''}
+            ${NO_TAG_TYPES.includes(w.type) ? '' : `<div class="ed-field wide ed-tagpick"><span>tag</span><select data-tagdev="f" title="장비"></select><select data-f="tag" title="태그"></select><button type="button" class="ed-tagcfg" data-tagcfg="" title="이 태그의 설정 열기" disabled>⚙</button></div>`}
+            ${WRITE_TYPES.includes(w.type) ? `<div class="ed-field wide ed-tagpick" title="표시(tag)와 다른 태그에 써야 할 때 — 예: NSP 표시, TSP 쓰기"><span>쓰기 태그</span><select data-tagdev="w" title="장비"></select><select data-f="writeTag" title="쓰기 태그"></select><button type="button" class="ed-tagcfg" data-tagcfg="" title="이 쓰기 태그의 설정 열기" disabled>⚙</button></div>` : ''}
           </div>
           <div class="ed-form-err"></div>
           ${this.renderPropForm(w)}`;

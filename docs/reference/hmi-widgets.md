@@ -138,7 +138,7 @@ CSS 클래스: `.w.q-bad`(흐리게), `.w.q-normal`(연한 호박색 글로우, 
 
 | type | 용도 | props (기본값) |
 |---|---|---|
-| `screenlink` | 다른 화면으로 이동하는 버튼 | `screen`(이동할 화면 id), `text`('화면 이동'), `fontSize`(16), `color`, `textColor`, `mode`(replace — modal은 미지원). 태그 없이 항상 클릭 가능 |
+| `screenlink` | 다른 화면으로 이동하는 버튼 | `screen`(이동할 화면 id), `text`('화면 이동'), `fontSize`(16), `color`, `textColor`, `mode`(replace 화면 교체 \| modal 팝업 — 본 화면 위에 창으로, 닫기는 ×·Esc. `docs/architecture/hmi.md` §7.2.1). 태그 없이 항상 클릭 가능 |
 
 ---
 

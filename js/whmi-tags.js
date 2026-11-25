@@ -504,9 +504,11 @@
   }
 
   // ---- 대화상자 ---------------------------------------------------------------
+  // opts.editId: 태그 id — 속성 창 태그 선택 옆 ⚙에서 열면 바로 그 태그의 수정 폼, 저장·삭제·취소하면 닫음(목록을 거치지 않음)
   // opts.createFor: 위젯 id — 속성 창 "+ 새 태그…"에서 열면 바로 새 태그 폼, 만들면 그 위젯에 연결하고 닫음
   // opts.deviceId: 속성 창에서 고른 장비 — 새 태그 폼의 소스 레지스터 목록에서 이 장비를 맨 앞에
   function open(editor, opts = {}) {
+    const direct = () => !!(opts.createFor || opts.editId);   // 폼으로 바로 연 경우 — 끝나면 목록 대신 닫는다
     const d = window.WHMI.dialog.open(`<div class="ed-dlg tm">
       <div class="tm-head">
         <p>HMI 태그</p>
@@ -545,7 +547,7 @@
     const btns = d.querySelector('.tm-btns');
     // 아래 버튼줄 — 목록: [닫기] / 새 태그: [목록으로][만들기] / 수정: [삭제] … [목록으로][저장]
     const drawButtons = () => {
-      const back = `<button type="button" data-k="back">${opts.createFor ? '취소' : '목록으로'}</button>`;
+      const back = `<button type="button" data-k="back">${direct() ? '취소' : '목록으로'}</button>`;
       btns.innerHTML = !editing
         ? (selected.size && tab === 'tags' ? `<button type="button" data-k="multi-del" class="tm-danger">선택 삭제 (${selected.size})</button><span class="tm-spacer"></span>` : '') +
           '<button type="button" data-k="close" class="primary">닫기</button>'
@@ -908,6 +910,7 @@
         if (w) await editor.setTag(w, createdId);
         return;
       }
+      if (opts.editId) { close(); return; }
       showList();
       await runCheck();
     };
@@ -1162,7 +1165,7 @@
 
     const close = () => { document.removeEventListener('keydown', onKey, true); window.WHMI.dialog.close(); };
     // Esc: 편집 폼이면 목록으로, 목록이면 닫기
-    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); if (editing && !opts.createFor) showList(); else close(); } };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); if (editing && !direct()) showList(); else close(); } };
     // 목록 선택 체크 상자 — 머리글은 지금 보이는 행만 전체 선택/해제
     d.querySelector('.tm-wrap').addEventListener('change', (e) => {
       const t = e.target;
@@ -1249,7 +1252,7 @@
       else if (b.dataset.k === 'multi-del-ok') multiDelete();
       else if (b.dataset.k === 'md-all') setSection(b.dataset.sec, true);
       else if (b.dataset.k === 'md-none') setSection(b.dataset.sec, false);
-      else if (b.dataset.k === 'back') { if (opts.createFor) close(); else showList(); }
+      else if (b.dataset.k === 'back') { if (direct()) close(); else showList(); }
       else if (b.dataset.k === 'save') save();
       else if (b.dataset.k === 'kind') { if (editing && !editing.tag && b.dataset.kind !== editing.kind) showForm(null, b.dataset.kind, { id: ff('id') && ff('id').value, name: ff('name') && ff('name').value }); }
       else if (b.dataset.k === 'delete') askDelete();
@@ -1261,7 +1264,13 @@
     drawButtons();
     draw();
     search.focus();
-    load().then(() => { if (opts.createFor && data) showForm(null); });
+    load().then(() => {
+      if (opts.createFor && data) showForm(null);
+      else if (opts.editId) {
+        const t = data && data.tags.find((x) => x.id === opts.editId);
+        if (t) showForm(t); else opts.editId = null;   // 없는 태그면 평소처럼 목록
+      }
+    });
   }
 
   window.WHMI.TagManager = { open };
