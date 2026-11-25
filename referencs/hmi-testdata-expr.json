@@ -1,7 +1,7 @@
 {
- "about": "식(AST) 평가. inputs는 register 태그의 원본(raw)과 품질(q). 주지 않은 태그는 쓰이지 않는다",
- "source": "기대 값은 프론트 코드(js/whmi-runtime.js WHMI.raw, js/whmi-rules.js)로 계산했다. 규칙은 docs/architecture/hmi.md §5.3·§5.4·§5.6",
- "updated": "2026-11-24",
+ "about": "식(AST) 평가. inputs는 register 태그의 원본(raw)과 품질(q). 주지 않은 태그는 쓰이지 않는다. 사례의 decimals(있으면)는 숫자 결과의 소수 자릿수. group \"arith\"는 산술·집계 연산(단계 C-2)",
+ "source": "기대 값은 프론트 코드(js/whmi-runtime.js WHMI.raw, js/whmi-rules.js)로 계산했다. 규칙은 docs/architecture/hmi.md §5.3·§5.4·§5.6. 산술 사례(group \"arith\")는 같은 규칙의 기준 계산기로 계산했다(반올림은 JavaScript Number(x.toFixed(n)) — 정확히 절반이면 0에서 먼 쪽으로)",
+ "updated": "2026-11-25",
  "tags": {
   "STS": {
    "kind": "register",
@@ -93,6 +93,33 @@
          "value": 0
         }
        ]
+      }
+     ]
+    }
+   }
+  },
+  "TEMP2": {
+   "kind": "register",
+   "source": {
+    "registerType": "holding_register",
+    "isSigned": true,
+    "scale": 0.1
+   },
+   "scale": null
+  },
+  "DIFF": {
+   "kind": "expr",
+   "decimals": 1,
+   "source": {
+    "valueType": "number",
+    "expr": {
+     "op": "sub",
+     "args": [
+      {
+       "tag": "TEMP"
+      },
+      {
+       "tag": "PRESS"
       }
      ]
     }
@@ -1259,6 +1286,1112 @@
    "expect": {
     "value": null,
     "q": "bad"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "더하기: 태그 + 상수",
+   "valueType": "number",
+   "expr": {
+    "op": "add",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 10
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 35,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "빼기: 태그 − 태그",
+   "valueType": "number",
+   "expr": {
+    "op": "sub",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "TEMP2"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 12.5,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "곱하기",
+   "valueType": "number",
+   "expr": {
+    "op": "mul",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 2
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 50,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "나누기",
+   "valueType": "number",
+   "expr": {
+    "op": "div",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 4
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 6.25,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "더하기: 인수 3개",
+   "valueType": "number",
+   "expr": {
+    "op": "add",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "TEMP2"
+     },
+     {
+      "value": 1
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 38.5,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "곱하기: 인수 3개",
+   "valueType": "number",
+   "expr": {
+    "op": "mul",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": 2
+     },
+     {
+      "value": 3
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 7,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 42,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "부호 있는 음수 값(−10.0) + 5",
+   "valueType": "number",
+   "expr": {
+    "op": "add",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 5
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 65436,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": -5,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "절댓값",
+   "valueType": "number",
+   "expr": {
+    "op": "abs",
+    "args": [
+     {
+      "tag": "TEMP"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 65436,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 10,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "최소: 음수 섞임",
+   "valueType": "number",
+   "expr": {
+    "op": "min",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "TEMP2"
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 65436,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": -10,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "최대",
+   "valueType": "number",
+   "expr": {
+    "op": "max",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "TEMP2"
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 65436,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 12.5,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "평균: 두 값",
+   "valueType": "number",
+   "expr": {
+    "op": "avg",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "TEMP2"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 18.75,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "평균: 세 값, 소수 2자리",
+   "valueType": "number",
+   "decimals": 2,
+   "expr": {
+    "op": "avg",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "TEMP2"
+     },
+     {
+      "tag": "PRESS"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    },
+    "PRESS": {
+     "raw": 101,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 12.84,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "배율이 다른 태그(0.1과 0.01), 자릿수 없음 — 실수 오차 그대로",
+   "valueType": "number",
+   "expr": {
+    "op": "sub",
+    "args": [
+     {
+      "tag": "PRESS"
+     },
+     {
+      "tag": "TEMP"
+     }
+    ]
+   },
+   "inputs": {
+    "PRESS": {
+     "raw": 2472,
+     "q": "good"
+    },
+    "TEMP": {
+     "raw": 124,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 12.319999999999999,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "배율이 다른 태그, 소수 2자리",
+   "valueType": "number",
+   "decimals": 2,
+   "expr": {
+    "op": "sub",
+    "args": [
+     {
+      "tag": "PRESS"
+     },
+     {
+      "tag": "TEMP"
+     }
+    ]
+   },
+   "inputs": {
+    "PRESS": {
+     "raw": 2472,
+     "q": "good"
+    },
+    "TEMP": {
+     "raw": 124,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 12.32,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "자릿수 0: 12.5 → 정확히 절반은 올림",
+   "valueType": "number",
+   "decimals": 0,
+   "expr": {
+    "op": "div",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 2
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 13,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "자릿수 2: 0.125 → 정확히 절반은 올림",
+   "valueType": "number",
+   "decimals": 2,
+   "expr": {
+    "op": "div",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": 8
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 1,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 0.13,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "자릿수 2: 1.005는 실제로 1.00499…라서 내림",
+   "valueType": "number",
+   "decimals": 2,
+   "expr": {
+    "op": "add",
+    "args": [
+     {
+      "tag": "STS"
+     },
+     {
+      "value": 0.005
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 1,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 1,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "자릿수 1: −0.01 → −0이 아니라 0",
+   "valueType": "number",
+   "decimals": 1,
+   "expr": {
+    "op": "mul",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 0.1
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 65535,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 0,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "판정 불가: 상수 0으로 나눔",
+   "valueType": "number",
+   "expr": {
+    "op": "div",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "판정 불가: 값이 0인 태그로 나눔",
+   "valueType": "number",
+   "expr": {
+    "op": "div",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "ALM"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "판정 불가: 숫자가 아닌 글자",
+   "valueType": "number",
+   "expr": {
+    "op": "add",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": "abc"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "판정 불가: 상수 null",
+   "valueType": "number",
+   "expr": {
+    "op": "add",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "value": null
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "판정 불가: 넘침",
+   "valueType": "number",
+   "expr": {
+    "op": "mul",
+    "args": [
+     {
+      "value": 1e+200
+     },
+     {
+      "value": 1e+200
+     },
+     {
+      "tag": "STS"
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 1,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "판정 불가: 입력 하나가 bad",
+   "valueType": "number",
+   "expr": {
+    "op": "add",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "TEMP2"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": null,
+     "q": "bad"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "품질: normal이 섞이면 normal",
+   "valueType": "number",
+   "expr": {
+    "op": "add",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "TEMP2"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "normal"
+    }
+   },
+   "expect": {
+    "value": 37.5,
+    "q": "normal"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "숫자 모양 글자와 참/거짓은 숫자로 읽음",
+   "valueType": "number",
+   "expr": {
+    "op": "add",
+    "args": [
+     {
+      "value": "5"
+     },
+     {
+      "tag": "RUNC"
+     },
+     {
+      "value": true
+     }
+    ]
+   },
+   "inputs": {
+    "RUNC": {
+     "raw": 1,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 7,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "조합: 산술 안의 산술(최대 − 최소)",
+   "valueType": "number",
+   "expr": {
+    "op": "sub",
+    "args": [
+     {
+      "op": "max",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "tag": "TEMP2"
+       }
+      ]
+     },
+     {
+      "op": "min",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "tag": "TEMP2"
+       }
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 12.5,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "조합: 산술을 비교의 인수로",
+   "valueType": "bool",
+   "expr": {
+    "op": "gt",
+    "args": [
+     {
+      "op": "sub",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "tag": "TEMP2"
+       }
+      ]
+     },
+     {
+      "value": 5
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "조합: 산술을 선택의 값으로",
+   "valueType": "number",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "tag": "RUNNING"
+     },
+     {
+      "op": "sub",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "tag": "TEMP2"
+       }
+      ]
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 2,
+     "q": "good"
+    },
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 12.5,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "조합: 선택 조건이 거짓이면 기본값",
+   "valueType": "number",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "tag": "RUNNING"
+     },
+     {
+      "op": "sub",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "tag": "TEMP2"
+       }
+      ]
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "STS": {
+     "raw": 1,
+     "q": "good"
+    },
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "TEMP2": {
+     "raw": 125,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 0,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "한계: 0으로 나눔 보호 식 — 고르지 않은 가지가 판정 불가면 전체가 판정 불가",
+   "valueType": "number",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "op": "ne",
+      "args": [
+       {
+        "tag": "ALM"
+       },
+       {
+        "value": 0
+       }
+      ]
+     },
+     {
+      "op": "div",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "tag": "ALM"
+       }
+      ]
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "ALM": {
+     "raw": 0,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": null,
+    "q": "bad"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "보호 식: 나누는 값이 0이 아닐 때",
+   "valueType": "number",
+   "expr": {
+    "op": "select",
+    "args": [
+     {
+      "op": "ne",
+      "args": [
+       {
+        "tag": "ALM"
+       },
+       {
+        "value": 0
+       }
+      ]
+     },
+     {
+      "op": "div",
+      "args": [
+       {
+        "tag": "TEMP"
+       },
+       {
+        "tag": "ALM"
+       }
+      ]
+     },
+     {
+      "value": 0
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    },
+    "ALM": {
+     "raw": 5,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 5,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "이어 쓰기: 자릿수 1인 계산 태그(DIFF)는 반올림된 값을 넘긴다",
+   "valueType": "bool",
+   "expr": {
+    "op": "eq",
+    "args": [
+     {
+      "tag": "DIFF"
+     },
+     {
+      "value": 12.3
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 247,
+     "q": "good"
+    },
+    "PRESS": {
+     "raw": 1241,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": true,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "이어 쓰기: 계산 태그 값에 다시 계산",
+   "valueType": "number",
+   "expr": {
+    "op": "mul",
+    "args": [
+     {
+      "tag": "DIFF"
+     },
+     {
+      "value": 2
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 247,
+     "q": "good"
+    },
+    "PRESS": {
+     "raw": 1241,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": 24.6,
+    "q": "good"
+   }
+  },
+  {
+   "group": "arith",
+   "name": "값 형식 참/거짓: 계산 결과 0은 거짓",
+   "valueType": "bool",
+   "expr": {
+    "op": "sub",
+    "args": [
+     {
+      "tag": "TEMP"
+     },
+     {
+      "tag": "TEMP"
+     }
+    ]
+   },
+   "inputs": {
+    "TEMP": {
+     "raw": 250,
+     "q": "good"
+    }
+   },
+   "expect": {
+    "value": false,
+    "q": "good"
    }
   }
  ]

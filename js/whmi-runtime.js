@@ -160,9 +160,10 @@
       for (const id in values) {
         const x = values[id];
         const t = tags[id];
-        // 계산·설정 태그는 value를 그대로(소수가 있으면 2자리까지 표시), register 태그는 원본을 변환
+        // 계산·설정 태그는 value를 그대로 — 자릿수는 태그의 decimals(서버가 그 자릿수로 반올림해 준다),
+        // 지정하지 않았으면 소수가 있을 때 2자리까지. register 태그는 원본을 변환
         out[id] = x && 'value' in x
-          ? { ...x, v: x.value, decimals: typeof x.value === 'number' && !Number.isInteger(x.value) ? 2 : 0 }
+          ? { ...x, v: x.value, decimals: t && t.decimals != null ? t.decimals : typeof x.value === 'number' && !Number.isInteger(x.value) ? 2 : 0 }
           : x && t && t.source && 'raw' in x
             ? { ...x, v: RAW.toValue(x.raw, t), decimals: RAW.limits(t).decimals } : x;
       }

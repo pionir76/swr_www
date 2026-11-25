@@ -90,6 +90,8 @@
   // ---- 식(AST) → 읽을 글자 — 계산 태그의 식을 목록·미리보기에 보여 줄 때(hmi.md §5.3). 계산은 백엔드가 한다.
   //  노드: { tag } | { value } | { op, args }. 바깥(top)이 아니면 그리고/또는 묶음에 괄호
   const CMP = { eq: '=', ne: '≠', gt: '>', ge: '≥', lt: '<', le: '≤' };
+  const ARITH_SIGN = { add: '+', sub: '−', mul: '×', div: '÷' };
+  const ARITH_NAME = { min: '최소', max: '최대', avg: '평균', abs: '절댓값' };
   function exprText(n, top = true) {
     if (!n || typeof n !== 'object') return '?';
     if ('tag' in n) return String(n.tag);
@@ -103,6 +105,8 @@
     }
     if (n.op === 'and' || n.op === 'or') { const s = a.map((x) => exprText(x, false)).join(n.op === 'and' ? ' 그리고 ' : ' 또는 '); return top ? s : `(${s})`; }
     if (n.op === 'not') return `아님(${exprText(a[0], true)})`;
+    if (ARITH_SIGN[n.op]) { const s = a.map((x) => exprText(x, false)).join(` ${ARITH_SIGN[n.op]} `); return top ? s : `(${s})`; }
+    if (ARITH_NAME[n.op]) return `${ARITH_NAME[n.op]}(${a.map((x) => exprText(x, true)).join(', ')})`;
     if (n.op === 'select') {
       const rows = []; for (let i = 0; i + 1 < a.length; i += 2) rows.push(`${exprText(a[i], true)} → ${t(i + 1)}`);
       return `${rows.join(', ')}, 그 외 → ${t(a.length - 1)}`;

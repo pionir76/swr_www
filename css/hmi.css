@@ -778,6 +778,14 @@
 .cb-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 150px 150px 28px; gap: 8px; align-items: center; margin: 10px 0; }
 .cb-row.cb-srow { grid-template-columns: 160px minmax(0, 1fr) 140px 120px 16px 150px 60px; }   /* … → 결과 값 */
 .cb-colhead { margin: 0 0 -4px; }
+/* 계산(산술·집계): 규칙 종류 라디오 · 연산 선택 · 값 줄(종류 · 장비 · 태그 또는 숫자 · 지우기) */
+.cb-kind { margin: 0 0 12px 2px; }
+.cb-calc-op { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.cb-calc-op span { font-size: 12.5px; color: #b3c0d1; white-space: nowrap; }
+.dlg .cb-group .cb-calc-op select { width: 170px; flex: none; }
+.cb-calc-op small { font-size: 12px; color: #7f8ea3; white-space: nowrap; }
+.cb-row.cb-arow { grid-template-columns: 90px 170px minmax(0, 1fr) 28px; }
+.cb-arow input[data-anum] { grid-column: 2 / 4; max-width: 170px; }
 .cb-colhead span { padding-left: 2px; font-size: 11px; color: #7f8ea3; }
 .dlg .cb-group select, .dlg .cb-group input:not([type="checkbox"]) {
   box-sizing: border-box; width: 100%; height: 32px; min-width: 0; padding: 0 9px; border-radius: 7px;

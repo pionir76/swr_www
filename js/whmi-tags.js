@@ -444,6 +444,7 @@
         <div class="form-field"><label>TAG NAME</label><input class="input" data-ff="name" spellcheck="false"></div>
         <div class="form-field"><label>값 형식</label><select class="select" data-ff="valueType">${opts(VALUE_TYPES)}</select></div>
         <div class="form-field" data-unit-field hidden><label>단위</label><select class="select" data-ff="unit"><option value="">없음</option>${opts(UNIT_OPTIONS)}</select></div>
+        <div class="form-field" data-unit-field hidden><label>소수 자릿수</label><select class="select" data-ff="decimals" title="계산 결과를 이 자릿수로 반올림합니다"><option value="">지정 안 함</option>${[0, 1, 2, 3, 4, 5, 6].map((n) => `<option value="${n}">${n}자리</option>`).join('')}</select></div>
       </div>
       <div data-cb></div>
       <div class="cb-prev" data-prev></div>
@@ -719,11 +720,15 @@
     const Q_LABEL = { good: '품질 정상', normal: '응답 지연', bad: '불량', disabled: '장비 비활성' };
     const showVal = (v) => (v === true ? '참' : v === false ? '거짓' : v == null ? '—' : typeof v === 'string' ? `"${v}"` : String(v));
 
+    // 숫자 형식에만 뜻이 있는 칸(단위·소수 자릿수)
+    const showNumFields = (vt) => { for (const el of formWrap.querySelectorAll('[data-unit-field]')) el.hidden = vt !== 'number'; };
+    const decimalsOf = () => (ff('valueType').value === 'number' && ff('decimals').value !== '' ? Number(ff('decimals').value) : null);
     const initExprForm = (tag) => {
       const vt = (tag && tag.source && tag.source.valueType) || 'bool';
       ff('valueType').value = vt;
       if (tag) { ff('name').value = tag.name || ''; if (tag.unit) { if (![...ff('unit').options].some((o) => o.value === tag.unit)) ff('unit').add(new Option(tag.unit, tag.unit)); ff('unit').value = tag.unit; } }
-      formWrap.querySelector('[data-unit-field]').hidden = vt !== 'number';
+      if (tag && tag.decimals != null) ff('decimals').value = String(tag.decimals);
+      showNumFields(vt);
       editing.test = false;            // 시험 값으로 보기
       editing.testInputs = {};         // 태그 id → 입력한 글자
       editing.inputIds = '';           // 미리보기 입력 칩을 다시 그릴지 판단
@@ -733,9 +738,10 @@
       });
       ff('valueType').addEventListener('change', () => {
         editing.builder.setValueType(ff('valueType').value);
-        formWrap.querySelector('[data-unit-field]').hidden = ff('valueType').value !== 'number';
+        showNumFields(ff('valueType').value);
         schedulePreview(0);
       });
+      ff('decimals').addEventListener('change', () => schedulePreview(0));
       for (const k of ['id', 'name']) ff(k)?.addEventListener('input', (e) => { e.target.dataset.touched = '1'; });
       schedulePreview(0);
       (tag ? ff('name') : ff('id')).focus();
@@ -770,6 +776,7 @@
       let r;
       try {
         const body = { valueType: ff('valueType').value, expr };
+        if (decimalsOf() != null) body.decimals = decimalsOf();
         if (editing.test) body.inputs = testInputsBody();
         const res = await apiFetch('/api/hmi/eval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (seq !== prevSeq || !editing || editing.kind !== 'expr') return;
@@ -841,7 +848,8 @@
       const bad = editing.builder.validate();
       if (bad) return formError(bad);
       formError('');
-      const body = { name, kind: 'expr', source: { valueType, expr: editing.builder.getExpr() }, unit: valueType === 'number' ? ff('unit').value || null : null };
+      const body = { name, kind: 'expr', source: { valueType, expr: editing.builder.getExpr() }, unit: valueType === 'number' ? ff('unit').value || null : null,
+        decimals: decimalsOf() };   // PUT은 전체 교체 — 항상 보낸다(빼면 지워짐)
       const btn = btns.querySelector('[data-k="save"]');
       btn.disabled = true;
       try {

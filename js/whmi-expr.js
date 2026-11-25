@@ -5,6 +5,7 @@
 //   조건     { tag, test, value | min,max | bits }     test: true·false(참/거짓일 때) + 비교 + 범위 + 비트
 //   묶음     { mode: 'and'|'or', not, items: [조건 | 묶음] }   묶음 안의 묶음까지(2단)
 //   참/거짓  = 묶음 하나
+//   숫자(계산) = { calc: 연산, args: [{ tag } | { value: 숫자 }] }   연산 하나 + 값 목록(산술·집계, 단계 C-2)
 //   숫자·글자 = { rows: [{ g, value }], def }          위에서부터 처음 맞는 줄의 값(select). g = 줄의 조건 묶음(1단, 조건만)
 // 빌더로 나타낼 수 없는 식(다른 태그와 비교, 3단 이상 묶음 등)은 parse가 null — 폼은 글자로만 보여 주고 그대로 둔다.
 (function () {
@@ -21,6 +22,10 @@
   const CMP = ['eq', 'ne', 'gt', 'ge', 'lt', 'le'];
   const isBit = (t) => t === 'bitAny' || t === 'bitNone';
   const MAX_DEPTH = 2;
+  // 산술·집계 연산: [이름, 표시, 값 최소 개수, 최대 개수]
+  const ARITH = [['add', '더하기 ( + )', 2, 16], ['sub', '빼기 ( − )', 2, 2], ['mul', '곱하기 ( × )', 2, 16], ['div', '나누기 ( ÷ )', 2, 2],
+    ['min', '최소', 2, 16], ['max', '최대', 2, 16], ['avg', '평균', 2, 16], ['abs', '절댓값', 1, 1]];
+  const arith = (op) => ARITH.find((x) => x[0] === op);
   const CALC = 'calc', NONE = 'none';
 
   const parseValue = (s) => (s === 'true' || s === 'false' ? s === 'true' : s !== '' && Number.isFinite(Number(s)) ? Number(s) : s);
@@ -41,6 +46,7 @@
     const body = args.length === 1 ? args[0] : { op: g.mode, args };
     return g.not ? { op: 'not', args: [body] } : body;
   }
+  const calcAst = (m) => ({ op: m.calc, args: m.args.map((a) => (a.tag !== undefined ? { tag: a.tag } : V(a.value))) });
   const selectAst = (m) => ({ op: 'select', args: [...m.rows.flatMap((r) => [groupAst(r.g), V(r.value)]), V(m.def)] });
 
   // ---- AST → 모형(안 되면 null) ---------------------------------------------
@@ -95,7 +101,14 @@
     const d = n.args[n.args.length - 1];
     return isVal(d) ? { rows, def: d.value } : null;
   }
-  const parse = (expr, valueType) => (valueType === 'bool' ? parseGroup(expr, 1) : parseSelect(expr));
+  // 계산 — 연산 하나에 태그·숫자만(연산 안의 연산은 빌더로 못 만든다 → null)
+  function parseCalc(n) {
+    const def = n && arith(n.op);
+    if (!def || !Array.isArray(n.args) || n.args.length < def[2] || n.args.length > def[3]) return null;
+    const args = n.args.map((x) => (isTag(x) ? { tag: String(x.tag) } : isVal(x) && typeof x.value === 'number' ? { value: x.value } : null));
+    return args.every(Boolean) ? { calc: n.op, args } : null;
+  }
+  const parse = (expr, valueType) => (valueType === 'bool' ? parseGroup(expr, 1) : parseSelect(expr) || (valueType === 'number' ? parseCalc(expr) : null));
 
   // ---- 빌더 -----------------------------------------------------------------
   // opts: { tags(전체 태그), selfId(편집 중인 태그 — 자기 자신은 고를 수 없음), valueType, expr(없으면 새 식), onChange() }
@@ -128,6 +141,8 @@
       ? { mode: 'and', not: false, items: [newCond()] }
       : { rows: [{ g: one(newCond()), value: valueType === 'number' ? 1 : '' }], def: valueType === 'number' ? 0 : '' });
     if (!model && !readonly) model = fresh();
+    const freshCalc = () => ({ calc: 'sub', args: [{ tag: firstTag() }, { tag: firstTag() }] });
+    let stash = null;   // 규칙 종류(조건 → 값 / 계산)를 오갈 때 반대쪽 내용을 잠시 보관
 
     // 경로("1.0")로 조건·묶음 찾기 — 묶음: items의 번호. 선택형은 첫 번호가 줄(rows), 그다음이 줄 안의 조건
     const at = (path) => {
@@ -190,11 +205,38 @@
       <div class="cb-add"><button type="button" data-radd>+ 줄</button></div>
     </div>`;
 
+    // 계산 — 연산 하나 + 값 목록(태그 또는 숫자)
+    const calcHtml = (m) => {
+      const def = arith(m.calc);
+      const row = (a, i) => {
+        const isTagArg = a.tag !== undefined, t = byId.get(a.tag);
+        const dk = t ? devKey(t) : (groups[0] ? groups[0].key : '');
+        const g = groups.find((x) => x.key === dk) || { tags: [] };
+        const missing = isTagArg && a.tag && !t ? opt(a.tag, `${a.tag} (없는 태그)`, a.tag) : '';
+        return `<div class="cb-row cb-arow${isTagArg && a.tag && !t ? ' bad' : ''}" data-arg="${i}">
+          <select data-akind title="종류">${opt('tag', '태그', isTagArg ? 'tag' : 'num')}${opt('num', '숫자', isTagArg ? 'tag' : 'num')}</select>
+          ${isTagArg ? `<select data-adev title="장비">${groups.map((x) => opt(x.key, x.name, dk)).join('')}</select>
+            <select data-atag title="태그">${missing}${g.tags.map((x) => opt(x.id, x.name ? `${x.id} — ${x.name}` : x.id, a.tag)).join('')}</select>`
+            : `<input data-anum value="${esc(fmtValue(a.value))}" placeholder="숫자" inputmode="decimal" spellcheck="false">`}
+          ${m.args.length > def[2] ? X('data-arm', '값 지우기') : '<span></span>'}
+        </div>`;
+      };
+      return `<div class="cb-group">
+        <div class="cb-calc-op"><span>연산</span><select data-kop>${ARITH.map(([v, l]) => opt(v, l, m.calc)).join('')}</select>
+          <small>${def[3] === 1 ? '값 1개' : def[3] === 2 ? '값 2개 — 위에서 아래 순서로 계산' : '값 2개 이상'}</small></div>
+        <div class="cb-row cb-arow cb-colhead"><span>종류</span><span>장비</span><span>태그 / 숫자</span><span></span></div>
+        ${m.args.map(row).join('')}
+        ${m.args.length < def[3] ? '<div class="cb-add"><button type="button" data-aadd>+ 값</button></div>' : ''}
+      </div>`;
+    };
+    const kindHtml = () => (valueType !== 'number' ? '' : `<div class="cb-kind cb-modes">${[['select', '조건 → 값'], ['calc', '계산 (더하기·평균 등)']].map(([v, l]) =>
+      `<label><input type="radio" name="cb-kind" data-kind value="${v}"${(model.calc ? 'calc' : 'select') === v ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>`);
+
     const render = () => {
       root.innerHTML = readonly
         ? `<div class="cb-ro">이 식은 조건 빌더로 편집할 수 없는 모양입니다. 내용은 그대로 유지됩니다.<code>${esc(R.exprText(opts.expr))}</code></div>`
-        : `<div class="cb-sec">규칙 <small>${valueType === 'bool' ? '참이 되는 조건' : '위에서부터 처음 맞는 줄의 결과 값'}</small></div>`
-          + (valueType === 'bool' ? groupHtml(model, '', 1) : selectHtml(model));
+        : `<div class="cb-sec">규칙 <small>${valueType === 'bool' ? '참이 되는 조건' : model.calc ? '값들을 계산한 결과' : '위에서부터 처음 맞는 줄의 결과 값'}</small></div>`
+          + kindHtml() + (valueType === 'bool' ? groupHtml(model, '', 1) : model.calc ? calcHtml(model) : selectHtml(model));
     };
     const changed = (redraw) => { if (redraw) render(); if (opts.onChange) opts.onChange(); };
     const val = (s) => (valueType === 'number' ? (s.trim() !== '' && Number.isFinite(Number(s)) ? Number(s) : s) : valueType === 'string' ? s : parseValue(s));
@@ -202,6 +244,27 @@
     root.addEventListener('change', (e) => {
       if (readonly) return;
       const t = e.target, row = t.closest('[data-path]');
+      if (t.dataset.kind !== undefined) {           // 규칙 종류: 조건 → 값 / 계산
+        const next = stash || (t.value === 'calc' ? freshCalc() : fresh());
+        stash = model; model = next;
+        return changed(true);
+      }
+      if (t.dataset.kop !== undefined) {            // 연산을 바꾸면 값 개수를 그 연산에 맞춘다
+        const def = arith(t.value);
+        model.calc = t.value;
+        model.args = model.args.slice(0, def[3]);
+        while (model.args.length < def[2]) model.args.push({ tag: firstTag() });
+        return changed(true);
+      }
+      const arow = t.closest('[data-arg]');
+      if (arow && model.calc) {
+        const i = Number(arow.dataset.arg);
+        if (t.dataset.akind !== undefined) model.args[i] = t.value === 'num' ? { value: 0 } : { tag: firstTag() };
+        else if (t.dataset.adev !== undefined) { const g = groups.find((x) => x.key === t.value); model.args[i] = { tag: g && g.tags[0] ? g.tags[0].id : '' }; }
+        else if (t.dataset.atag !== undefined) model.args[i] = { tag: t.value };
+        else return;
+        return changed(true);
+      }
       if (t.dataset.gmr !== undefined) { at(t.closest('[data-gpath]').dataset.gpath).mode = t.value; return changed(false); }
       if (t.dataset.gnot !== undefined) { at(t.closest('[data-gpath]').dataset.gpath).not = t.checked; return changed(false); }
       if (!row) return;
@@ -224,6 +287,11 @@
     root.addEventListener('input', (e) => {
       if (readonly) return;
       const t = e.target, row = t.closest('[data-path]');
+      if (t.dataset.anum !== undefined && model.calc) {
+        const s = t.value.trim();
+        model.args[Number(t.closest('[data-arg]').dataset.arg)].value = s !== '' && Number.isFinite(Number(s)) ? Number(s) : s;
+        return changed(false);
+      }
       if (t.dataset.rv !== undefined) { model.rows[Number(t.closest('[data-row]').dataset.row)].value = val(t.value); return changed(false); }
       if (t.dataset.rdef !== undefined) { model.def = val(t.value); return changed(false); }
       if (!row) return;
@@ -240,6 +308,8 @@
       const b = e.target.closest('button');
       if (!b) return;
       const row = b.closest('[data-path]');
+      if (b.dataset.aadd !== undefined && model.calc) { model.args.push({ tag: firstTag() }); return changed(true); }
+      if (b.dataset.arm !== undefined && model.calc) { model.args.splice(Number(b.closest('[data-arg]').dataset.arg), 1); return changed(true); }
       if (b.dataset.cadd !== undefined) { at(b.closest('[data-row]').dataset.row).items.push(newCond()); return changed(true); }
       if (b.dataset.cbit !== undefined && row) {
         const c = at(row.dataset.path), n = Number(b.dataset.cbit), bits = R.bitList(c.bits);
@@ -272,10 +342,17 @@
 
     return {
       readonly,
-      getExpr: () => (readonly ? opts.expr : valueType === 'bool' ? groupAst(model) : selectAst(model)),
+      getExpr: () => (readonly ? opts.expr : valueType === 'bool' ? groupAst(model) : model.calc ? calcAst(model) : selectAst(model)),
       validate() {
         if (readonly) return null;
         if (valueType === 'bool') return groupError(model);
+        if (model.calc) {
+          for (const a of model.args) {
+            if (a.tag !== undefined) { if (!a.tag) return '태그를 고르지 않은 값이 있습니다.'; if (!byId.has(a.tag)) return `없는 태그 "${a.tag}"를 쓰는 값이 있습니다.`; }
+            else if (typeof a.value !== 'number') return '계산에 쓰는 값은 숫자로 입력하세요.';
+          }
+          return null;
+        }
         for (const r of model.rows) {
           const e = groupError(r.g);
           if (e) return e;
@@ -286,8 +363,9 @@
       // 값 형식을 바꾸면 규칙을 새로 시작(참/거짓 ↔ 숫자·글자는 모양이 다름). 숫자 ↔ 글자는 줄을 유지
       setValueType(vt) {
         if (readonly || vt === valueType) return;
-        const keep = valueType !== 'bool' && vt !== 'bool';
+        const keep = valueType !== 'bool' && vt !== 'bool' && !model.calc;   // 계산은 숫자 형식에만 있다
         valueType = vt;
+        stash = null;
         if (!keep) model = fresh();
         else { for (const r of model.rows) r.value = val(fmtValue(r.value)); model.def = val(fmtValue(model.def)); }
         render();
