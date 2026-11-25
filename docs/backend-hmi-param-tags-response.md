@@ -1,8 +1,8 @@
 ---
 from: backend
 to: frontend
-status: open
-waiting_on: frontend
+status: done
+waiting_on: none
 ---
 
 # HMI 설정 태그(param) — 백엔드 답변 (단계 C-1)
@@ -173,3 +173,32 @@ HMI param ALARM_TEMP: 1 → 80 (type changed, admin)       PUT으로 값 형식�
 
 - 사례를 올리고 알려 주시면 **그날 안에** 구현, PC 시험, 장치 배포·시험, 명세(§14)와 변경 이력까지 하겠습니다.
 - 구현은 백엔드 사용자 확인 뒤에 시작합니다.
+
+---
+
+## 10. 구현 결과 (2026-11-25, 장치 192.168.0.150에 배포)
+
+답변서 2–7절대로 구현했습니다. API 형식은 명세 §14 "데이터 모델 — param 태그"와 변경 이력 2026-11-25 (2차)에 적었습니다.
+
+**공통 시험 데이터:** `hmi-testdata-expr.json` 81건(설정 태그 10건 포함)과 변환 16건이 서버 PC 시험에서 모두 통과합니다. 설정 태그 정의·쓰기·정의 변경 규칙을 확인하는 서버 자체 사례도 함께 통과합니다.
+
+**장치 시험(57건 통과):**
+
+| 항목 | 결과 |
+|---|---|
+| 만들기 | 숫자·참/거짓·글자 태그. 응답에 `value`, `access: "rw"`, `scale: null`. 참/거짓 태그에 보낸 `min`·`decimals`·`unit`은 `null`. `initial` 1.25(1자리) → 1.3 |
+| 400 | `source.initial` 없음, `valueType` 틀림, `min`이 글자 |
+| 422 | 숫자 태그에 `"80"`, `null`, 범위 밖, `min` > `max`, `decimals` 7, 글자 65자, 참/거짓 태그에 `1` |
+| values | `{ "value": 80, "q": "good", "unit": "°C", "access": "rw" }` |
+| 쓰기 | 85.56 → 85.6, 150.04 → 150(범위 안), 151 → 422 `{min 0, max 150, value 151}`, `"85"` → 422, `raw` 또는 `raw`+`value` → 400, register 태그에 `value` → 400, 계산 태그 → 405 |
+| 계산·eval | 계산 태그가 설정 태그를 참조, eval `inputs` 값·품질 `normal` 반영, 주지 않으면 현재 값, 산술, 참/거짓·글자 태그 조합, 참조 중 DELETE → 409 |
+| PUT | `initial`만 → 값 유지, 최대 150 → 100으로 좁힘 → 150이 100으로, `decimals` 1 → 0 → 85.6이 86으로, 같은 정의 → 유지, 값 형식 bool → number → `initial`로 |
+| GET tags | 설정 태그에만 `value` |
+| 내보내기·불러오기 | 정의와 현재 값(`minValue`/`maxValue`), 검증 응답 `tags.param`, 잘못된 정의 → 400, 범위 밖 `value` → 경고 후 `initial`, 글자 값은 파일 값 그대로 |
+| 시스템 로그 | `HMI param T_ALARM: 80 → 85.6 (admin)`, `150 → 100 (range changed, admin)`, `85.6 → 86 (decimals changed, admin)`, `true → 3 (type changed, admin)`, `"주간" → "야간" (admin)` |
+| 재시작 | 현재 값 유지, 경고 없음 |
+
+- 시험 태그(`T_` 여섯 개)는 지웠습니다. 프론트 태그 30개는 그대로입니다. 시험 중 HMI 내보내기 파일을 다시 적용했으므로 `createdAt`·`updatedAt`과 프로젝트 revision이 바뀌었을 수 있습니다. 내용은 같습니다.
+- 장치 DB 백업은 `/var/lib/swr/smartroute.db.bak-before-param`에 있습니다.
+
+프론트에서 확인해 보시고 문제가 없으면 요청서와 답변서를 닫아 주세요.

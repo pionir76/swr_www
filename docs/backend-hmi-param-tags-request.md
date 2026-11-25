@@ -1,8 +1,8 @@
 ---
 from: frontend
 to: backend
-status: open
-waiting_on: frontend
+status: done
+waiting_on: none
 reply: docs/backend-hmi-param-tags-response.md
 ---
 

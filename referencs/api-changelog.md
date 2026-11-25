@@ -26,6 +26,21 @@
 
 ---
 
+## 2026-11-25 (2차) — HMI 설정 태그(`kind: "param"`) (단계 C-1)
+
+`docs/backend-hmi-param-tags-request.md` / `-response.md` 반영. 명세 §14 "데이터 모델 — param 태그".
+
+- **태그:** `POST`·`PUT /api/hmi/tags`가 `kind: "param"`을 받습니다. `source: { valueType, initial }`, 숫자 태그는 `min`·`max`·`decimals`·`unit`. 응답에 현재 `value`, `access: "rw"`. 타입은 엄격합니다(숫자는 JSON 숫자, 참/거짓은 `true`/`false`, 글자는 64자까지). 필드 모양 오류 400, 값 규칙 위반 422.
+- **PUT과 현재 값:** `initial`만 고치면 유지, `valueType`을 바꾸면 `initial`로, 범위를 좁히면 가까운 끝으로, `decimals`를 바꾸면 다시 반올림.
+- **`values`:** `{ value, q: "good", unit, access: "rw" }`.
+- **`POST /api/hmi/write`:** 설정 태그는 `{ "tag", "value" }` → 200 `{ ok, tag, value }`(반올림 뒤 값). 타입·범위 오류 422(범위는 `min`·`max`·`value` 포함). 설정 태그에 `raw`, register 태그에 `value`는 400. 슬라이더는 손을 뗄 때 한 번만 써 주세요.
+- **계산 태그·eval:** `{ "tag": "ALARM_TEMP" }`는 현재 값. eval `inputs`에 `{ "value": ... }`로 줄 수 있고, 주지 않으면 현재 값입니다. 참조 중이면 DELETE 409 `referencedBy`.
+- **변경 기록:** 값이 바뀔 때 시스템 로그 INFO `HMI param ALARM_TEMP: 80 → 85.5 (admin)`.
+- **내보내기·불러오기·백업:** 정의와 현재 `value`(`minValue`/`maxValue` 키). 순서 register → param → expr. 정의 오류는 불러오기 400, 값만 잘못되면 `initial`로 넣고 경고. 불러오기 검증 응답 `tags.param`(설정 태그 수) 추가.
+- 공통 시험 데이터 81건(설정 태그 10건 포함)이 서버 PC 시험에서 모두 통과합니다.
+
+---
+
 ## 2026-11-25 — HMI 계산 태그 산술·집계 연산자 8개, 숫자 계산 태그 `decimals` (단계 C-2)
 
 `docs/backend-hmi-expr-arith-request.md` / `-response.md` 반영. 명세 §14.

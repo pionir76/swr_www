@@ -1372,14 +1372,13 @@ Content-Type: `application/octet-stream`
 
 레지스터 `tagName`과 별도의 독립된 네임스페이스. 레지스터를 "소스"로 느슨하게 참조하며, 레지스터 이름이 바뀌어도 HMI 화면은 영향받지 않음.
 
-태그 종류(`kind`)는 두 가지입니다(2026-11-24부터).
+태그 종류(`kind`)는 세 가지입니다(`expr`은 2026-11-24, `param`은 2026-11-25부터).
 
 | `kind` | 뜻 | 값 |
 |---|---|---|
 | `register` | 레지스터 하나를 가리키는 태그 | 원본 `raw` |
 | `expr` | 다른 태그로 계산하는 태그(계산 태그). 쓰기 불가 | 서버가 계산한 `value` |
-
-`param`(설정 태그)은 예약만 되어 있고 아직 받지 않습니다(400).
+| `param` | 사용자가 HMI에서 바꾸는 값을 장치에 저장해 두는 태그(설정 태그). 장비와 무관 | 저장된 현재 `value` |
 
 ### 데이터 모델 — register 태그
 
@@ -1472,6 +1471,41 @@ Content-Type: `application/octet-stream`
 | `min` / `max` / `scale` / `access` | 쓰지 않음. 요청에 있어도 무시, 응답은 `null`(`access`는 `"r"`) |
 | `missingRefs` | **응답 전용.** 식이 참조하는데 지금 없는 태그 id(정렬). 없으면 `[]` |
 
+### 데이터 모델 — param 태그(설정 태그)
+
+```json
+{
+  "id": "ALARM_TEMP",
+  "name": "경보 기준 온도",
+  "kind": "param",
+  "source": { "valueType": "number", "initial": 80 },
+  "value": 85.5,
+  "unit": "°C",
+  "min": 0, "max": 150,
+  "decimals": 1,
+  "scale": null,
+  "access": "rw",
+  "createdAt": "2026-11-25 05:47:10",
+  "updatedAt": "2026-11-25 05:47:10"
+}
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `source.valueType` | `bool` / `number` / `string`. 필수. 만든 뒤에도 바꿀 수 있음 |
+| `source.initial` | 필수. 처음 값이자 되돌릴 기준. 타입·범위 규칙은 아래 "값"과 같음. 숫자면 `decimals`로 반올림해 저장 |
+| `value` | **응답 전용.** 현재 값. 쓰기(`POST /api/hmi/write`)로만 바뀌고 재부팅 뒤에도 남음 |
+| `min` / `max` | 숫자 태그의 허용 범위. `null`이면 그쪽 제한 없음. `min` > `max`면 422 |
+| `decimals` | 숫자 태그의 소수 자릿수 0–6 또는 `null`. 쓸 때 이 자릿수로 반올림해 저장 |
+| `unit` | 숫자 태그의 단위 |
+| `access` / `scale` | 받지 않음. 응답은 `"rw"` / `null` |
+
+- `bool`·`string` 태그의 `min`·`max`·`decimals`·`unit`은 무시하고 `null`로 저장합니다(범위 검사도 안 함).
+- **값의 타입은 엄격합니다:** `number`는 JSON 숫자(`"85"` 같은 글자는 안 됨), `bool`은 `true`/`false`(`0`/`1`은 안 됨), `string`은 글자 0–64자(JavaScript `length`). `null`은 어느 타입에도 안 됩니다.
+- 품질은 항상 `good`입니다. 태그 수 한도 1,000개에 함께 셉니다. 다른 태그를 참조하지 않으므로 순환·깊이 검사와 무관합니다.
+- **PUT으로 정의를 고칠 때 현재 값:** `initial`만 고치면 그대로, `valueType`을 바꾸면 새 `initial`로, 범위를 좁혀 밖이 되면 가까운 끝으로, `decimals`를 바꾸면 새 자릿수로 반올림합니다. 바디에 `value`가 있어도 무시합니다. 값이 바뀌면 시스템 로그에 남습니다.
+- **변경 기록:** 값이 바뀔 때마다 시스템 로그 INFO 한 줄. `HMI param ALARM_TEMP: 80 → 85.5 (admin)`, PUT으로 바뀌면 `(range changed, admin)`·`(type changed, admin)`·`(decimals changed, admin)`. 글자 값은 따옴표로 감쌉니다. 불러오기·복원은 한 줄씩 남기지 않습니다.
+
 **식(AST):** 노드는 세 가지입니다. 노드에 다른 키가 더 있어도 무시합니다.
 
 ```json
@@ -1499,7 +1533,7 @@ Content-Type: `application/octet-stream`
 
 - **숫자로 읽기:** 참/거짓은 1/0, 숫자 모양 글자(앞뒤 공백 무시)는 숫자, 그 밖은 숫자 아님
 - **참/거짓으로 읽기:** 숫자 0, `false`, 빈 글자, 글자 `"0"`·`"false"`는 거짓, 나머지는 참
-- **태그 참조의 값:** register 태그는 표시 값(원본 → 부호 해석 × 배율, 배율 자릿수로 반올림. 코일·접점은 0/1), expr 태그는 그 결과
+- **태그 참조의 값:** register 태그는 표시 값(원본 → 부호 해석 × 배율, 배율 자릿수로 반올림. 코일·접점은 0/1), expr 태그는 그 결과, param 태그는 현재 값 그대로(품질 `good`)
 - **산술(`add`~`abs`):** 인수를 숫자로 읽습니다. 하나라도 숫자로 읽히지 않거나(`null` 포함) 결과가 유한한 수가 아니면(0으로 나눔, 넘침) `bad`. 배정밀도 실수로 계산하고 중간에 반올림하지 않습니다(`24.72 − 12.45` → `12.269999999999998`, 자릿수는 `decimals`로)
 - **지름길 계산 없음:** 모든 인수를 계산합니다. `or`의 한쪽이 참이어도 다른 쪽이 `bad`면 결과는 `bad`. `select`도 마찬가지라서 `select(ne(B,0), div(A,B), 0)`은 B가 0이면 `bad`입니다(고르지 않은 가지도 계산)
 - **품질:** 참조한 태그(이어 쓴 계산 태그 포함) 중 하나라도 `bad`/`disabled`면 `bad`, `normal`이 섞이면 `normal`, 아니면 `good`. 없는 태그, register 태그의 `raw`가 `null`이면 `bad`. `bad`일 때 `value`는 `null`
@@ -1534,6 +1568,17 @@ Content-Type: `application/octet-stream`
 ```
 `id / name / source.registerId` 필수, 나머지 선택. `source`의 응답 전용 필드가 들어와도 무시. `kind`가 없으면 `register`
 
+설정 태그(만들 때 현재 값 = `initial`):
+```json
+{
+  "id": "ALARM_TEMP",
+  "name": "경보 기준 온도",
+  "kind": "param",
+  "source": { "valueType": "number", "initial": 80 },
+  "unit": "°C", "min": 0, "max": 150, "decimals": 1
+}
+```
+
 계산 태그:
 ```json
 {
@@ -1549,7 +1594,7 @@ Content-Type: `application/octet-stream`
 숫자 계산 태그는 `"decimals": 1`처럼 자릿수를 줄 수 있습니다(없으면 `null`).
 
 **응답** 201: 생성된 HmiTag 객체  
-**에러** 400: 유효하지 않은 id 형식 / registerId 없음 / access 값 오류 / scale 값 오류 / `kind`가 `register`·`expr`가 아님 / `source.valueType` 오류 / `source.expr` 없음  
+**에러** 400: 유효하지 않은 id 형식 / registerId 없음 / access 값 오류 / scale 값 오류 / `kind`가 `register`·`expr`·`param`이 아님 / `source.valueType` 오류 / `source.expr` 없음 / 설정 태그의 `source.initial` 없음, 숫자 태그의 `min`·`max`가 숫자·`null`이 아님  
 **에러** 409: id 중복  
 **에러** 422: 식 검증 실패 — 문제 노드의 위치를 `path`로 줍니다(맨 위 노드는 `""`)
 ```json
@@ -1558,6 +1603,8 @@ Content-Type: `application/octet-stream`
 { "error": "circular reference: CAN_START → RUNNING → CAN_START", "path": "" }
 ```
 422가 되는 경우: 모르는 연산자, 인수 개수, 노드 모양, 비트 목록, 없는 태그 참조, 순환 참조, 노드·참조·깊이 한도, 태그 수 1,000개 초과(`{ "error": ..., "maxTags": 1000 }`, `path` 없음), 숫자 계산 태그의 `decimals`가 정수 0–6·`null`이 아님(`path` 없음)
+
+설정 태그의 422(`path` 없음): `initial` 타입이 틀림·`null`, 숫자 `initial`이 `min`~`max` 밖(반올림 뒤), 글자 64자 초과, `min` > `max`, `decimals`가 정수 0–6·`null`이 아님
 
 ### GET /api/hmi/tags/{id}
 권한: `Any`
@@ -1616,6 +1663,7 @@ Content-Type: `application/octet-stream`
 
 - register 태그는 `raw`, 계산 태그는 `value`(원본이 아니므로). 계산 태그의 `q`는 `good`/`normal`/`bad`이고, `bad`면 `value`는 `null`
 - 계산 태그의 `unit`은 태그 값(없으면 `""`), `access`는 항상 `"r"`
+- 설정 태그: `{ "value": 85.5, "q": "good", "unit": "°C", "access": "rw" }`. 품질은 항상 `good`
 - 장치 실측(2026-11-24): 태그 3개 요청 약 20ms. 전체 요청은 태그 9개 약 13ms, 계산 태그 100개(노드 14개씩)를 더하면 약 66ms
 
 | `q` 값 | 의미 |
@@ -1640,14 +1688,16 @@ Content-Type: `application/octet-stream`
 
 - `raw`: 장비에 쓸 **원본 워드**(정수 0–65535). 서버는 배율 계산 없이 그대로 씁니다. 음수는 프론트가 2의 보수로 바꿔 보냅니다(`-5` → `65531`). `POST /api/registers/{id}/write`의 `rawValues`와 같은 규칙
 - coil: `raw`는 `0` 또는 `1`
+- **설정 태그는 `raw` 대신 `value`**를 보냅니다: `{ "tag": "ALARM_TEMP", "value": 85.5 }`. 장비에 쓰지 않고 장치에 저장하므로 바로 반영됩니다(다음 `values`와 이 태그를 참조하는 계산부터). 처리 순서는 타입 검사 → `decimals`로 반올림 → `min`/`max` 검사 → 저장. 같은 값을 다시 써도 저장합니다. 쓸 때마다 플래시에 한 번 저장하므로 슬라이더 같은 위젯은 손을 뗄 때 한 번만 쓰세요. "초기값으로 되돌리기"는 `initial`을 쓰면 됩니다
 - **범위 검사(2026-11-24부터):** 서버가 `raw`를 표시 값으로 바꿔 태그 `min`/`max`와 비교합니다. 태그 값이 비면 레지스터 `minValue`/`maxValue`를 태그 배율로 환산해 씁니다(±1.797e308은 제한 없음). coil·discrete_input은 0/1 검사만 합니다. 프론트 입력 창 검사(`WHMI.raw.limits`)와 같은 규칙이고, 프론트 검사는 편의용으로 남겨 둡니다
 
 **응답** 202: `{ "ok": true, "tag": "LEVEL_SP" }`  
-**에러** 400: `tag`·`raw` 없음(예전 `v`만 보내도 400) / `raw`가 정수가 아니거나 범위 밖(coil은 0/1 밖)  
+**응답** 200(설정 태그): `{ "ok": true, "tag": "ALARM_TEMP", "value": 85.5 }` — 저장된 값(반올림 뒤)  
+**에러** 400: `tag` 없음 / register 태그에 `raw` 없음·`value`를 보냄(예전 `v`만 보내도 400) / 설정 태그에 `value` 없음·`raw`를 보냄 / `raw`가 정수가 아니거나 범위 밖(coil은 0/1 밖)  
 **에러** 404: 태그 없음  
 **에러** 405: `access: "r"` 태그 쓰기 시도 / **계산 태그** 쓰기 시도  
 **에러** 409: 소스 레지스터의 장비가 비활성 `{ "error": "device disabled", "deviceId": 1 }`  
-**에러** 422: 소스 레지스터 없음 / 2워드 이상 레지스터 / **표시 값이 허용 범위 밖**
+**에러** 422: 소스 레지스터 없음 / 2워드 이상 레지스터 / **표시 값이 허용 범위 밖** / 설정 태그 값의 타입이 틀림·글자 64자 초과·**범위 밖**(같은 모양, `value`는 반올림 뒤 값)
 ```json
 { "error": "value 17 is outside the allowed range of HMI tag 'PID_INH'", "min": 0, "max": 16, "value": 17 }
 ```
@@ -1669,7 +1719,7 @@ Content-Type: `application/octet-stream`
 
 - `valueType`, `expr` 필수. `expr`은 저장할 때와 같은 검증을 합니다(없는 태그 참조는 422가 아니라 결과 `bad` + `missingRefs`)
 - `decimals`(선택, 정수 0–6 또는 `null`): `valueType`이 `number`일 때 결과를 저장된 태그와 같은 방식으로 반올림합니다(저장 전 미리보기용). 다른 `valueType`에서는 무시
-- `inputs`(선택): 준 태그는 그 값으로, 주지 않은 태그는 현재 값으로 계산합니다. register 태그는 `raw`(정수 0–65535 또는 `null`), 계산 태그는 `value`(숫자·글자·true/false·`null`). `q`(`good`/`normal`/`bad`/`disabled`)를 함께 주면 그 품질, 없으면 `good`. 이 장치에 없는 태그 id는 무시합니다
+- `inputs`(선택): 준 태그는 그 값으로, 주지 않은 태그는 현재 값으로 계산합니다. register 태그는 `raw`(정수 0–65535 또는 `null`), 계산 태그와 설정 태그는 `value`(숫자·글자·true/false·`null`). 설정 태그를 주지 않으면 저장된 현재 값으로 계산합니다(공통 시험 데이터에서는 `initial`). `q`(`good`/`normal`/`bad`/`disabled`)를 함께 주면 그 품질, 없으면 `good`. 이 장치에 없는 태그 id는 무시합니다
 
 **응답** 200:
 ```json
@@ -1830,8 +1880,9 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
 ```
 
 - `hmi`는 시스템 백업의 `hmi.json`과 같은 내용입니다. register 태그는 `unifiedAddress`로 레지스터를 가리킵니다. 값이 없는(상속하는) `scale`·`unit`·`minValue`·`maxValue`·`access`는 키가 없습니다.
-- 계산 태그는 `kind: "expr"`, `valueType`, `expr`, (있으면) `unit`·`decimals`를 가집니다(`decimals`는 숫자 계산 태그에 값이 있을 때만 키가 있음). `schemaVersion`은 1 그대로입니다. 계산 태그 이전 펌웨어는 이 태그를 `unifiedAddress`가 없다고 보고 건너뜁니다.
-- `kind`가 없는 태그는 register 태그로 읽습니다. 이 장치가 모르는 `kind`(예: `param`)는 건너뛰고 경고에 넣습니다.
+- 계산 태그는 `kind: "expr"`, `valueType`, `expr`, (있으면) `unit`·`decimals`를 가집니다(`decimals`는 숫자 계산 태그에 값이 있을 때만 키가 있음).
+- 설정 태그는 `kind: "param"`, `valueType`, `initial`, **현재 값 `value`**, (있으면) `unit`·`minValue`·`maxValue`·`decimals`를 가집니다. 예: `{ "id": "ALARM_TEMP", "name": "...", "kind": "param", "valueType": "number", "initial": 80, "value": 85.5, "unit": "°C", "minValue": 0, "maxValue": 150, "decimals": 1 }`. 넣는 순서는 register → param → expr입니다. 정의가 잘못되면 불러오기는 400, 시스템 복원은 그 태그만 건너뛰고 경고. `value`만 없거나 잘못되면(타입·범위) `initial`로 넣고 경고를 남깁니다 `schemaVersion`은 1 그대로입니다. 계산 태그 이전 펌웨어는 이 태그를 `unifiedAddress`가 없다고 보고 건너뜁니다.
+- `kind`가 없는 태그는 register 태그로 읽습니다. 이 장치가 모르는 `kind`는 건너뛰고 경고에 넣습니다.
 - 불러오기는 **머리 없는 시스템 백업 `hmi.json`**도 받습니다(`format`이 없고 `project`·`screens`·`tags` 중 하나가 있으면).
 - 예전 파일: 태그 `decimals`는 무시하고, `scale`이 없거나 허용 값이 아니면 상속합니다. `pollMs`가 없으면 1000입니다.
 
@@ -1853,7 +1904,7 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
   "project": { "name": "냉동 설비 통합 모니터링", "startScreen": "main", "pollMs": 1000 },
   "screens": 3,
   "tags": { "total": 28, "linked": 22, "missing": [ { "id": "TEMI2KMF_NPV", "unifiedAddress": 32 } ],
-            "expr": 5, "brokenExpr": [ { "id": "RUNNING", "missingRefs": ["TEMI2KMF_NPV"] } ] },
+            "expr": 5, "param": 1, "brokenExpr": [ { "id": "RUNNING", "missingRefs": ["TEMI2KMF_NPV"] } ] },
   "current": { "screens": 2, "tags": 20 },
   "warnings": []
 }
@@ -1861,7 +1912,7 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
 - `fileInfo`: 파일에 적힌 그대로. 머리 없는 `hmi.json`이면 `null`
 - `tags.total`: 파일의 태그 수(모든 종류). `tags.linked`: 레지스터에 연결되는 **register 태그** 수
 - `tags.missing`: 이 장치에 레지스터가 없어 **적용 때 건너뛸** register 태그(`unifiedAddress`가 없으면 `null`)
-- `tags.expr`: 파일의 계산 태그 수. `tags.brokenExpr`: 적용 뒤 참조가 끊길 계산 태그와 끊길 태그 id(건너뛸 register 태그나 파일에 없는 태그를 참조). 이 태그들도 들어가지만 값은 `bad`입니다
+- `tags.expr`: 파일의 계산 태그 수. `tags.param`: 파일의 설정 태그 수. `tags.brokenExpr`: 적용 뒤 참조가 끊길 계산 태그와 끊길 태그 id(건너뛸 register 태그나 파일에 없는 태그를 참조). 이 태그들도 들어가지만 값은 `bad`입니다
 - `current`: 지금 장치의 화면·태그 수(교체될 대상)
 - `warnings`: 예) 시작 화면이 파일에 없음 → 첫 화면을 시작 화면으로 씀
 
@@ -1869,7 +1920,7 @@ HMI(프로젝트·화면·태그)만 파일로 저장하고 불러옵니다. 시
 
 | 상태 | 경우 |
 |---|---|
-| 400 | JSON 객체가 아님 / `format`이 `swr.hmi`가 아님 / `schemaVersion` > 1 / HMI 파일이 아님 / `project`·`screens`·`tags` 형식 오류 / 화면·태그 id 규칙(영문·숫자·`_`·`-` 1–64자) 위반 또는 중복 / 화면 `title` 64자 초과 / 화면 `content.format`이 `whmi.screen`이 아님 / 태그 `access`가 `r`·`rw`가 아님 / `pollMs`가 정수 500–10000이 아님 / 계산 태그의 `valueType`·`expr` 오류(`"tag 'X': ... (at 'args[0]')"`) / 숫자 계산 태그의 `decimals`가 정수 0–6이 아님 / 계산 태그 순환 참조·깊이 초과(**파일 전체 거부**) / 태그 1,000개 초과 |
+| 400 | JSON 객체가 아님 / `format`이 `swr.hmi`가 아님 / `schemaVersion` > 1 / HMI 파일이 아님 / `project`·`screens`·`tags` 형식 오류 / 화면·태그 id 규칙(영문·숫자·`_`·`-` 1–64자) 위반 또는 중복 / 화면 `title` 64자 초과 / 화면 `content.format`이 `whmi.screen`이 아님 / 태그 `access`가 `r`·`rw`가 아님 / `pollMs`가 정수 500–10000이 아님 / 계산 태그의 `valueType`·`expr` 오류(`"tag 'X': ... (at 'args[0]')"`) / 숫자 계산 태그의 `decimals`가 정수 0–6이 아님 / 설정 태그의 정의 오류(`valueType`, `initial`, `minValue`·`maxValue`, `decimals`) / 계산 태그 순환 참조·깊이 초과(**파일 전체 거부**) / 태그 1,000개 초과 |
 | 413 | 화면 하나의 `content`가 256KB 초과 |
 | 409 | 화면 수 > `hmi.maxScreens` (`{ "error": "too many screens: 51 (maxScreens 50)", "maxScreens": 50 }`) |
 
